@@ -33,7 +33,7 @@ def run_reconstruction(trajectory_name, src_pos, det_center, det_u_vec,
 
     # Generate ground-truth sinogram
     print("Generating sinogram...")
-    target_sino = diffct_mlx.fan_forward(
+    target_sino = diffct_mlx.fan_forward_footprint(
         phantom, src_pos, det_center, det_u_vec,
         n_det, det_spacing, voxel_spacing,
     )
@@ -43,7 +43,7 @@ def run_reconstruction(trajectory_name, src_pos, det_center, det_u_vec,
     reco = 0.01 * mx.random.normal((Ny, Nx)).astype(mx.float32)
 
     def loss_fn(reco_val):
-        current_sino = diffct_mlx.fan_forward(
+        current_sino = diffct_mlx.fan_forward_footprint(
             reco_val,
             src_pos, det_center, det_u_vec,
             n_det, det_spacing, voxel_spacing,

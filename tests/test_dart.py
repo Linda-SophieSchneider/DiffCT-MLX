@@ -34,6 +34,7 @@ def _ensure_mlx_core():
     mx.minimum = np.minimum
     mx.where = np.where
     mx.linalg = types.SimpleNamespace(norm=lambda value: np.linalg.norm(np.asarray(value)))
+    mx.eval = lambda *args, **kwargs: None
     mx_package.core = mx
     sys.modules["mlx.core"] = mx
     return sys.modules["mlx.core"]
@@ -62,6 +63,7 @@ def _load_reconstruction_module(module_name: str):
 MX = _ensure_mlx_core()
 _CORE = _load_reconstruction_module("_core")
 DART = _load_reconstruction_module("dart")
+SART = _load_reconstruction_module("sart")
 
 
 def _identity_forward(volume, projection_index):
@@ -196,6 +198,43 @@ class DARTHelperTests(unittest.TestCase):
             np.array([0.0, 1.0, 2.0, 3.0, 4.0], dtype=np.float32),
         )
 
+    def test_clamp_reconstruction_volume_applies_support_mask(self):
+        params = _CORE.ReconstructionParameters(
+            volume_shape=(2, 2),
+            iteration_count=1,
+            volume_support_mask=np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32),
+        )
+
+        clamped = _CORE.clamp_reconstruction_volume(
+            np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32),
+            params,
+            stage="final",
+        )
+
+        np.testing.assert_allclose(np.asarray(clamped), np.array([[1.0, 0.0], [0.0, 4.0]], dtype=np.float32))
+
+    def test_clamp_reconstruction_volume_can_defer_support_mask_until_final(self):
+        params = _CORE.ReconstructionParameters(
+            volume_shape=(2, 2),
+            iteration_count=1,
+            volume_support_mask=np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32),
+            volume_support_mask_mode="final",
+        )
+
+        intermediate = _CORE.clamp_reconstruction_volume(
+            np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32),
+            params,
+            stage="iteration",
+        )
+        final = _CORE.clamp_reconstruction_volume(
+            np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32),
+            params,
+            stage="final",
+        )
+
+        np.testing.assert_allclose(np.asarray(intermediate), np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
+        np.testing.assert_allclose(np.asarray(final), np.array([[1.0, 0.0], [0.0, 4.0]], dtype=np.float32))
+
 
 class DARTReconstructionTests(unittest.TestCase):
     def test_reconstruct_dart_restarts_from_segmented_volume(self):
@@ -263,6 +302,84 @@ class DARTReconstructionTests(unittest.TestCase):
 
         self.assertEqual(executed_outer_iterations, [0])
         np.testing.assert_allclose(np.asarray(reconstruction), 0.0, atol=1e-6)
+
+
+class SARTReconstructionTests(unittest.TestCase):
+    def test_reconstruct_sart_supports_normalized_sart_without_manual_scale(self):
+        measured_projection = np.ones((2, 2), dtype=np.float32)
+        params = SART.SARTParameters(
+            volume_shape=(2, 2),
+            iteration_count=1,
+            sart_iteration_count=1,
+            iterative_update_method="normalized_sart",
+            projection_subset_count=1,
+            backprojection_scale=None,
+            raylength_thresholding=False,
+            shuffle_projection_order=False,
+        )
+
+        reconstruction = SART.reconstruct_sart(
+            [measured_projection],
+            _identity_forward,
+            _identity_back,
+            params,
+            show_progress=False,
+        )
+
+        np.testing.assert_allclose(np.asarray(reconstruction), np.full((2, 2), 0.9, dtype=np.float32))
+
+    def test_reconstruct_sart_normalized_subsets_refresh_forward_model_between_subsets(self):
+        measured_projections = [
+            np.array([1.0], dtype=np.float32),
+            np.array([0.0], dtype=np.float32),
+        ]
+        params = SART.SARTParameters(
+            volume_shape=(1,),
+            iteration_count=1,
+            sart_iteration_count=1,
+            iterative_update_method="normalized_sart",
+            projection_subset_count=2,
+            backprojection_scale=None,
+            raylength_thresholding=False,
+            shuffle_projection_order=False,
+        )
+
+        reconstruction = SART.reconstruct_sart(
+            measured_projections,
+            _identity_forward,
+            _identity_back,
+            params,
+            show_progress=False,
+        )
+
+        np.testing.assert_allclose(np.asarray(reconstruction), np.array([0.09], dtype=np.float32), atol=1e-6)
+
+    def test_reconstruct_sart_normalized_sart_uses_projection_weights(self):
+        measured_projections = [
+            np.array([1.0], dtype=np.float32),
+            np.array([1.0], dtype=np.float32),
+        ]
+        params = SART.SARTParameters(
+            volume_shape=(1,),
+            iteration_count=1,
+            sart_iteration_count=1,
+            iterative_update_method="normalized_sart",
+            projection_subset_count=1,
+            projection_weights=(2.0, 1.0),
+            backprojection_scale=None,
+            raylength_thresholding=False,
+            shuffle_projection_order=False,
+        )
+
+        reconstruction = SART.reconstruct_sart(
+            measured_projections,
+            _identity_forward,
+            _identity_back,
+            params,
+            show_progress=False,
+        )
+
+        np.testing.assert_allclose(np.asarray(reconstruction), np.array([0.9], dtype=np.float32), atol=1e-6)
 
 
 if __name__ == "__main__":

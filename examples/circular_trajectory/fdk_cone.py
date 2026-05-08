@@ -49,7 +49,7 @@ def main():
     )
 
     # Forward projection
-    sinogram = diffct_mlx.cone_forward(
+    sinogram = diffct_mlx.cone_forward_footprint(
         volume, src_pos, det_center, det_u_vec, det_v_vec,
         det_u_count, det_v_count, du, dv, voxel_spacing,
     )
@@ -66,7 +66,7 @@ def main():
     sino_weighted = sinogram * weights
     sinogram_filt = ramp_filter_3d(sino_weighted)
 
-    reco = diffct_mlx.cone_backward(
+    reco = diffct_mlx.cone_backward_footprint(
         sinogram_filt, src_pos, det_center, det_u_vec, det_v_vec,
         D=Nz, H=Ny, W=Nx, du=du, dv=dv, voxel_spacing=voxel_spacing,
     )
@@ -76,13 +76,13 @@ def main():
 
     # ── Gradient demo ────────────────────────────────────────────────────────
     def loss_fn(vol):
-        s = diffct_mlx.cone_forward(
+        s = diffct_mlx.cone_forward_footprint(
             vol, src_pos, det_center, det_u_vec, det_v_vec,
             det_u_count, det_v_count, du, dv, voxel_spacing,
         )
         sw = s * weights
         sf = ramp_filter_3d(sw)
-        r = diffct_mlx.cone_backward(
+        r = diffct_mlx.cone_backward_footprint(
             sf, src_pos, det_center, det_u_vec, det_v_vec,
             D=Nz, H=Ny, W=Nx, du=du, dv=dv, voxel_spacing=voxel_spacing,
         )

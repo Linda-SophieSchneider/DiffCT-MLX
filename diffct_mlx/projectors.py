@@ -5,6 +5,8 @@ functions using custom Metal kernels on Apple Silicon, with VJP (vector-Jacobian
 product) support for gradient computation via ``mx.custom_function``.
 """
 
+from functools import lru_cache
+
 import numpy as np
 import mlx.core as mx
 
@@ -13,16 +15,62 @@ from .utils import _grid_2d, _grid_3d
 from .kernels import (
     parallel_2d_forward_kernel,
     parallel_2d_backward_kernel,
+    parallel_2d_footprint_forward_kernel,
+    parallel_2d_footprint_backward_kernel,
     fan_2d_forward_kernel,
     fan_2d_backward_kernel,
+    fan_2d_footprint_forward_kernel,
+    fan_2d_footprint_backward_kernel,
     cone_3d_forward_kernel,
     cone_3d_backward_kernel,
+    cone_3d_footprint_forward_kernel,
+    cone_3d_footprint_backward_kernel,
 )
 
 
 def _as_mx_float_array(value):
     """Accept NumPy or MLX arrays and return an MLX float array."""
     return mx.array(value, dtype=_MX_DTYPE)
+
+
+@lru_cache(maxsize=32)
+def _projector_params_2d(
+    n_ang: int,
+    n_det: int,
+    nx: int,
+    ny: int,
+    detector_spacing: float,
+    cx: float,
+    cy: float,
+    voxel_spacing: float,
+):
+    """Cache small 2D kernel parameter buffers across repeated projector calls."""
+    return (
+        mx.array([n_ang, n_det, nx, ny], dtype=mx.int32),
+        mx.array([detector_spacing, cx, cy, voxel_spacing], dtype=mx.float32),
+    )
+
+
+@lru_cache(maxsize=32)
+def _projector_params_3d(
+    n_views: int,
+    n_u: int,
+    n_v: int,
+    nx: int,
+    ny: int,
+    nz: int,
+    du: float,
+    dv: float,
+    cx: float,
+    cy: float,
+    cz: float,
+    voxel_spacing: float,
+):
+    """Cache small 3D kernel parameter buffers across repeated projector calls."""
+    return (
+        mx.array([n_views, n_u, n_v, nx, ny, nz], dtype=mx.int32),
+        mx.array([du, dv, cx, cy, cz, voxel_spacing], dtype=mx.float32),
+    )
 
 
 # ============================================================================
@@ -44,8 +92,16 @@ def _parallel_forward_impl(image, ray_dir, det_origin, det_u_vec,
     cx = float(Nx * 0.5)
     cy = float(Ny * 0.5)
 
-    params = mx.array([n_ang, n_det, Nx, Ny], dtype=mx.int32)
-    fparams = mx.array([detector_spacing, cx, cy, voxel_spacing], dtype=mx.float32)
+    params, fparams = _projector_params_2d(
+        n_ang,
+        n_det,
+        Nx,
+        Ny,
+        float(detector_spacing),
+        cx,
+        cy,
+        float(voxel_spacing),
+    )
 
     grid, tg = _grid_2d(n_ang, n_det)
 
@@ -73,8 +129,16 @@ def _parallel_backward_impl(sinogram, ray_dir, det_origin, det_u_vec,
     cx = float(Nx * 0.5)
     cy = float(Ny * 0.5)
 
-    params = mx.array([n_ang, n_det, Nx, Ny], dtype=mx.int32)
-    fparams = mx.array([detector_spacing, cx, cy, voxel_spacing], dtype=mx.float32)
+    params, fparams = _projector_params_2d(
+        n_ang,
+        n_det,
+        Nx,
+        Ny,
+        float(detector_spacing),
+        cx,
+        cy,
+        float(voxel_spacing),
+    )
 
     grid, tg = _grid_2d(n_ang, n_det)
 
@@ -85,6 +149,78 @@ def _parallel_backward_impl(sinogram, ray_dir, det_origin, det_u_vec,
         grid=grid,
         threadgroup=tg,
         init_value=0,
+    )
+    return outputs[0]
+
+
+def _parallel_forward_footprint_impl(image, ray_dir, det_origin, det_u_vec,
+                                     num_detectors, detector_spacing=1.0, voxel_spacing=1.0):
+    """Approximate separable-footprint parallel-beam forward projector."""
+    image = _as_mx_float_array(image)
+    ray_dir = _as_mx_float_array(ray_dir)
+    det_origin = _as_mx_float_array(det_origin)
+    det_u_vec = _as_mx_float_array(det_u_vec)
+
+    Ny, Nx = image.shape
+    n_ang = ray_dir.shape[0]
+    n_det = int(num_detectors)
+
+    cx = float(Nx * 0.5)
+    cy = float(Ny * 0.5)
+    params, fparams = _projector_params_2d(
+        n_ang,
+        n_det,
+        Nx,
+        Ny,
+        float(detector_spacing),
+        cx,
+        cy,
+        float(voxel_spacing),
+    )
+    grid, tg = _grid_2d(n_ang, Ny)
+
+    outputs = parallel_2d_footprint_forward_kernel(
+        inputs=[image, ray_dir, det_origin, det_u_vec, params, fparams],
+        output_shapes=[(n_ang, n_det)],
+        output_dtypes=[_MX_DTYPE],
+        grid=grid,
+        threadgroup=tg,
+        init_value=0,
+    )
+    return outputs[0]
+
+
+def _parallel_backward_footprint_impl(sinogram, ray_dir, det_origin, det_u_vec,
+                                      detector_spacing, H, W, voxel_spacing=1.0):
+    """Adjoint of the approximate separable-footprint parallel-beam projector."""
+    sinogram = _as_mx_float_array(sinogram)
+    ray_dir = _as_mx_float_array(ray_dir)
+    det_origin = _as_mx_float_array(det_origin)
+    det_u_vec = _as_mx_float_array(det_u_vec)
+
+    n_ang, n_det = sinogram.shape
+    Ny, Nx = int(H), int(W)
+
+    cx = float(Nx * 0.5)
+    cy = float(Ny * 0.5)
+    params, fparams = _projector_params_2d(
+        n_ang,
+        n_det,
+        Nx,
+        Ny,
+        float(detector_spacing),
+        cx,
+        cy,
+        float(voxel_spacing),
+    )
+    grid, tg = _grid_2d(Nx, Ny)
+
+    outputs = parallel_2d_footprint_backward_kernel(
+        inputs=[sinogram, ray_dir, det_origin, det_u_vec, params, fparams],
+        output_shapes=[(Ny, Nx)],
+        output_dtypes=[_MX_DTYPE],
+        grid=grid,
+        threadgroup=tg,
     )
     return outputs[0]
 
@@ -179,6 +315,76 @@ def parallel_backward_vjp(primals, cotangent, _):
     return (grad_sinogram, None, None, None, None, None, None, None)
 
 
+@mx.custom_function
+def parallel_forward_footprint(image, ray_dir, det_origin, det_u_vec,
+                               num_detectors=128, detector_spacing=1.0, voxel_spacing=1.0):
+    """Matched footprint-style 2D parallel-beam forward projection."""
+    return _parallel_forward_footprint_impl(
+        image,
+        ray_dir,
+        det_origin,
+        det_u_vec,
+        num_detectors,
+        detector_spacing,
+        voxel_spacing,
+    )
+
+
+@parallel_forward_footprint.vjp
+def parallel_forward_footprint_vjp(primals, cotangent, _):
+    image, ray_dir, det_origin, det_u_vec = primals[:4]
+    detector_spacing = primals[5] if len(primals) > 5 else 1.0
+    voxel_spacing = primals[6] if len(primals) > 6 else 1.0
+
+    Ny, Nx = image.shape
+    grad_image = _parallel_backward_footprint_impl(
+        cotangent,
+        ray_dir,
+        det_origin,
+        det_u_vec,
+        detector_spacing,
+        Ny,
+        Nx,
+        voxel_spacing,
+    )
+    return (grad_image, None, None, None, None, None, None)
+
+
+@mx.custom_function
+def parallel_backward_footprint(sinogram, ray_dir, det_origin, det_u_vec,
+                                detector_spacing=1.0, H=128, W=128, voxel_spacing=1.0):
+    """Adjoint of the matched footprint-style 2D parallel-beam forward projector."""
+    return _parallel_backward_footprint_impl(
+        sinogram,
+        ray_dir,
+        det_origin,
+        det_u_vec,
+        detector_spacing,
+        H,
+        W,
+        voxel_spacing,
+    )
+
+
+@parallel_backward_footprint.vjp
+def parallel_backward_footprint_vjp(primals, cotangent, _):
+    sinogram, ray_dir, det_origin, det_u_vec = primals[:4]
+    detector_spacing = primals[4] if len(primals) > 4 else 1.0
+    n_ang, n_det = sinogram.shape
+    voxel_spacing = primals[7] if len(primals) > 7 else 1.0
+
+    grad_sinogram = _parallel_forward_footprint_impl(
+        cotangent,
+        ray_dir,
+        det_origin,
+        det_u_vec,
+        n_det,
+        detector_spacing,
+        voxel_spacing,
+    )
+    return (grad_sinogram, None, None, None, None, None, None, None)
+
+
 # ============================================================================
 # 2D Fan Beam
 # ============================================================================
@@ -239,6 +445,78 @@ def _fan_backward_impl(sinogram, src_pos, det_center, det_u_vec,
         grid=grid,
         threadgroup=tg,
         init_value=0,
+    )
+    return outputs[0]
+
+
+def _fan_forward_footprint_impl(image, src_pos, det_center, det_u_vec,
+                                num_detectors, detector_spacing=1.0, voxel_spacing=1.0):
+    """Approximate separable-footprint fan-beam forward projector."""
+    image = _as_mx_float_array(image)
+    src_pos = _as_mx_float_array(src_pos)
+    det_center = _as_mx_float_array(det_center)
+    det_u_vec = _as_mx_float_array(det_u_vec)
+
+    Ny, Nx = image.shape
+    n_ang = src_pos.shape[0]
+    n_det = int(num_detectors)
+
+    cx = float(Nx * 0.5)
+    cy = float(Ny * 0.5)
+    params, fparams = _projector_params_2d(
+        n_ang,
+        n_det,
+        Nx,
+        Ny,
+        float(detector_spacing),
+        cx,
+        cy,
+        float(voxel_spacing),
+    )
+    grid, tg = _grid_2d(n_ang, Ny)
+
+    outputs = fan_2d_footprint_forward_kernel(
+        inputs=[image, src_pos, det_center, det_u_vec, params, fparams],
+        output_shapes=[(n_ang, n_det)],
+        output_dtypes=[_MX_DTYPE],
+        grid=grid,
+        threadgroup=tg,
+        init_value=0,
+    )
+    return outputs[0]
+
+
+def _fan_backward_footprint_impl(sinogram, src_pos, det_center, det_u_vec,
+                                 detector_spacing, H, W, voxel_spacing=1.0):
+    """Adjoint of the approximate separable-footprint fan-beam projector."""
+    sinogram = _as_mx_float_array(sinogram)
+    src_pos = _as_mx_float_array(src_pos)
+    det_center = _as_mx_float_array(det_center)
+    det_u_vec = _as_mx_float_array(det_u_vec)
+
+    n_ang, n_det = sinogram.shape
+    Ny, Nx = int(H), int(W)
+
+    cx = float(Nx * 0.5)
+    cy = float(Ny * 0.5)
+    params, fparams = _projector_params_2d(
+        n_ang,
+        n_det,
+        Nx,
+        Ny,
+        float(detector_spacing),
+        cx,
+        cy,
+        float(voxel_spacing),
+    )
+    grid, tg = _grid_2d(Nx, Ny)
+
+    outputs = fan_2d_footprint_backward_kernel(
+        inputs=[sinogram, src_pos, det_center, det_u_vec, params, fparams],
+        output_shapes=[(Ny, Nx)],
+        output_dtypes=[_MX_DTYPE],
+        grid=grid,
+        threadgroup=tg,
     )
     return outputs[0]
 
@@ -332,6 +610,76 @@ def fan_backward_vjp(primals, cotangent, _):
     return (grad_sinogram, None, None, None, None, None, None, None)
 
 
+@mx.custom_function
+def fan_forward_footprint(image, src_pos, det_center, det_u_vec,
+                          num_detectors=128, detector_spacing=1.0, voxel_spacing=1.0):
+    """Matched footprint-style 2D fan-beam forward projection."""
+    return _fan_forward_footprint_impl(
+        image,
+        src_pos,
+        det_center,
+        det_u_vec,
+        num_detectors,
+        detector_spacing,
+        voxel_spacing,
+    )
+
+
+@fan_forward_footprint.vjp
+def fan_forward_footprint_vjp(primals, cotangent, _):
+    image, src_pos, det_center, det_u_vec = primals[:4]
+    detector_spacing = primals[5] if len(primals) > 5 else 1.0
+    voxel_spacing = primals[6] if len(primals) > 6 else 1.0
+
+    Ny, Nx = image.shape
+    grad_image = _fan_backward_footprint_impl(
+        cotangent,
+        src_pos,
+        det_center,
+        det_u_vec,
+        detector_spacing,
+        Ny,
+        Nx,
+        voxel_spacing,
+    )
+    return (grad_image, None, None, None, None, None, None)
+
+
+@mx.custom_function
+def fan_backward_footprint(sinogram, src_pos, det_center, det_u_vec,
+                           detector_spacing=1.0, H=128, W=128, voxel_spacing=1.0):
+    """Adjoint of the matched footprint-style 2D fan-beam forward projector."""
+    return _fan_backward_footprint_impl(
+        sinogram,
+        src_pos,
+        det_center,
+        det_u_vec,
+        detector_spacing,
+        H,
+        W,
+        voxel_spacing,
+    )
+
+
+@fan_backward_footprint.vjp
+def fan_backward_footprint_vjp(primals, cotangent, _):
+    sinogram, src_pos, det_center, det_u_vec = primals[:4]
+    detector_spacing = primals[4] if len(primals) > 4 else 1.0
+    n_ang, n_det = sinogram.shape
+    voxel_spacing = primals[7] if len(primals) > 7 else 1.0
+
+    grad_sinogram = _fan_forward_footprint_impl(
+        cotangent,
+        src_pos,
+        det_center,
+        det_u_vec,
+        n_det,
+        detector_spacing,
+        voxel_spacing,
+    )
+    return (grad_sinogram, None, None, None, None, None, None, None)
+
+
 # ============================================================================
 # 3D Cone Beam
 # ============================================================================
@@ -359,8 +707,20 @@ def _cone_forward_impl(volume, src_pos, det_center, det_u_vec, det_v_vec,
     cy = float(Ny * 0.5)
     cz = float(Nz * 0.5)
 
-    params = mx.array([n_views, n_u, n_v, Nx, Ny, Nz], dtype=mx.int32)
-    fparams = mx.array([du, dv, cx, cy, cz, voxel_spacing], dtype=mx.float32)
+    params, fparams = _projector_params_3d(
+        n_views,
+        n_u,
+        n_v,
+        Nx,
+        Ny,
+        Nz,
+        float(du),
+        float(dv),
+        cx,
+        cy,
+        cz,
+        float(voxel_spacing),
+    )
 
     grid, tg = _grid_3d(n_views, n_u, n_v)
 
@@ -390,8 +750,20 @@ def _cone_backward_impl(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
     cy = float(Ny * 0.5)
     cz = float(Nz * 0.5)
 
-    params = mx.array([n_views, n_u, n_v, Nx, Ny, Nz], dtype=mx.int32)
-    fparams = mx.array([du, dv, cx, cy, cz, voxel_spacing], dtype=mx.float32)
+    params, fparams = _projector_params_3d(
+        n_views,
+        n_u,
+        n_v,
+        Nx,
+        Ny,
+        Nz,
+        float(du),
+        float(dv),
+        cx,
+        cy,
+        cz,
+        float(voxel_spacing),
+    )
 
     grid, tg = _grid_3d(n_views, n_u, n_v)
 
@@ -405,6 +777,99 @@ def _cone_backward_impl(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
     )
 
     # Permute WHD → DHW
+    vol = mx.transpose(outputs[0], axes=(2, 1, 0))
+    return mx.array(vol)
+
+
+def _cone_forward_footprint_impl(volume, src_pos, det_center, det_u_vec, det_v_vec,
+                                 det_u, det_v, du, dv, voxel_spacing=1.0):
+    """Approximate separable-footprint cone-beam forward projector."""
+    volume = _as_mx_float_array(volume)
+    src_pos = _as_mx_float_array(src_pos)
+    det_center = _as_mx_float_array(det_center)
+    det_u_vec = _as_mx_float_array(det_u_vec)
+    det_v_vec = _as_mx_float_array(det_v_vec)
+
+    D, H, W = volume.shape
+    n_views = src_pos.shape[0]
+    n_u, n_v = int(det_u), int(det_v)
+
+    volume_perm = mx.array(mx.transpose(volume, axes=(2, 1, 0)))
+
+    Nx, Ny, Nz = W, H, D
+    cx = float(Nx * 0.5)
+    cy = float(Ny * 0.5)
+    cz = float(Nz * 0.5)
+
+    params, fparams = _projector_params_3d(
+        n_views,
+        n_u,
+        n_v,
+        Nx,
+        Ny,
+        Nz,
+        float(du),
+        float(dv),
+        cx,
+        cy,
+        cz,
+        float(voxel_spacing),
+    )
+
+    grid, tg = _grid_3d(n_views, Ny, Nz)
+
+    outputs = cone_3d_footprint_forward_kernel(
+        inputs=[volume_perm, src_pos, det_center, det_u_vec, det_v_vec, params, fparams],
+        output_shapes=[(n_views, n_u, n_v)],
+        output_dtypes=[_MX_DTYPE],
+        grid=grid,
+        threadgroup=tg,
+        init_value=0,
+    )
+    return outputs[0]
+
+
+def _cone_backward_footprint_impl(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
+                                  D, H, W, du, dv, voxel_spacing=1.0):
+    """Adjoint of the approximate separable-footprint cone-beam forward projector."""
+    sinogram = _as_mx_float_array(sinogram)
+    src_pos = _as_mx_float_array(src_pos)
+    det_center = _as_mx_float_array(det_center)
+    det_u_vec = _as_mx_float_array(det_u_vec)
+    det_v_vec = _as_mx_float_array(det_v_vec)
+
+    n_views, n_u, n_v = sinogram.shape
+    Nx, Ny, Nz = int(W), int(H), int(D)
+
+    cx = float(Nx * 0.5)
+    cy = float(Ny * 0.5)
+    cz = float(Nz * 0.5)
+
+    params, fparams = _projector_params_3d(
+        n_views,
+        n_u,
+        n_v,
+        Nx,
+        Ny,
+        Nz,
+        float(du),
+        float(dv),
+        cx,
+        cy,
+        cz,
+        float(voxel_spacing),
+    )
+
+    grid, tg = _grid_3d(Nx, Ny, Nz)
+
+    outputs = cone_3d_footprint_backward_kernel(
+        inputs=[sinogram, src_pos, det_center, det_u_vec, det_v_vec, params, fparams],
+        output_shapes=[(Nx, Ny, Nz)],
+        output_dtypes=[_MX_DTYPE],
+        grid=grid,
+        threadgroup=tg,
+    )
+
     vol = mx.transpose(outputs[0], axes=(2, 1, 0))
     return mx.array(vol)
 
@@ -502,5 +967,90 @@ def cone_backward_vjp(primals, cotangent, _):
     grad_sinogram = _cone_forward_impl(
         cotangent, src_pos, det_center, det_u_vec, det_v_vec,
         n_u, n_v, du, dv, voxel_spacing
+    )
+    return (grad_sinogram, None, None, None, None, None, None, None, None, None, None)
+
+
+@mx.custom_function
+def cone_forward_footprint(volume, src_pos, det_center, det_u_vec, det_v_vec,
+                           det_u=128, det_v=128, du=1.0, dv=1.0, voxel_spacing=1.0):
+    """Matched voxel-footprint cone-beam forward projection."""
+    return _cone_forward_footprint_impl(
+        volume,
+        src_pos,
+        det_center,
+        det_u_vec,
+        det_v_vec,
+        det_u,
+        det_v,
+        du,
+        dv,
+        voxel_spacing,
+    )
+
+
+@cone_forward_footprint.vjp
+def cone_forward_footprint_vjp(primals, cotangent, _):
+    volume, src_pos, det_center, det_u_vec, det_v_vec = primals[:5]
+    du = primals[7] if len(primals) > 7 else 1.0
+    dv = primals[8] if len(primals) > 8 else 1.0
+    voxel_spacing = primals[9] if len(primals) > 9 else 1.0
+
+    D, H, W = volume.shape
+    grad_volume = _cone_backward_footprint_impl(
+        cotangent,
+        src_pos,
+        det_center,
+        det_u_vec,
+        det_v_vec,
+        D,
+        H,
+        W,
+        du,
+        dv,
+        voxel_spacing,
+    )
+    return (grad_volume, None, None, None, None, None, None, None, None, None)
+
+
+@mx.custom_function
+def cone_backward_footprint(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
+                            D=128, H=128, W=128, du=1.0, dv=1.0, voxel_spacing=1.0):
+    """Adjoint of the matched voxel-footprint cone-beam forward projector."""
+    return _cone_backward_footprint_impl(
+        sinogram,
+        src_pos,
+        det_center,
+        det_u_vec,
+        det_v_vec,
+        D,
+        H,
+        W,
+        du,
+        dv,
+        voxel_spacing,
+    )
+
+
+@cone_backward_footprint.vjp
+def cone_backward_footprint_vjp(primals, cotangent, _):
+    sinogram, src_pos, det_center, det_u_vec, det_v_vec = primals[:5]
+    det_u = int(sinogram.shape[1])
+    det_v = int(sinogram.shape[2])
+    du = primals[8] if len(primals) > 8 else 1.0
+    dv = primals[9] if len(primals) > 9 else 1.0
+    voxel_spacing = primals[10] if len(primals) > 10 else 1.0
+
+    grad_sinogram = _cone_forward_footprint_impl(
+        cotangent,
+        src_pos,
+        det_center,
+        det_u_vec,
+        det_v_vec,
+        det_u,
+        det_v,
+        du,
+        dv,
+        voxel_spacing,
     )
     return (grad_sinogram, None, None, None, None, None, None, None, None, None, None)

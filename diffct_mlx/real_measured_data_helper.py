@@ -14,6 +14,8 @@ __all__ = [
     "diagnose_cone_geometry",
     "estimate_cone_isocenter",
     "load_tiff_projections",
+    "mu_to_hu",
+    "mu_to_uint16",
     "normalize_volume",
     "resize_volume_to_shape",
     "shift_detector_center",
@@ -287,6 +289,54 @@ def resize_volume_to_shape(volume, target_shape):
     return zoom(volume_np, zoom_factors, order=1).astype(np.float32, copy=False)
 
 
+def mu_to_hu(mu, mu_water_mm: float = 0.02) -> np.ndarray:
+    """Convert linear attenuation coefficients (mm⁻¹) to Hounsfield Units (medical CT).
+
+    Reconstruction from log-transformed projections yields voxel values in mm⁻¹.
+    For medical CT, convert to HU: HU = 1000 × (μ / μ_water − 1).
+    For NDT with metals use mu_to_uint16() instead.
+
+    Reference: air ≈ −1000 HU, water ≈ 0 HU, bone ≈ 400–1000 HU.
+
+    Args:
+        mu: Array of linear attenuation coefficients in mm⁻¹.
+        mu_water_mm: Water attenuation for the beam energy (~0.020 mm⁻¹ at 70 keV).
+    """
+    return 1000.0 * (np.asarray(mu, dtype=np.float32) / float(mu_water_mm) - 1.0)
+
+
+def mu_to_uint16(
+    mu,
+    mu_max_mm: float,
+    mu_min_mm: float = 0.0,
+) -> np.ndarray:
+    """Scale linear attenuation coefficients (mm⁻¹) to a uint16 grayscale volume.
+
+    NDT reconstruction from log-transformed projections yields voxel values in mm⁻¹.
+    Typical metal values at common industrial CT energies:
+      Al  100 keV: ~0.20 mm⁻¹ |  200 keV: ~0.14 mm⁻¹ |  300 keV: ~0.12 mm⁻¹
+      Fe  100 keV: ~0.72 mm⁻¹ |  200 keV: ~0.35 mm⁻¹ |  300 keV: ~0.26 mm⁻¹
+      Cu  100 keV: ~0.74 mm⁻¹ |  200 keV: ~0.39 mm⁻¹ |  300 keV: ~0.28 mm⁻¹
+
+    NOTE: If reconstructed values are unexpectedly small (below expected μ for the
+    material), check whether the object fills the detector FOV up to the border pixels
+    used for I₀ estimation (air_border_px).  Attenuated border pixels cause I₀ to be
+    underestimated, which compresses projection values and suppresses reconstruction.
+    In that case set subtract_air_baseline=False in MeasuredConeDataConfig.
+
+    Args:
+        mu: Array of linear attenuation coefficients in mm⁻¹.
+        mu_max_mm: μ value that maps to 65535 (densest material in the scan).
+        mu_min_mm: μ value that maps to 0 (air/background). Default 0.0.
+    """
+    mu_np = np.asarray(mu, dtype=np.float32)
+    denom = float(mu_max_mm) - float(mu_min_mm)
+    if denom <= 0.0:
+        raise ValueError("mu_max_mm must be greater than mu_min_mm.")
+    scaled = (mu_np - float(mu_min_mm)) / denom * 65535.0
+    return np.clip(scaled, 0.0, 65535.0).astype(np.uint16)
+
+
 def normalize_volume(volume, upper_percentile=None):
     volume_np = np.asarray(volume, dtype=np.float32)
     vol_min = float(np.min(volume_np))
@@ -443,7 +493,7 @@ def load_tiff_projections(
         np.divide(stack, i0, out=stack)
         np.clip(stack, 1e-6, 1.0, out=stack)
         np.log(stack, out=stack)
-        stack *= -10.0
+        stack *= -1.0
         if subtract_air_baseline:
             border_px = max(0, int(air_border_px))
             if border_px > 0:

@@ -83,6 +83,8 @@ def diagnose_3d_cone(
         preserve_unmasked_computed_projection=preserve_unmasked_computed_projection,
         detector_border_u=detector_border_u,
         detector_border_v=detector_border_v,
+        volume_support_mask=case.iterative_volume_support_mask,
+        volume_support_mask_mode=case.iterative_volume_support_mask_mode,
         backprojection_scale=backprojection_scale,
     )
     measured_projections = [case.sinogram[index] for index in range(case.sinogram.shape[0])]

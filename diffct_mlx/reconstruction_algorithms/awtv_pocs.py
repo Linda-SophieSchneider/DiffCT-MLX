@@ -93,10 +93,13 @@ def reconstruct_awtv_pocs(
             volume = clamp_reconstruction_volume(volume, reco_params, stage="regularization")
             previous_pocs_projection = current_pocs_projection
 
+        mx.eval(volume)
+
         if show_progress:
             print_progress(iteration, reco_params.iteration_count)
 
     volume = clamp_reconstruction_volume(volume, reco_params, stage="final")
+    mx.eval(volume)
     return volume
 
 
