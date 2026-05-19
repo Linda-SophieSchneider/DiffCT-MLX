@@ -230,14 +230,10 @@ diffct_mlx/
 If you use this library in your research, please cite:
 
 ```bibtex
-@software{diffct2025,
+@software{diffct2026,
   author       = {Yipeng Sun, Linda-Sophie Schneider},
-  title        = {diffct: Differentiable Computed Tomography
-                 Reconstruction with CUDA},
-  year         = 2025,
-  publisher    = {Zenodo},
-  doi          = {10.5281/zenodo.14999333},
-  url          = {https://doi.org/10.5281/zenodo.14999333}
+  title        = {diffct-mlx: Differentiable CT for Apple Silicon},
+  year         = 2026,
 }
 ```
 
