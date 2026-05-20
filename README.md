@@ -1,4 +1,4 @@
-# diffct-mlx: Differentiable CT for Apple Silicon
+# diffct_mlx: Differentiable CT for Apple Silicon
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.14999333-blue.svg?style=flat-square)](https://doi.org/10.5281/zenodo.14999333)
@@ -39,13 +39,18 @@ This is the Apple Silicon port of [diffct](https://github.com/sypsyp97/diffct), 
 - Python 3.10+
 - macOS 13.5+
 
-### Installation
+### Installation from PyPI
+
+```bash
+pip install diffct_mlx
+```
+
+### Installation from Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/sypsyp97/diffct.git
-cd diffct
-git checkout feature/mlx-apple-silicon
+git clone https://github.com/Linda-SophieSchneider/diffct_arbit.git
+cd diffct_arbit
 
 # Create and activate conda environment
 conda create -n diffct-mlx python=3.11
@@ -54,9 +59,37 @@ conda activate diffct-mlx
 # Install MLX and dependencies
 pip install mlx numpy matplotlib
 
-# Install diffct-mlx
+# Install diffct_mlx
 pip install -e .
 ```
+
+### Build a Release Distribution
+
+```bash
+python -m pip install --upgrade build twine
+python -m build
+python -m twine check dist/*
+```
+
+This creates both a source distribution and a wheel in `dist/`.
+
+### Publish to TestPyPI or PyPI
+
+```bash
+# TestPyPI
+python -m twine upload --repository testpypi dist/*
+
+# PyPI
+python -m twine upload dist/*
+```
+
+For publishing from your machine, create an API token on PyPI and use it as the
+password with the username `__token__`.
+
+If you publish through GitHub Actions, prefer PyPI Trusted Publishing instead of
+storing a long-lived API token.
+
+The repository release workflow is documented in [RELEASING.md](RELEASING.md).
 
 ### Basic Usage
 
@@ -232,7 +265,7 @@ If you use this library in your research, please cite:
 ```bibtex
 @software{diffct2026,
   author       = {Yipeng Sun, Linda-Sophie Schneider},
-  title        = {diffct-mlx: Differentiable CT for Apple Silicon},
+  title        = {diffct_mlx: Differentiable CT for Apple Silicon},
   year         = 2026,
 }
 ```

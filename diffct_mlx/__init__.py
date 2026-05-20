@@ -1,4 +1,3 @@
-# diffct_mlx/__init__.py
 """DiffCT-MLX — Differentiable CT Reconstruction for Apple Silicon.
 
 A GPU-accelerated, differentiable computed tomography (CT) forward and backward
@@ -116,7 +115,7 @@ from .geometry import (
     custom_trajectory_2d_parallel,
 )
 
-__version__ = '1.0.0.dev0'
+from .__about__ import __version__
 
 __all__ = [
     # Projector functions

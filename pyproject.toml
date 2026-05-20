@@ -3,19 +3,25 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "diffct-mlx"
-version = "1.0.0.dev0"
+name = "diffct_mlx"
+dynamic = ["version"]
 description = "Differentiable CT reconstruction for Apple Silicon using MLX and custom Metal kernels"
 readme = "README.md"
 authors = [
+    {name = "Linda-Sophie Schneider"},
     {name = "Yipeng Sun", email = "yipeng.sun@fau.de"},
 ]
-license = {text = "Apache 2.0"}
+license = "Apache-2.0"
 requires-python = ">=3.10"
+keywords = ["ct", "computed tomography", "mlx", "apple silicon", "metal", "reconstruction"]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: MacOS",
+    "Operating System :: MacOS :: MacOS X",
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 
@@ -26,14 +32,30 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "build",
     "matplotlib",
+    "pytest",
+    "twine",
 ]
 
 [project.urls]
-Homepage = "https://github.com/sypsyp97/diffct"
+Homepage = "https://github.com/Linda-SophieSchneider/diffct_arbit"
+Repository = "https://github.com/Linda-SophieSchneider/diffct_arbit"
+Issues = "https://github.com/Linda-SophieSchneider/diffct_arbit/issues"
+
+[tool.hatch.version]
+path = "diffct_mlx/__about__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["diffct_mlx"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/diffct_mlx",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+]
 
 [tool.hatch.envs.default]
 python = "python"

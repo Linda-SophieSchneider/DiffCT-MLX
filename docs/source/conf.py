@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath("../.."))
 
-project = "diffct-mlx"
+project = "diffct_mlx"
 copyright = "2026, Yipeng Sun, Linda-Sophie Schneider"
 author = "Yipeng Sun, Linda-Sophie Schneider"
 
