@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>diffct: Differentiable Computed Tomography Operators &mdash; diffct  documentation</title>
+  <title>diffct-mlx Documentation &mdash; diffct-mlx  documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
@@ -31,7 +31,7 @@
           
           
           <a href="#" class="icon icon-home">
-            diffct
+            diffct-mlx
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -41,12 +41,9 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
-<ul>
 <li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 </ul>
@@ -57,7 +54,7 @@
 
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="#">diffct</a>
+          <a href="#">diffct-mlx</a>
       </nav>
 
       <div class="wy-nav-content">
@@ -65,7 +62,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">diffct: Differentiable Computed Tomography Operators</li>
+      <li class="breadcrumb-item active">diffct-mlx Documentation</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
       </li>
@@ -75,96 +72,36 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="diffct-differentiable-computed-tomography-operators">
-<h1>diffct: Differentiable Computed Tomography Operators<a class="headerlink" href="#diffct-differentiable-computed-tomography-operators" title="Link to this heading"></a></h1>
-<p>A high-performance, CUDA-accelerated library for circular orbit CT reconstruction with end-to-end differentiable operators, enabling advanced optimization and deep learning integration in medical imaging and scientific computing.</p>
-<section id="key-features">
-<h2><strong>Key Features</strong><a class="headerlink" href="#key-features" title="Link to this heading"></a></h2>
-<ul class="simple">
-<li><p><strong>High Performance:</strong> CUDA-accelerated projection and backprojection operations with optimized memory management</p></li>
-<li><p><strong>Fully Differentiable:</strong> End-to-end gradient propagation through all CT operations for seamless deep learning integration</p></li>
-<li><p><strong>Multiple Geometries:</strong> Support for 2D parallel-beam, 2D fan-beam, and 3D cone-beam geometries</p></li>
-<li><p><strong>PyTorch Integration:</strong> Native PyTorch autograd support with custom CUDA kernels</p></li>
-<li><p><strong>Research Ready:</strong> Optimized for both analytical reconstruction (FBP/FDK) and iterative methods</p></li>
-</ul>
-</section>
-<section id="supported-geometries">
-<h2><strong>Supported Geometries</strong><a class="headerlink" href="#supported-geometries" title="Link to this heading"></a></h2>
-<ul class="simple">
-<li><p><strong>Parallel Beam (2D):</strong> Traditional parallel-beam geometry for 2D CT reconstruction</p></li>
-<li><p><strong>Fan Beam (2D):</strong> Fan-beam geometry with configurable source-detector distances</p></li>
-<li><p><strong>Cone Beam (3D):</strong> Full 3D cone-beam geometry for volumetric reconstruction</p></li>
-</ul>
-</section>
-<section id="applications">
-<h2><strong>Applications</strong><a class="headerlink" href="#applications" title="Link to this heading"></a></h2>
-<ul class="simple">
-<li><p>Medical image reconstruction with deep learning enhancement</p></li>
-<li><p>Physics-informed neural networks for CT imaging</p></li>
-<li><p>Iterative reconstruction algorithms with learned priors</p></li>
-<li><p>Multi-modal imaging research and development</p></li>
-<li><p>Educational CT reconstruction demonstrations</p></li>
-</ul>
-</section>
-<section id="getting-started">
-<h2>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h2>
+  <section id="diffct-mlx-documentation">
+<h1>diffct-mlx Documentation<a class="headerlink" href="#diffct-mlx-documentation" title="Link to this heading"></a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">diffct-mlx</span></code> is a differentiable CT reconstruction library for Apple Silicon
+using MLX and custom Metal kernels.</p>
+<p>This documentation reflects the current repository state on <code class="docutils literal notranslate"><span class="pre">main</span></code>.</p>
 <div class="toctree-wrapper compound">
-<p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="getting_started.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#requirements">Requirements</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started.html#installation">Installation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started.html#quick-start-example">Quick Start Example</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#project-layout">Project Layout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#citation">Citation</a></li>
 </ul>
 </li>
-</ul>
-</div>
-</section>
-<section id="user-guide">
-<h2>User Guide<a class="headerlink" href="#user-guide" title="Link to this heading"></a></h2>
-<div class="toctree-wrapper compound">
-<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
-<ul>
 <li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="api.html#overview">Overview</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api.html#parallel-beam-operators">Parallel Beam Operators</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api.html#fan-beam-operators">Fan Beam Operators</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api.html#cone-beam-operators">Cone Beam Operators</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api.html#usage-notes">Usage Notes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#top-level-package">Top-Level Package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#main-package-files">Main Package Files</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="fbp_parallel_example.html">Parallel Beam Filtered Backprojection (FBP)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="fbp_fan_example.html">Fan Beam Filtered Backprojection (FBP)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="fdk_cone_example.html">Cone Beam FDK Reconstruction</a></li>
-<li class="toctree-l2"><a class="reference internal" href="iterative_reco_parallel_example.html">Parallel Beam Iterative Reconstruction</a></li>
-<li class="toctree-l2"><a class="reference internal" href="iterative_reco_fan_example.html">Fan Beam Iterative Reconstruction</a></li>
-<li class="toctree-l2"><a class="reference internal" href="iterative_reco_cone_example.html">Cone Beam Iterative Reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#circular-trajectories">Circular Trajectories</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#non-circular-trajectories">Non-Circular Trajectories</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#algorithm-driver">Algorithm Driver</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#notes">Notes</a></li>
 </ul>
 </li>
 </ul>
 </div>
-</section>
-<section id="citation">
-<h2>Citation<a class="headerlink" href="#citation" title="Link to this heading"></a></h2>
-<p>If you use this library in your research, please cite:</p>
-<div class="highlight-bibtex notranslate"><div class="highlight"><pre><span></span><span class="nc">@software</span><span class="p">{</span><span class="nl">DiffCT2025</span><span class="p">,</span>
-<span class="w">  </span><span class="na">author</span><span class="w">       </span><span class="p">=</span><span class="w"> </span><span class="s">{Yipeng Sun}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">title</span><span class="w">        </span><span class="p">=</span><span class="w"> </span><span class="s">{DiffCT: Differentiable Computed Tomography</span>
-<span class="s">                 Reconstruction with CUDA}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">year</span><span class="w">         </span><span class="p">=</span><span class="w"> </span><span class="m">2025</span><span class="p">,</span>
-<span class="w">  </span><span class="na">publisher</span><span class="w">    </span><span class="p">=</span><span class="w"> </span><span class="s">{Zenodo}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">doi</span><span class="w">          </span><span class="p">=</span><span class="w"> </span><span class="s">{10.5281/zenodo.14999333}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">url</span><span class="w">          </span><span class="p">=</span><span class="w"> </span><span class="s">{https://doi.org/10.5281/zenodo.14999333}</span>
-<span class="p">}</span>
-</pre></div>
-</div>
-</section>
-<section id="license">
-<h2>License<a class="headerlink" href="#license" title="Link to this heading"></a></h2>
-<p>This project is licensed under the Apache 2.0 - see the <a class="reference external" href="https://github.com/sun-yipeng/diffct/blob/main/LICENSE">LICENSE</a> file for details.</p>
-</section>
 </section>
 
 
@@ -177,7 +114,7 @@
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2025, Yipeng Sun.</p>
+    <p>&#169; Copyright 2026, Yipeng Sun, Linda-Sophie Schneider.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Examples &mdash; diffct  documentation</title>
+  <title>Examples &mdash; diffct-mlx  documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
@@ -19,7 +19,6 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Parallel Beam Filtered Backprojection (FBP)" href="fbp_parallel_example.html" />
     <link rel="prev" title="API Reference" href="api.html" /> 
 </head>
 
@@ -32,7 +31,7 @@
           
           
           <a href="index.html" class="icon icon-home">
-            diffct
+            diffct-mlx
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -42,20 +41,15 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Examples</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="fbp_parallel_example.html">Parallel Beam Filtered Backprojection (FBP)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="fbp_fan_example.html">Fan Beam Filtered Backprojection (FBP)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="fdk_cone_example.html">Cone Beam FDK Reconstruction</a></li>
-<li class="toctree-l2"><a class="reference internal" href="iterative_reco_parallel_example.html">Parallel Beam Iterative Reconstruction</a></li>
-<li class="toctree-l2"><a class="reference internal" href="iterative_reco_fan_example.html">Fan Beam Iterative Reconstruction</a></li>
-<li class="toctree-l2"><a class="reference internal" href="iterative_reco_cone_example.html">Cone Beam Iterative Reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#circular-trajectories">Circular Trajectories</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#non-circular-trajectories">Non-Circular Trajectories</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#algorithm-driver">Algorithm Driver</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#notes">Notes</a></li>
 </ul>
 </li>
 </ul>
@@ -66,7 +60,7 @@
 
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="index.html">diffct</a>
+          <a href="index.html">diffct-mlx</a>
       </nav>
 
       <div class="wy-nav-content">
@@ -86,30 +80,35 @@
              
   <section id="examples">
 <h1>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h1>
-<p>This section demonstrates practical applications of the <cite>diffct</cite> library for various computed tomography (CT) reconstruction tasks. Each example provides comprehensive mathematical background, implementation details, and complete working code.</p>
-<p>The examples are organized into two main categories:</p>
-<p><strong>Analytical Reconstruction Methods</strong>
-- Filtered backprojection (FBP) algorithms for direct reconstruction
-- Standard analytical approaches used in clinical and research settings</p>
-<p><strong>Iterative Reconstruction Methods</strong>
-- Gradient-based optimization approaches using differentiable operators
-- Advanced reconstruction techniques with regularization capabilities</p>
-<div class="toctree-wrapper compound">
-<p class="caption" role="heading"><span class="caption-text">Analytical Reconstruction</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="fbp_parallel_example.html">Parallel Beam Filtered Backprojection (FBP)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="fbp_fan_example.html">Fan Beam Filtered Backprojection (FBP)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="fdk_cone_example.html">Cone Beam FDK Reconstruction</a></li>
+<p>The current repository examples are organized by trajectory type and
+reconstruction style.</p>
+<section id="circular-trajectories">
+<h2>Circular Trajectories<a class="headerlink" href="#circular-trajectories" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">examples/circular_trajectory/fbp_parallel.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">examples/circular_trajectory/fbp_fan.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">examples/circular_trajectory/fdk_cone.py</span></code></p></li>
 </ul>
-</div>
-<div class="toctree-wrapper compound">
-<p class="caption" role="heading"><span class="caption-text">Iterative Reconstruction</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="iterative_reco_parallel_example.html">Parallel Beam Iterative Reconstruction</a></li>
-<li class="toctree-l1"><a class="reference internal" href="iterative_reco_fan_example.html">Fan Beam Iterative Reconstruction</a></li>
-<li class="toctree-l1"><a class="reference internal" href="iterative_reco_cone_example.html">Cone Beam Iterative Reconstruction</a></li>
+</section>
+<section id="non-circular-trajectories">
+<h2>Non-Circular Trajectories<a class="headerlink" href="#non-circular-trajectories" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">examples/non_circular_trajectory/iterative_reco_parallel.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">examples/non_circular_trajectory/iterative_reco_fan.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">examples/non_circular_trajectory/iterative_reco_cone.py</span></code></p></li>
 </ul>
-</div>
+</section>
+<section id="algorithm-driver">
+<h2>Algorithm Driver<a class="headerlink" href="#algorithm-driver" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">examples/call_reco_algorithms.py</span></code></p></li>
+</ul>
+</section>
+<section id="notes">
+<h2>Notes<a class="headerlink" href="#notes" title="Link to this heading"></a></h2>
+<p>Some examples expect local sample data or Apple-Silicon-specific MLX execution.
+Read the inline comments in each script before running large reconstructions.</p>
+</section>
 </section>
 
 
@@ -117,13 +116,12 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="api.html" class="btn btn-neutral float-left" title="API Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="fbp_parallel_example.html" class="btn btn-neutral float-right" title="Parallel Beam Filtered Backprojection (FBP)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2025, Yipeng Sun.</p>
+    <p>&#169; Copyright 2026, Yipeng Sun, Linda-Sophie Schneider.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

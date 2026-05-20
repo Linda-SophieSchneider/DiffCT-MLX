@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Getting Started &mdash; diffct  documentation</title>
+  <title>Getting Started &mdash; diffct-mlx  documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
@@ -20,7 +20,7 @@
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="API Reference" href="api.html" />
-    <link rel="prev" title="diffct: Differentiable Computed Tomography Operators" href="index.html" /> 
+    <link rel="prev" title="diffct-mlx Documentation" href="index.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -32,7 +32,7 @@
           
           
           <a href="index.html" class="icon icon-home">
-            diffct
+            diffct-mlx
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -42,18 +42,16 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Getting Started</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#requirements">Requirements</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#quick-start-example">Quick Start Example</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#project-layout">Project Layout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#citation">Citation</a></li>
 </ul>
 </li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
-<ul>
 <li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 </ul>
@@ -64,7 +62,7 @@
 
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="index.html">diffct</a>
+          <a href="index.html">diffct-mlx</a>
       </nav>
 
       <div class="wy-nav-content">
@@ -84,83 +82,52 @@
              
   <section id="getting-started">
 <h1>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h1>
-<p>This guide will walk you through the process of setting up <cite>diffct</cite> and running your first CT reconstruction example.</p>
-<section id="prerequisites">
-<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading"></a></h2>
-<p><strong>Hardware Requirements:</strong>
-- CUDA-capable GPU (compute capability 6.0 or higher recommended)
-- Minimum 4GB GPU memory for basic examples</p>
-<p><strong>Software Requirements:</strong>
-- Python 3.10 or later
-- CUDA Toolkit 11.0 or later
-- Required Python packages:</p>
-<blockquote>
-<div><ul class="simple">
-<li><p>PyTorch (with CUDA support)</p></li>
-<li><p>NumPy</p></li>
-<li><p>Numba (with CUDA support)</p></li>
+<p><code class="docutils literal notranslate"><span class="pre">diffct-mlx</span></code> targets Apple Silicon and provides differentiable projection,
+backprojection, geometry helpers, and reconstruction algorithms built on MLX.</p>
+<section id="requirements">
+<h2>Requirements<a class="headerlink" href="#requirements" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Python 3.10 or newer</p></li>
+<li><p>Apple Silicon hardware for actual MLX execution</p></li>
+<li><p>Dependencies from <code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code></p></li>
 </ul>
-</div></blockquote>
 </section>
 <section id="installation">
 <h2>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h2>
-<p>Install <cite>diffct</cite> directly from PyPI:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>diffct
-</pre></div>
-</div>
-<p><strong>Verify Installation:</strong></p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">diffct</span>
-
-<span class="c1"># Check CUDA availability</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;CUDA available: </span><span class="si">{</span><span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;DiffCT version: </span><span class="si">{</span><span class="n">diffct</span><span class="o">.</span><span class="n">__version__</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<p>Install the package in a virtual environment:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
 </pre></div>
 </div>
 </section>
-<section id="quick-start-example">
-<h2>Quick Start Example<a class="headerlink" href="#quick-start-example" title="Link to this heading"></a></h2>
-<p>Here’s a minimal example demonstrating parallel beam projection and backprojection:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffct</span><span class="w"> </span><span class="kn">import</span> <span class="n">ParallelProjectorFunction</span><span class="p">,</span> <span class="n">ParallelBackprojectorFunction</span>
-
-<span class="c1"># Set device</span>
-<span class="n">device</span> <span class="o">=</span> <span class="s1">&#39;cuda&#39;</span> <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="k">else</span> <span class="s1">&#39;cpu&#39;</span>
-
-<span class="c1"># Create a simple test image (128x128)</span>
-<span class="n">image</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">128</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
-<span class="n">image</span><span class="p">[</span><span class="mi">40</span><span class="p">:</span><span class="mi">88</span><span class="p">,</span> <span class="mi">40</span><span class="p">:</span><span class="mi">88</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>  <span class="c1"># Square phantom</span>
-
-<span class="c1"># Define projection parameters</span>
-<span class="n">num_angles</span> <span class="o">=</span> <span class="mi">180</span>
-<span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="n">num_angles</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
-<span class="n">num_detectors</span> <span class="o">=</span> <span class="mi">128</span>
-<span class="n">detector_spacing</span> <span class="o">=</span> <span class="mf">1.0</span>
-
-<span class="c1"># Forward projection</span>
-<span class="n">sinogram</span> <span class="o">=</span> <span class="n">ParallelProjectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
-    <span class="n">image</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span>
-<span class="p">)</span>
-
-<span class="c1"># Backprojection</span>
-<span class="n">reconstruction</span> <span class="o">=</span> <span class="n">ParallelBackprojectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
-    <span class="n">sinogram</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">128</span>
-<span class="p">)</span>
-
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Original image shape: </span><span class="si">{</span><span class="n">image</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sinogram shape: </span><span class="si">{</span><span class="n">sinogram</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Reconstruction shape: </span><span class="si">{</span><span class="n">reconstruction</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</pre></div>
-</div>
-</section>
-<section id="next-steps">
-<h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading"></a></h2>
+<section id="quick-start">
+<h2>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h2>
+<p>The repository ships runnable examples under <code class="docutils literal notranslate"><span class="pre">examples/</span></code> for:</p>
 <ul class="simple">
-<li><p>Explore the <a class="reference internal" href="examples.html"><span class="doc">Examples</span></a> for detailed reconstruction algorithms</p></li>
-<li><p>Check the <a class="reference internal" href="api.html"><span class="doc">API Reference</span></a> reference for complete function documentation</p></li>
-<li><p>Review the mathematical background in each example for deeper understanding</p></li>
+<li><p>2D parallel-beam FBP</p></li>
+<li><p>2D fan-beam FBP</p></li>
+<li><p>3D cone-beam FDK</p></li>
+<li><p>Iterative reconstruction with non-circular trajectories</p></li>
 </ul>
+<p>Example commands:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>examples/circular_trajectory/fbp_parallel.py
+python<span class="w"> </span>examples/circular_trajectory/fbp_fan.py
+python<span class="w"> </span>examples/circular_trajectory/fdk_cone.py
+</pre></div>
+</div>
+</section>
+<section id="project-layout">
+<h2>Project Layout<a class="headerlink" href="#project-layout" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx/</span></code>: package code</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">examples/</span></code>: runnable geometry and reconstruction demos</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">diagnose_scripts/</span></code>: debugging and diagnostics helpers</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tests/</span></code>: regression tests</p></li>
+</ul>
+</section>
+<section id="citation">
+<h2>Citation<a class="headerlink" href="#citation" title="Link to this heading"></a></h2>
+<p>If you use this library in research, use the citation from <code class="docutils literal notranslate"><span class="pre">README.md</span></code>.</p>
 </section>
 </section>
 
@@ -168,14 +135,14 @@
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="index.html" class="btn btn-neutral float-left" title="diffct: Differentiable Computed Tomography Operators" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="index.html" class="btn btn-neutral float-left" title="diffct-mlx Documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="api.html" class="btn btn-neutral float-right" title="API Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2025, Yipeng Sun.</p>
+    <p>&#169; Copyright 2026, Yipeng Sun, Linda-Sophie Schneider.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

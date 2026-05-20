@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API Reference &mdash; diffct  documentation</title>
+  <title>API Reference &mdash; diffct-mlx  documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
@@ -32,7 +32,7 @@
           
           
           <a href="index.html" class="icon icon-home">
-            diffct
+            diffct-mlx
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -42,54 +42,12 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a></li>
-</ul>
-<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">API Reference</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#parallel-beam-operators">Parallel Beam Operators</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#diffct.differentiable.ParallelProjectorFunction"><code class="docutils literal notranslate"><span class="pre">ParallelProjectorFunction</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#diffct.differentiable.ParallelProjectorFunction.backward"><code class="docutils literal notranslate"><span class="pre">ParallelProjectorFunction.backward()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#diffct.differentiable.ParallelProjectorFunction.forward"><code class="docutils literal notranslate"><span class="pre">ParallelProjectorFunction.forward()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="#diffct.differentiable.ParallelBackprojectorFunction"><code class="docutils literal notranslate"><span class="pre">ParallelBackprojectorFunction</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#diffct.differentiable.ParallelBackprojectorFunction.backward"><code class="docutils literal notranslate"><span class="pre">ParallelBackprojectorFunction.backward()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#diffct.differentiable.ParallelBackprojectorFunction.forward"><code class="docutils literal notranslate"><span class="pre">ParallelBackprojectorFunction.forward()</span></code></a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#fan-beam-operators">Fan Beam Operators</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#diffct.differentiable.FanProjectorFunction"><code class="docutils literal notranslate"><span class="pre">FanProjectorFunction</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#diffct.differentiable.FanProjectorFunction.backward"><code class="docutils literal notranslate"><span class="pre">FanProjectorFunction.backward()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#diffct.differentiable.FanProjectorFunction.forward"><code class="docutils literal notranslate"><span class="pre">FanProjectorFunction.forward()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="#diffct.differentiable.FanBackprojectorFunction"><code class="docutils literal notranslate"><span class="pre">FanBackprojectorFunction</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#diffct.differentiable.FanBackprojectorFunction.backward"><code class="docutils literal notranslate"><span class="pre">FanBackprojectorFunction.backward()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#diffct.differentiable.FanBackprojectorFunction.forward"><code class="docutils literal notranslate"><span class="pre">FanBackprojectorFunction.forward()</span></code></a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#cone-beam-operators">Cone Beam Operators</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#diffct.differentiable.ConeProjectorFunction"><code class="docutils literal notranslate"><span class="pre">ConeProjectorFunction</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#diffct.differentiable.ConeProjectorFunction.backward"><code class="docutils literal notranslate"><span class="pre">ConeProjectorFunction.backward()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#diffct.differentiable.ConeProjectorFunction.forward"><code class="docutils literal notranslate"><span class="pre">ConeProjectorFunction.forward()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="#diffct.differentiable.ConeBackprojectorFunction"><code class="docutils literal notranslate"><span class="pre">ConeBackprojectorFunction</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#diffct.differentiable.ConeBackprojectorFunction.backward"><code class="docutils literal notranslate"><span class="pre">ConeBackprojectorFunction.backward()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#diffct.differentiable.ConeBackprojectorFunction.forward"><code class="docutils literal notranslate"><span class="pre">ConeBackprojectorFunction.forward()</span></code></a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#usage-notes">Usage Notes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#top-level-package">Top-Level Package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#main-package-files">Main Package Files</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
@@ -101,7 +59,7 @@
 
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="index.html">diffct</a>
+          <a href="index.html">diffct-mlx</a>
       </nav>
 
       <div class="wy-nav-content">
@@ -121,621 +79,262 @@
              
   <section id="api-reference">
 <h1>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h1>
-<p>This section provides comprehensive documentation for all differentiable CT operators in <cite>diffct</cite>. Each function is implemented as a PyTorch autograd Function, enabling seamless gradient computation through the CT reconstruction pipeline.</p>
-<section id="overview">
-<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
-<p>The <cite>diffct</cite> library provides six main differentiable operators organized by geometry type:</p>
+<p>This page summarizes the current package surface on <code class="docutils literal notranslate"><span class="pre">main</span></code>.</p>
+<section id="top-level-package">
+<h2>Top-Level Package<a class="headerlink" href="#top-level-package" title="Link to this heading"></a></h2>
+<p>The public entry point is <code class="docutils literal notranslate"><span class="pre">diffct_mlx</span></code>.</p>
+<p>Core areas exposed there include:</p>
 <ul class="simple">
-<li><p><strong>Parallel Beam (2D):</strong> Traditional parallel-beam CT geometry</p></li>
-<li><p><strong>Fan Beam (2D):</strong> Fan-beam geometry with configurable source-detector setup</p></li>
-<li><p><strong>Cone Beam (3D):</strong> Full 3D cone-beam geometry for volumetric reconstruction</p></li>
+<li><p>Projectors and backprojectors for parallel, fan, and cone geometries</p></li>
+<li><p>Geometry generators and JSON geometry loading</p></li>
+<li><p>Phantom helpers</p></li>
+<li><p>Regularizers and TV gradient helpers</p></li>
+<li><p>Reconstruction case builders</p></li>
+<li><p>Reconstruction algorithms such as SART, TV-POCS, ASD-POCS, AwTV-POCS, FBP, and FDK</p></li>
+<li><p>Measured-data helpers for cone-beam workflows</p></li>
 </ul>
-<p>Each geometry type includes both forward projection and backprojection operators that are fully differentiable and CUDA-accelerated.</p>
 </section>
-<section id="parallel-beam-operators">
-<h2>Parallel Beam Operators<a class="headerlink" href="#parallel-beam-operators" title="Link to this heading"></a></h2>
-<p>The parallel beam geometry assumes parallel X-ray beams, commonly used in synchrotron CT and some medical CT scanners.</p>
-<dl class="py class">
-<dt class="sig sig-object py" id="diffct.differentiable.ParallelProjectorFunction">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffct.differentiable.</span></span><span class="sig-name descname"><span class="pre">ParallelProjectorFunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#ParallelProjectorFunction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.ParallelProjectorFunction" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
-<section id="summary">
-<h3>Summary<a class="headerlink" href="#summary" title="Link to this heading"></a></h3>
-<p>PyTorch autograd function for differentiable 2D parallel beam forward projection.</p>
-<p class="rubric">Notes</p>
-<p>Provides a differentiable interface to the CUDA-accelerated Siddon ray-tracing
-method with interpolation for parallel beam CT geometry. The forward pass computes
-the sinogram from a 2D image using parallel beam geometry. The backward pass
-computes gradients using the adjoint backprojection operation. Requires
-CUDA-capable hardware and a properly configured CUDA environment; all input
-tensors must reside on the same CUDA device.</p>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">diffct.differentiable</span><span class="w"> </span><span class="kn">import</span> <span class="n">ParallelProjectorFunction</span>
-<span class="gp">&gt;&gt;&gt;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Create a 2D image with gradient tracking</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">image</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">128</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Define projection parameters</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">180</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">num_detectors</span> <span class="o">=</span> <span class="mi">128</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">detector_spacing</span> <span class="o">=</span> <span class="mf">1.0</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Compute forward projection</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">projector</span> <span class="o">=</span> <span class="n">ParallelProjectorFunction</span><span class="o">.</span><span class="n">apply</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">sinogram</span> <span class="o">=</span> <span class="n">projector</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Compute loss and gradients</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Gradient shape: </span><span class="si">{</span><span class="n">image</span><span class="o">.</span><span class="n">grad</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>  <span class="c1"># (128, 128)</span>
-</pre></div>
-</div>
-<dl class="py method">
-<dt class="sig sig-object py" id="diffct.differentiable.ParallelProjectorFunction.backward">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_sinogram</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#ParallelProjectorFunction.backward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.ParallelProjectorFunction.backward" title="Link to this definition"></a></dt>
-<dd><p>Define a formula for differentiating the operation with backward mode automatic differentiation.</p>
-<p>This function is to be overridden by all subclasses.
-(Defining this function is equivalent to defining the <code class="docutils literal notranslate"><span class="pre">vjp</span></code> function.)</p>
-<p>It must accept a context <code class="xref py py-attr docutils literal notranslate"><span class="pre">ctx</span></code> as the first argument, followed by
-as many outputs as the <a class="reference internal" href="#diffct.differentiable.ParallelProjectorFunction.forward" title="diffct.differentiable.ParallelProjectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a> returned (None will be passed in
-for non tensor outputs of the forward function),
-and it should return as many tensors, as there were inputs to
-<a class="reference internal" href="#diffct.differentiable.ParallelProjectorFunction.forward" title="diffct.differentiable.ParallelProjectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a>. Each argument is the gradient w.r.t the given output,
-and each returned value should be the gradient w.r.t. the
-corresponding input. If an input is not a Tensor or is a Tensor not
-requiring grads, you can just pass None as a gradient for that input.</p>
-<p>The context can be used to retrieve tensors saved during the forward
-pass. It also has an attribute <code class="xref py py-attr docutils literal notranslate"><span class="pre">ctx.needs_input_grad</span></code> as a tuple
-of booleans representing whether each input needs gradient. E.g.,
-<a class="reference internal" href="#diffct.differentiable.ParallelProjectorFunction.backward" title="diffct.differentiable.ParallelProjectorFunction.backward"><code class="xref py py-func docutils literal notranslate"><span class="pre">backward()</span></code></a> will have <code class="docutils literal notranslate"><span class="pre">ctx.needs_input_grad[0]</span> <span class="pre">=</span> <span class="pre">True</span></code> if the
-first input to <a class="reference internal" href="#diffct.differentiable.ParallelProjectorFunction.forward" title="diffct.differentiable.ParallelProjectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a> needs gradient computed w.r.t. the
-output.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="diffct.differentiable.ParallelProjectorFunction.forward">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">angles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_detectors</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detector_spacing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">voxel_spacing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detector_offset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_x</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_y</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#ParallelProjectorFunction.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.ParallelProjectorFunction.forward" title="Link to this definition"></a></dt>
-<dd><p>Compute the 2D parallel beam forward projection (Radon transform) of
-an image using CUDA acceleration.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>image</strong> (<em>torch.Tensor</em>) – 2D input image tensor of shape (H, W), must be on a CUDA device and of type float32.</p></li>
-<li><p><strong>angles</strong> (<em>torch.Tensor</em>) – 1D tensor of projection angles in radians, shape (num_angles,), must be on the same CUDA device as <cite>image</cite>.</p></li>
-<li><p><strong>num_detectors</strong> (<em>int</em>) – Number of detector elements in the sinogram (columns).</p></li>
-<li><p><strong>detector_spacing</strong> (<em>float</em><em>, </em><em>optional</em>) – Physical spacing between detector elements (default: 1.0).</p></li>
-<li><p><strong>voxel_spacing</strong> (<em>float</em><em>, </em><em>optional</em>) – Physical size of one voxel (in same units as detector_spacing, default: 1.0).</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>sinogram</strong> – 2D tensor of shape (num_angles, num_detectors) containing the forward projection (sinogram) on the same device as <cite>image</cite>.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>torch.Tensor</p>
-</dd>
-</dl>
-<p class="rubric">Notes</p>
+<section id="main-package-files">
+<h2>Main Package Files<a class="headerlink" href="#main-package-files" title="Link to this heading"></a></h2>
 <ul class="simple">
-<li><p>All input tensors must be on the same CUDA device.</p></li>
-<li><p>The operation is fully differentiable and supports autograd.</p></li>
-<li><p>Uses the Siddon method with interpolation for accurate ray tracing and bilinear interpolation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx/projectors.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx/geometry.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx/phantoms/</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx/regularizers.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx/tv_gradients.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx/real_measured_data_helper.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx/reconstruction_algorithms/</span></code></p></li>
 </ul>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">image</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">128</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">180</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">sinogram</span> <span class="o">=</span> <span class="n">ParallelProjectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
-<span class="gp">... </span>    <span class="n">image</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mf">1.0</span>
-<span class="gp">... </span><span class="p">)</span>
+<p>For the exact current exports, inspect:</p>
+<div class="literal-block-wrapper docutils container" id="id1">
+<div class="code-block-caption"><span class="caption-text">Current top-level exports in <code class="docutils literal notranslate"><span class="pre">diffct_mlx/__init__.py</span></code></span><a class="headerlink" href="#id1" title="Link to this code"></a></div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="c1"># diffct_mlx/__init__.py</span>
+<span class="linenos">  2</span><span class="sd">&quot;&quot;&quot;DiffCT-MLX — Differentiable CT Reconstruction for Apple Silicon.</span>
+<span class="linenos">  3</span>
+<span class="linenos">  4</span><span class="sd">A GPU-accelerated, differentiable computed tomography (CT) forward and backward</span>
+<span class="linenos">  5</span><span class="sd">projection library built with MLX and custom Metal kernels, optimized for</span>
+<span class="linenos">  6</span><span class="sd">Apple Silicon (M-series) chips.</span>
+<span class="linenos">  7</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="linenos">  8</span>
+<span class="linenos">  9</span><span class="kn">from</span><span class="w"> </span><span class="nn">.projectors</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 10</span>    <span class="n">parallel_forward</span><span class="p">,</span>
+<span class="linenos"> 11</span>    <span class="n">parallel_backward</span><span class="p">,</span>
+<span class="linenos"> 12</span>    <span class="n">parallel_forward_footprint</span><span class="p">,</span>
+<span class="linenos"> 13</span>    <span class="n">parallel_backward_footprint</span><span class="p">,</span>
+<span class="linenos"> 14</span>    <span class="n">fan_forward</span><span class="p">,</span>
+<span class="linenos"> 15</span>    <span class="n">fan_backward</span><span class="p">,</span>
+<span class="linenos"> 16</span>    <span class="n">fan_forward_footprint</span><span class="p">,</span>
+<span class="linenos"> 17</span>    <span class="n">fan_backward_footprint</span><span class="p">,</span>
+<span class="linenos"> 18</span>    <span class="n">cone_forward</span><span class="p">,</span>
+<span class="linenos"> 19</span>    <span class="n">cone_backward</span><span class="p">,</span>
+<span class="linenos"> 20</span>    <span class="n">cone_forward_footprint</span><span class="p">,</span>
+<span class="linenos"> 21</span>    <span class="n">cone_backward_footprint</span><span class="p">,</span>
+<span class="linenos"> 22</span><span class="p">)</span>
+<span class="linenos"> 23</span><span class="kn">from</span><span class="w"> </span><span class="nn">.regularizers</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 24</span>    <span class="n">l2_regularizer</span><span class="p">,</span>
+<span class="linenos"> 25</span>    <span class="n">normalize_reconstruction_volume</span><span class="p">,</span>
+<span class="linenos"> 26</span>    <span class="n">tv_regularizer</span><span class="p">,</span>
+<span class="linenos"> 27</span>    <span class="n">tv_regularizer_3d</span><span class="p">,</span>
+<span class="linenos"> 28</span>    <span class="n">awtv_regularizer</span><span class="p">,</span>
+<span class="linenos"> 29</span>    <span class="n">tv_pocs</span><span class="p">,</span>
+<span class="linenos"> 30</span>    <span class="n">asd_pocs</span><span class="p">,</span>
+<span class="linenos"> 31</span>    <span class="n">awtv_pocs</span><span class="p">,</span>
+<span class="linenos"> 32</span><span class="p">)</span>
+<span class="linenos"> 33</span><span class="kn">from</span><span class="w"> </span><span class="nn">.tv_gradients</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 34</span>    <span class="n">tv_gradient</span><span class="p">,</span>
+<span class="linenos"> 35</span>    <span class="n">weight_d_volume</span><span class="p">,</span>
+<span class="linenos"> 36</span>    <span class="n">awtv_gradient</span><span class="p">,</span>
+<span class="linenos"> 37</span><span class="p">)</span>
+<span class="linenos"> 38</span><span class="kn">from</span><span class="w"> </span><span class="nn">.phantoms</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 39</span>    <span class="n">shepp_logan_2d</span><span class="p">,</span>
+<span class="linenos"> 40</span>    <span class="n">shepp_logan_3d</span><span class="p">,</span>
+<span class="linenos"> 41</span><span class="p">)</span>
+<span class="linenos"> 42</span><span class="kn">from</span><span class="w"> </span><span class="nn">.reconstruction_algorithms</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 43</span>    <span class="n">MeasuredConeDataConfig</span><span class="p">,</span>
+<span class="linenos"> 44</span>    <span class="n">NpyProjectionsConfig</span><span class="p">,</span>
+<span class="linenos"> 45</span>    <span class="n">ReconstructionCase</span><span class="p">,</span>
+<span class="linenos"> 46</span>    <span class="n">ReconstructionParameters</span><span class="p">,</span>
+<span class="linenos"> 47</span>    <span class="n">RegularizationParameters</span><span class="p">,</span>
+<span class="linenos"> 48</span>    <span class="n">Reconstruction_Parameter</span><span class="p">,</span>
+<span class="linenos"> 49</span>    <span class="n">Regularisation_Parameter</span><span class="p">,</span>
+<span class="linenos"> 50</span>    <span class="n">build_parallel_2d_case</span><span class="p">,</span>
+<span class="linenos"> 51</span>    <span class="n">build_fan_2d_case</span><span class="p">,</span>
+<span class="linenos"> 52</span>    <span class="n">build_cone_3d_case</span><span class="p">,</span>
+<span class="linenos"> 53</span>    <span class="n">build_measured_cone_3d_case</span><span class="p">,</span>
+<span class="linenos"> 54</span>    <span class="n">build_npy_cone_3d_case</span><span class="p">,</span>
+<span class="linenos"> 55</span>    <span class="n">make_parallel_2d_operators</span><span class="p">,</span>
+<span class="linenos"> 56</span>    <span class="n">make_fan_2d_operators</span><span class="p">,</span>
+<span class="linenos"> 57</span>    <span class="n">make_cone_3d_operators</span><span class="p">,</span>
+<span class="linenos"> 58</span>    <span class="n">SARTParameters</span><span class="p">,</span>
+<span class="linenos"> 59</span>    <span class="n">SIRTParameters</span><span class="p">,</span>
+<span class="linenos"> 60</span>    <span class="n">run_sart</span><span class="p">,</span>
+<span class="linenos"> 61</span>    <span class="n">run_sirt</span><span class="p">,</span>
+<span class="linenos"> 62</span>    <span class="n">reconstruct_sart</span><span class="p">,</span>
+<span class="linenos"> 63</span>    <span class="n">reconstruct_sirt</span><span class="p">,</span>
+<span class="linenos"> 64</span>    <span class="n">TVPOCSParameters</span><span class="p">,</span>
+<span class="linenos"> 65</span>    <span class="n">TV_POCS_Parameter</span><span class="p">,</span>
+<span class="linenos"> 66</span>    <span class="n">run_tv_pocs</span><span class="p">,</span>
+<span class="linenos"> 67</span>    <span class="n">reconstruct_tv_pocs</span><span class="p">,</span>
+<span class="linenos"> 68</span>    <span class="n">ASDPOCSParameters</span><span class="p">,</span>
+<span class="linenos"> 69</span>    <span class="n">ASD_POCS_Parameter</span><span class="p">,</span>
+<span class="linenos"> 70</span>    <span class="n">run_asd_pocs</span><span class="p">,</span>
+<span class="linenos"> 71</span>    <span class="n">reconstruct_asd_pocs</span><span class="p">,</span>
+<span class="linenos"> 72</span>    <span class="n">AwTVPOCSParameters</span><span class="p">,</span>
+<span class="linenos"> 73</span>    <span class="n">AwTV_POCS_Parameter</span><span class="p">,</span>
+<span class="linenos"> 74</span>    <span class="n">run_awtv_pocs</span><span class="p">,</span>
+<span class="linenos"> 75</span>    <span class="n">reconstruct_awtv_pocs</span><span class="p">,</span>
+<span class="linenos"> 76</span>    <span class="n">DARTParameters</span><span class="p">,</span>
+<span class="linenos"> 77</span>    <span class="n">run_dart</span><span class="p">,</span>
+<span class="linenos"> 78</span>    <span class="n">reconstruct_dart</span><span class="p">,</span>
+<span class="linenos"> 79</span>    <span class="n">FBPParameters</span><span class="p">,</span>
+<span class="linenos"> 80</span>    <span class="n">run_fbp</span><span class="p">,</span>
+<span class="linenos"> 81</span>    <span class="n">reconstruct_fbp</span><span class="p">,</span>
+<span class="linenos"> 82</span>    <span class="n">FDKParameters</span><span class="p">,</span>
+<span class="linenos"> 83</span>    <span class="n">run_fdk</span><span class="p">,</span>
+<span class="linenos"> 84</span>    <span class="n">reconstruct_fdk</span><span class="p">,</span>
+<span class="linenos"> 85</span><span class="p">)</span>
+<span class="linenos"> 86</span>
+<span class="linenos"> 87</span><span class="kn">from</span><span class="w"> </span><span class="nn">.real_measured_data_helper</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 88</span>    <span class="n">apply_detector_array_convention</span><span class="p">,</span>
+<span class="linenos"> 89</span>    <span class="n">apply_detector_geometry_convention</span><span class="p">,</span>
+<span class="linenos"> 90</span>    <span class="n">apply_upper_left_detector_transform</span><span class="p">,</span>
+<span class="linenos"> 91</span>    <span class="n">auto_voxel_spacing_from_detector</span><span class="p">,</span>
+<span class="linenos"> 92</span>    <span class="n">build_upper_left_detector_transform</span><span class="p">,</span>
+<span class="linenos"> 93</span>    <span class="n">diagnose_cone_geometry</span><span class="p">,</span>
+<span class="linenos"> 94</span>    <span class="n">estimate_cone_isocenter</span><span class="p">,</span>
+<span class="linenos"> 95</span>    <span class="n">mu_to_hu</span><span class="p">,</span>
+<span class="linenos"> 96</span>    <span class="n">mu_to_uint16</span><span class="p">,</span>
+<span class="linenos"> 97</span>    <span class="n">normalize_volume</span><span class="p">,</span>
+<span class="linenos"> 98</span>    <span class="n">resize_volume_to_shape</span><span class="p">,</span>
+<span class="linenos"> 99</span>    <span class="n">shift_detector_center</span><span class="p">,</span>
+<span class="linenos">100</span>    <span class="n">transform_detector_offsets</span><span class="p">,</span>
+<span class="linenos">101</span><span class="p">)</span>
+<span class="linenos">102</span>
+<span class="linenos">103</span><span class="kn">from</span><span class="w"> </span><span class="nn">.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos">104</span>    <span class="n">circular_trajectory_3d</span><span class="p">,</span>
+<span class="linenos">105</span>    <span class="n">random_trajectory_3d</span><span class="p">,</span>
+<span class="linenos">106</span>    <span class="n">spiral_trajectory_3d</span><span class="p">,</span>
+<span class="linenos">107</span>    <span class="n">sinusoidal_trajectory_3d</span><span class="p">,</span>
+<span class="linenos">108</span>    <span class="n">saddle_trajectory_3d</span><span class="p">,</span>
+<span class="linenos">109</span>    <span class="n">custom_trajectory_3d</span><span class="p">,</span>
+<span class="linenos">110</span>    <span class="n">load_arbitrary_cone_geometry_from_json</span><span class="p">,</span>
+<span class="linenos">111</span>    <span class="n">circular_trajectory_2d_fan</span><span class="p">,</span>
+<span class="linenos">112</span>    <span class="n">sinusoidal_trajectory_2d_fan</span><span class="p">,</span>
+<span class="linenos">113</span>    <span class="n">custom_trajectory_2d_fan</span><span class="p">,</span>
+<span class="linenos">114</span>    <span class="n">circular_trajectory_2d_parallel</span><span class="p">,</span>
+<span class="linenos">115</span>    <span class="n">sinusoidal_trajectory_2d_parallel</span><span class="p">,</span>
+<span class="linenos">116</span>    <span class="n">custom_trajectory_2d_parallel</span><span class="p">,</span>
+<span class="linenos">117</span><span class="p">)</span>
+<span class="linenos">118</span>
+<span class="linenos">119</span><span class="n">__version__</span> <span class="o">=</span> <span class="s1">&#39;1.0.0.dev0&#39;</span>
+<span class="linenos">120</span>
+<span class="linenos">121</span><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
+<span class="linenos">122</span>    <span class="c1"># Projector functions</span>
+<span class="linenos">123</span>    <span class="s1">&#39;parallel_forward&#39;</span><span class="p">,</span>
+<span class="linenos">124</span>    <span class="s1">&#39;parallel_backward&#39;</span><span class="p">,</span>
+<span class="linenos">125</span>    <span class="s1">&#39;parallel_forward_footprint&#39;</span><span class="p">,</span>
+<span class="linenos">126</span>    <span class="s1">&#39;parallel_backward_footprint&#39;</span><span class="p">,</span>
+<span class="linenos">127</span>    <span class="s1">&#39;fan_forward&#39;</span><span class="p">,</span>
+<span class="linenos">128</span>    <span class="s1">&#39;fan_backward&#39;</span><span class="p">,</span>
+<span class="linenos">129</span>    <span class="s1">&#39;fan_forward_footprint&#39;</span><span class="p">,</span>
+<span class="linenos">130</span>    <span class="s1">&#39;fan_backward_footprint&#39;</span><span class="p">,</span>
+<span class="linenos">131</span>    <span class="s1">&#39;cone_forward&#39;</span><span class="p">,</span>
+<span class="linenos">132</span>    <span class="s1">&#39;cone_backward&#39;</span><span class="p">,</span>
+<span class="linenos">133</span>    <span class="s1">&#39;cone_forward_footprint&#39;</span><span class="p">,</span>
+<span class="linenos">134</span>    <span class="s1">&#39;cone_backward_footprint&#39;</span><span class="p">,</span>
+<span class="linenos">135</span>    <span class="s1">&#39;l2_regularizer&#39;</span><span class="p">,</span>
+<span class="linenos">136</span>    <span class="s1">&#39;normalize_reconstruction_volume&#39;</span><span class="p">,</span>
+<span class="linenos">137</span>    <span class="s1">&#39;tv_regularizer&#39;</span><span class="p">,</span>
+<span class="linenos">138</span>    <span class="s1">&#39;tv_regularizer_3d&#39;</span><span class="p">,</span>
+<span class="linenos">139</span>    <span class="s1">&#39;awtv_regularizer&#39;</span><span class="p">,</span>
+<span class="linenos">140</span>    <span class="s1">&#39;tv_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">141</span>    <span class="s1">&#39;asd_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">142</span>    <span class="s1">&#39;awtv_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">143</span>    <span class="s1">&#39;tv_gradient&#39;</span><span class="p">,</span>
+<span class="linenos">144</span>    <span class="s1">&#39;weight_d_volume&#39;</span><span class="p">,</span>
+<span class="linenos">145</span>    <span class="s1">&#39;awtv_gradient&#39;</span><span class="p">,</span>
+<span class="linenos">146</span>    <span class="s1">&#39;shepp_logan_2d&#39;</span><span class="p">,</span>
+<span class="linenos">147</span>    <span class="s1">&#39;shepp_logan_3d&#39;</span><span class="p">,</span>
+<span class="linenos">148</span>    <span class="s1">&#39;MeasuredConeDataConfig&#39;</span><span class="p">,</span>
+<span class="linenos">149</span>    <span class="s1">&#39;NpyProjectionsConfig&#39;</span><span class="p">,</span>
+<span class="linenos">150</span>    <span class="s1">&#39;ReconstructionCase&#39;</span><span class="p">,</span>
+<span class="linenos">151</span>    <span class="s1">&#39;ReconstructionParameters&#39;</span><span class="p">,</span>
+<span class="linenos">152</span>    <span class="s1">&#39;RegularizationParameters&#39;</span><span class="p">,</span>
+<span class="linenos">153</span>    <span class="s1">&#39;Reconstruction_Parameter&#39;</span><span class="p">,</span>
+<span class="linenos">154</span>    <span class="s1">&#39;Regularisation_Parameter&#39;</span><span class="p">,</span>
+<span class="linenos">155</span>    <span class="s1">&#39;build_parallel_2d_case&#39;</span><span class="p">,</span>
+<span class="linenos">156</span>    <span class="s1">&#39;build_fan_2d_case&#39;</span><span class="p">,</span>
+<span class="linenos">157</span>    <span class="s1">&#39;build_cone_3d_case&#39;</span><span class="p">,</span>
+<span class="linenos">158</span>    <span class="s1">&#39;build_measured_cone_3d_case&#39;</span><span class="p">,</span>
+<span class="linenos">159</span>    <span class="s1">&#39;build_npy_cone_3d_case&#39;</span><span class="p">,</span>
+<span class="linenos">160</span>    <span class="s1">&#39;make_parallel_2d_operators&#39;</span><span class="p">,</span>
+<span class="linenos">161</span>    <span class="s1">&#39;make_fan_2d_operators&#39;</span><span class="p">,</span>
+<span class="linenos">162</span>    <span class="s1">&#39;make_cone_3d_operators&#39;</span><span class="p">,</span>
+<span class="linenos">163</span>    <span class="s1">&#39;SARTParameters&#39;</span><span class="p">,</span>
+<span class="linenos">164</span>    <span class="s1">&#39;SIRTParameters&#39;</span><span class="p">,</span>
+<span class="linenos">165</span>    <span class="s1">&#39;SARTDiagnosticsResult&#39;</span><span class="p">,</span>
+<span class="linenos">166</span>    <span class="s1">&#39;SARTProjectionSnapshot&#39;</span><span class="p">,</span>
+<span class="linenos">167</span>    <span class="s1">&#39;default_projection_indices&#39;</span><span class="p">,</span>
+<span class="linenos">168</span>    <span class="s1">&#39;diagnose_sart&#39;</span><span class="p">,</span>
+<span class="linenos">169</span>    <span class="s1">&#39;plot_sart_projection_diagnostics&#39;</span><span class="p">,</span>
+<span class="linenos">170</span>    <span class="s1">&#39;run_sart&#39;</span><span class="p">,</span>
+<span class="linenos">171</span>    <span class="s1">&#39;run_sirt&#39;</span><span class="p">,</span>
+<span class="linenos">172</span>    <span class="s1">&#39;reconstruct_sart&#39;</span><span class="p">,</span>
+<span class="linenos">173</span>    <span class="s1">&#39;reconstruct_sirt&#39;</span><span class="p">,</span>
+<span class="linenos">174</span>    <span class="s1">&#39;TVPOCSParameters&#39;</span><span class="p">,</span>
+<span class="linenos">175</span>    <span class="s1">&#39;TV_POCS_Parameter&#39;</span><span class="p">,</span>
+<span class="linenos">176</span>    <span class="s1">&#39;run_tv_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">177</span>    <span class="s1">&#39;reconstruct_tv_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">178</span>    <span class="s1">&#39;ASDPOCSParameters&#39;</span><span class="p">,</span>
+<span class="linenos">179</span>    <span class="s1">&#39;ASD_POCS_Parameter&#39;</span><span class="p">,</span>
+<span class="linenos">180</span>    <span class="s1">&#39;run_asd_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">181</span>    <span class="s1">&#39;reconstruct_asd_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">182</span>    <span class="s1">&#39;AwTVPOCSParameters&#39;</span><span class="p">,</span>
+<span class="linenos">183</span>    <span class="s1">&#39;AwTV_POCS_Parameter&#39;</span><span class="p">,</span>
+<span class="linenos">184</span>    <span class="s1">&#39;run_awtv_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">185</span>    <span class="s1">&#39;reconstruct_awtv_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">186</span>    <span class="s1">&#39;DARTParameters&#39;</span><span class="p">,</span>
+<span class="linenos">187</span>    <span class="s1">&#39;run_dart&#39;</span><span class="p">,</span>
+<span class="linenos">188</span>    <span class="s1">&#39;reconstruct_dart&#39;</span><span class="p">,</span>
+<span class="linenos">189</span>    <span class="s1">&#39;FBPParameters&#39;</span><span class="p">,</span>
+<span class="linenos">190</span>    <span class="s1">&#39;run_fbp&#39;</span><span class="p">,</span>
+<span class="linenos">191</span>    <span class="s1">&#39;reconstruct_fbp&#39;</span><span class="p">,</span>
+<span class="linenos">192</span>    <span class="s1">&#39;FDKParameters&#39;</span><span class="p">,</span>
+<span class="linenos">193</span>    <span class="s1">&#39;run_fdk&#39;</span><span class="p">,</span>
+<span class="linenos">194</span>    <span class="s1">&#39;reconstruct_fdk&#39;</span><span class="p">,</span>
+<span class="linenos">195</span>    <span class="c1"># 3D trajectory generators</span>
+<span class="linenos">196</span>    <span class="s1">&#39;circular_trajectory_3d&#39;</span><span class="p">,</span>
+<span class="linenos">197</span>    <span class="s1">&#39;random_trajectory_3d&#39;</span><span class="p">,</span>
+<span class="linenos">198</span>    <span class="s1">&#39;spiral_trajectory_3d&#39;</span><span class="p">,</span>
+<span class="linenos">199</span>    <span class="s1">&#39;sinusoidal_trajectory_3d&#39;</span><span class="p">,</span>
+<span class="linenos">200</span>    <span class="s1">&#39;saddle_trajectory_3d&#39;</span><span class="p">,</span>
+<span class="linenos">201</span>    <span class="s1">&#39;custom_trajectory_3d&#39;</span><span class="p">,</span>
+<span class="linenos">202</span>    <span class="s1">&#39;apply_detector_array_convention&#39;</span><span class="p">,</span>
+<span class="linenos">203</span>    <span class="s1">&#39;apply_detector_geometry_convention&#39;</span><span class="p">,</span>
+<span class="linenos">204</span>    <span class="s1">&#39;apply_upper_left_detector_transform&#39;</span><span class="p">,</span>
+<span class="linenos">205</span>    <span class="s1">&#39;auto_voxel_spacing_from_detector&#39;</span><span class="p">,</span>
+<span class="linenos">206</span>    <span class="s1">&#39;build_upper_left_detector_transform&#39;</span><span class="p">,</span>
+<span class="linenos">207</span>    <span class="s1">&#39;diagnose_cone_geometry&#39;</span><span class="p">,</span>
+<span class="linenos">208</span>    <span class="s1">&#39;estimate_cone_isocenter&#39;</span><span class="p">,</span>
+<span class="linenos">209</span>    <span class="s1">&#39;mu_to_hu&#39;</span><span class="p">,</span>
+<span class="linenos">210</span>    <span class="s1">&#39;mu_to_uint16&#39;</span><span class="p">,</span>
+<span class="linenos">211</span>    <span class="s1">&#39;normalize_volume&#39;</span><span class="p">,</span>
+<span class="linenos">212</span>    <span class="s1">&#39;resize_volume_to_shape&#39;</span><span class="p">,</span>
+<span class="linenos">213</span>    <span class="s1">&#39;shift_detector_center&#39;</span><span class="p">,</span>
+<span class="linenos">214</span>    <span class="s1">&#39;transform_detector_offsets&#39;</span><span class="p">,</span>
+<span class="linenos">215</span>    <span class="s1">&#39;load_arbitrary_cone_geometry_from_json&#39;</span><span class="p">,</span>
+<span class="linenos">216</span>    <span class="c1"># 2D fan beam trajectory generators</span>
+<span class="linenos">217</span>    <span class="s1">&#39;circular_trajectory_2d_fan&#39;</span><span class="p">,</span>
+<span class="linenos">218</span>    <span class="s1">&#39;sinusoidal_trajectory_2d_fan&#39;</span><span class="p">,</span>
+<span class="linenos">219</span>    <span class="s1">&#39;custom_trajectory_2d_fan&#39;</span><span class="p">,</span>
+<span class="linenos">220</span>    <span class="c1"># 2D parallel beam trajectory generators</span>
+<span class="linenos">221</span>    <span class="s1">&#39;circular_trajectory_2d_parallel&#39;</span><span class="p">,</span>
+<span class="linenos">222</span>    <span class="s1">&#39;sinusoidal_trajectory_2d_parallel&#39;</span><span class="p">,</span>
+<span class="linenos">223</span>    <span class="s1">&#39;custom_trajectory_2d_parallel&#39;</span><span class="p">,</span>
+<span class="linenos">224</span><span class="p">]</span>
 </pre></div>
 </div>
-</dd></dl>
-
-</section>
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="diffct.differentiable.ParallelBackprojectorFunction">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffct.differentiable.</span></span><span class="sig-name descname"><span class="pre">ParallelBackprojectorFunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#ParallelBackprojectorFunction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.ParallelBackprojectorFunction" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
-<section id="id1">
-<h3>Summary<a class="headerlink" href="#id1" title="Link to this heading"></a></h3>
-<p>PyTorch autograd function for differentiable 2D parallel beam backprojection.</p>
-<p class="rubric">Notes</p>
-<p>Provides a differentiable interface to the CUDA-accelerated Siddon ray-tracing
-method with interpolation for parallel beam backprojection. The forward pass computes a 2D
-reconstruction from sinogram data using parallel beam backprojection, and the
-backward pass computes gradients via forward projection as the adjoint operation.
-Requires CUDA-capable hardware and consistent device placements.</p>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">diffct.differentiable</span><span class="w"> </span><span class="kn">import</span> <span class="n">ParallelBackprojectorFunction</span>
-<span class="gp">&gt;&gt;&gt;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">sinogram</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">180</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">180</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">recon</span> <span class="o">=</span> <span class="n">ParallelBackprojectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">128</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span> <span class="o">=</span> <span class="n">recon</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">sinogram</span><span class="o">.</span><span class="n">grad</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>  <span class="c1"># (180, 128)</span>
-</pre></div>
 </div>
-<dl class="py method">
-<dt class="sig sig-object py" id="diffct.differentiable.ParallelBackprojectorFunction.backward">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_output</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#ParallelBackprojectorFunction.backward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.ParallelBackprojectorFunction.backward" title="Link to this definition"></a></dt>
-<dd><p>Define a formula for differentiating the operation with backward mode automatic differentiation.</p>
-<p>This function is to be overridden by all subclasses.
-(Defining this function is equivalent to defining the <code class="docutils literal notranslate"><span class="pre">vjp</span></code> function.)</p>
-<p>It must accept a context <code class="xref py py-attr docutils literal notranslate"><span class="pre">ctx</span></code> as the first argument, followed by
-as many outputs as the <a class="reference internal" href="#diffct.differentiable.ParallelBackprojectorFunction.forward" title="diffct.differentiable.ParallelBackprojectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a> returned (None will be passed in
-for non tensor outputs of the forward function),
-and it should return as many tensors, as there were inputs to
-<a class="reference internal" href="#diffct.differentiable.ParallelBackprojectorFunction.forward" title="diffct.differentiable.ParallelBackprojectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a>. Each argument is the gradient w.r.t the given output,
-and each returned value should be the gradient w.r.t. the
-corresponding input. If an input is not a Tensor or is a Tensor not
-requiring grads, you can just pass None as a gradient for that input.</p>
-<p>The context can be used to retrieve tensors saved during the forward
-pass. It also has an attribute <code class="xref py py-attr docutils literal notranslate"><span class="pre">ctx.needs_input_grad</span></code> as a tuple
-of booleans representing whether each input needs gradient. E.g.,
-<a class="reference internal" href="#diffct.differentiable.ParallelBackprojectorFunction.backward" title="diffct.differentiable.ParallelBackprojectorFunction.backward"><code class="xref py py-func docutils literal notranslate"><span class="pre">backward()</span></code></a> will have <code class="docutils literal notranslate"><span class="pre">ctx.needs_input_grad[0]</span> <span class="pre">=</span> <span class="pre">True</span></code> if the
-first input to <a class="reference internal" href="#diffct.differentiable.ParallelBackprojectorFunction.forward" title="diffct.differentiable.ParallelBackprojectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a> needs gradient computed w.r.t. the
-output.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="diffct.differentiable.ParallelBackprojectorFunction.forward">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sinogram</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">angles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detector_spacing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">H</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">128</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">W</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">128</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">voxel_spacing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detector_offset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_x</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_y</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#ParallelBackprojectorFunction.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.ParallelBackprojectorFunction.forward" title="Link to this definition"></a></dt>
-<dd><p>Compute the 2D parallel beam backprojection (adjoint Radon
-transform) of a sinogram using CUDA acceleration.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>sinogram</strong> (<em>torch.Tensor</em>) – 2D input sinogram tensor of shape (num_angles, num_detectors), must be on a CUDA device and of type float32.</p></li>
-<li><p><strong>angles</strong> (<em>torch.Tensor</em>) – 1D tensor of projection angles in radians, shape (num_angles,), must be on the same CUDA device as <cite>sinogram</cite>.</p></li>
-<li><p><strong>detector_spacing</strong> (<em>float</em><em>, </em><em>optional</em>) – Physical spacing between detector elements (default: 1.0).</p></li>
-<li><p><strong>H</strong> (<em>int</em><em>, </em><em>optional</em>) – Height of the output reconstruction image (default: 128).</p></li>
-<li><p><strong>W</strong> (<em>int</em><em>, </em><em>optional</em>) – Width of the output reconstruction image (default: 128).</p></li>
-<li><p><strong>voxel_spacing</strong> (<em>float</em><em>, </em><em>optional</em>) – Physical size of one voxel (in same units as detector_spacing, default: 1.0).</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>reco</strong> – 2D tensor of shape (H, W) containing the reconstructed image on the same device as <cite>sinogram</cite>.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>torch.Tensor</p>
-</dd>
-</dl>
-<p class="rubric">Notes</p>
-<ul class="simple">
-<li><p>All input tensors must be on the same CUDA device.</p></li>
-<li><p>The operation is fully differentiable and supports autograd.</p></li>
-<li><p>Uses the Siddon method with interpolation for accurate ray tracing and bilinear interpolation.</p></li>
-</ul>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sinogram</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">180</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">180</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">reco</span> <span class="o">=</span> <span class="n">ParallelBackprojectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
-<span class="gp">... </span>    <span class="n">sinogram</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">128</span>
-<span class="gp">... </span><span class="p">)</span>
-</pre></div>
-</div>
-</dd></dl>
-
-</section>
-</dd></dl>
-
-</section>
-<section id="fan-beam-operators">
-<h2>Fan Beam Operators<a class="headerlink" href="#fan-beam-operators" title="Link to this heading"></a></h2>
-<p>Fan beam geometry uses a point X-ray source with a fan-shaped beam, typical in medical CT scanners.</p>
-<dl class="py class">
-<dt class="sig sig-object py" id="diffct.differentiable.FanProjectorFunction">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffct.differentiable.</span></span><span class="sig-name descname"><span class="pre">FanProjectorFunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#FanProjectorFunction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.FanProjectorFunction" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
-<section id="id2">
-<h3>Summary<a class="headerlink" href="#id2" title="Link to this heading"></a></h3>
-<p>PyTorch autograd function for differentiable 2D fan beam forward projection.</p>
-<p class="rubric">Notes</p>
-<p>Provides a differentiable interface to the CUDA-accelerated Siddon ray-tracing
-method with interpolation for fan beam geometry, where rays diverge from a point
-X-ray source to a linear detector array. The forward pass computes sinograms
-using divergent beam geometry, and the backward pass computes gradients via
-adjoint backprojection with geometric <code class="docutils literal notranslate"><span class="pre">1/U^2</span></code> distance weighting.</p>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">diffct.differentiable</span><span class="w"> </span><span class="kn">import</span> <span class="n">FanProjectorFunction</span>
-<span class="gp">&gt;&gt;&gt;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">image</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">256</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">360</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">sinogram</span> <span class="o">=</span> <span class="n">FanProjectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="mi">512</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1500.0</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">image</span><span class="o">.</span><span class="n">grad</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>  <span class="c1"># (256, 256)</span>
-</pre></div>
-</div>
-<dl class="py method">
-<dt class="sig sig-object py" id="diffct.differentiable.FanProjectorFunction.backward">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_sinogram</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#FanProjectorFunction.backward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.FanProjectorFunction.backward" title="Link to this definition"></a></dt>
-<dd><p>Define a formula for differentiating the operation with backward mode automatic differentiation.</p>
-<p>This function is to be overridden by all subclasses.
-(Defining this function is equivalent to defining the <code class="docutils literal notranslate"><span class="pre">vjp</span></code> function.)</p>
-<p>It must accept a context <code class="xref py py-attr docutils literal notranslate"><span class="pre">ctx</span></code> as the first argument, followed by
-as many outputs as the <a class="reference internal" href="#diffct.differentiable.FanProjectorFunction.forward" title="diffct.differentiable.FanProjectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a> returned (None will be passed in
-for non tensor outputs of the forward function),
-and it should return as many tensors, as there were inputs to
-<a class="reference internal" href="#diffct.differentiable.FanProjectorFunction.forward" title="diffct.differentiable.FanProjectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a>. Each argument is the gradient w.r.t the given output,
-and each returned value should be the gradient w.r.t. the
-corresponding input. If an input is not a Tensor or is a Tensor not
-requiring grads, you can just pass None as a gradient for that input.</p>
-<p>The context can be used to retrieve tensors saved during the forward
-pass. It also has an attribute <code class="xref py py-attr docutils literal notranslate"><span class="pre">ctx.needs_input_grad</span></code> as a tuple
-of booleans representing whether each input needs gradient. E.g.,
-<a class="reference internal" href="#diffct.differentiable.FanProjectorFunction.backward" title="diffct.differentiable.FanProjectorFunction.backward"><code class="xref py py-func docutils literal notranslate"><span class="pre">backward()</span></code></a> will have <code class="docutils literal notranslate"><span class="pre">ctx.needs_input_grad[0]</span> <span class="pre">=</span> <span class="pre">True</span></code> if the
-first input to <a class="reference internal" href="#diffct.differentiable.FanProjectorFunction.forward" title="diffct.differentiable.FanProjectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a> needs gradient computed w.r.t. the
-output.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="diffct.differentiable.FanProjectorFunction.forward">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">angles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_detectors</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detector_spacing</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sdd</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">voxel_spacing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detector_offset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_x</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_y</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#FanProjectorFunction.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.FanProjectorFunction.forward" title="Link to this definition"></a></dt>
-<dd><p>Compute the 2D fan beam forward projection of an image using CUDA
-acceleration.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>image</strong> (<em>torch.Tensor</em>) – 2D input image tensor of shape (H, W), must be on a CUDA device and of type float32.</p></li>
-<li><p><strong>angles</strong> (<em>torch.Tensor</em>) – 1D tensor of projection angles in radians, shape (num_angles,), must be on the same CUDA device as <cite>image</cite>.</p></li>
-<li><p><strong>num_detectors</strong> (<em>int</em>) – Number of detector elements in the sinogram (columns).</p></li>
-<li><p><strong>detector_spacing</strong> (<em>float</em>) – Physical spacing between detector elements.</p></li>
-<li><p><strong>sdd</strong> (<em>float</em>) – Source-to-Detector Distance (SDD). The total distance from the X-ray
-source to the detector, passing through the isocenter.</p></li>
-<li><p><strong>sid</strong> (<em>float</em>) – Source-to-Isocenter Distance (SID). The distance from the X-ray
-source to the center of rotation (isocenter).</p></li>
-<li><p><strong>voxel_spacing</strong> (<em>float</em><em>, </em><em>optional</em>) – Physical size of one voxel (in same units as detector_spacing, sdd, sid, default: 1.0).</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>sinogram</strong> – 2D tensor of shape (num_angles, num_detectors) containing the fan beam sinogram on the same device as <cite>image</cite>.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>torch.Tensor</p>
-</dd>
-</dl>
-<p class="rubric">Notes</p>
-<ul class="simple">
-<li><p>All input tensors must be on the same CUDA device.</p></li>
-<li><p>The operation is fully differentiable and supports autograd.</p></li>
-<li><p>Fan beam geometry uses divergent rays from a point source to the detector.</p></li>
-<li><p>Uses the Siddon method with interpolation for accurate ray tracing and bilinear interpolation.</p></li>
-</ul>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">image</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">256</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">360</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">sinogram</span> <span class="o">=</span> <span class="n">FanProjectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
-<span class="gp">... </span>    <span class="n">image</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="mi">512</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1500.0</span><span class="p">,</span> <span class="mf">1000.0</span>
-<span class="gp">... </span><span class="p">)</span>
-</pre></div>
-</div>
-</dd></dl>
-
-</section>
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="diffct.differentiable.FanBackprojectorFunction">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffct.differentiable.</span></span><span class="sig-name descname"><span class="pre">FanBackprojectorFunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#FanBackprojectorFunction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.FanBackprojectorFunction" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
-<section id="id3">
-<h3>Summary<a class="headerlink" href="#id3" title="Link to this heading"></a></h3>
-<p>PyTorch autograd function for differentiable 2D fan beam backprojection.</p>
-<p class="rubric">Notes</p>
-<p>Provides a differentiable interface to the CUDA-accelerated Siddon ray-tracing
-method with interpolation for fan beam backprojection. Implements the adjoint
-of the fan beam projection operator with geometric <code class="docutils literal notranslate"><span class="pre">1/U^2</span></code> distance weighting,
-distributing sinogram values back into the reconstruction volume along divergent
-ray paths. The forward pass
-computes reconstruction from sinogram data, and the backward pass computes
-gradients via forward projection.</p>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">diffct.differentiable</span><span class="w"> </span><span class="kn">import</span> <span class="n">FanBackprojectorFunction</span>
-<span class="gp">&gt;&gt;&gt;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">sinogram</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">360</span><span class="p">,</span> <span class="mi">512</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">360</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">recon</span> <span class="o">=</span> <span class="n">FanBackprojectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="mf">1500.0</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span> <span class="o">=</span> <span class="n">recon</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">sinogram</span><span class="o">.</span><span class="n">grad</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>  <span class="c1"># (360, 512)</span>
-</pre></div>
-</div>
-<dl class="py method">
-<dt class="sig sig-object py" id="diffct.differentiable.FanBackprojectorFunction.backward">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_output</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#FanBackprojectorFunction.backward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.FanBackprojectorFunction.backward" title="Link to this definition"></a></dt>
-<dd><p>Define a formula for differentiating the operation with backward mode automatic differentiation.</p>
-<p>This function is to be overridden by all subclasses.
-(Defining this function is equivalent to defining the <code class="docutils literal notranslate"><span class="pre">vjp</span></code> function.)</p>
-<p>It must accept a context <code class="xref py py-attr docutils literal notranslate"><span class="pre">ctx</span></code> as the first argument, followed by
-as many outputs as the <a class="reference internal" href="#diffct.differentiable.FanBackprojectorFunction.forward" title="diffct.differentiable.FanBackprojectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a> returned (None will be passed in
-for non tensor outputs of the forward function),
-and it should return as many tensors, as there were inputs to
-<a class="reference internal" href="#diffct.differentiable.FanBackprojectorFunction.forward" title="diffct.differentiable.FanBackprojectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a>. Each argument is the gradient w.r.t the given output,
-and each returned value should be the gradient w.r.t. the
-corresponding input. If an input is not a Tensor or is a Tensor not
-requiring grads, you can just pass None as a gradient for that input.</p>
-<p>The context can be used to retrieve tensors saved during the forward
-pass. It also has an attribute <code class="xref py py-attr docutils literal notranslate"><span class="pre">ctx.needs_input_grad</span></code> as a tuple
-of booleans representing whether each input needs gradient. E.g.,
-<a class="reference internal" href="#diffct.differentiable.FanBackprojectorFunction.backward" title="diffct.differentiable.FanBackprojectorFunction.backward"><code class="xref py py-func docutils literal notranslate"><span class="pre">backward()</span></code></a> will have <code class="docutils literal notranslate"><span class="pre">ctx.needs_input_grad[0]</span> <span class="pre">=</span> <span class="pre">True</span></code> if the
-first input to <a class="reference internal" href="#diffct.differentiable.FanBackprojectorFunction.forward" title="diffct.differentiable.FanBackprojectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a> needs gradient computed w.r.t. the
-output.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="diffct.differentiable.FanBackprojectorFunction.forward">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sinogram</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">angles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detector_spacing</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">H</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">W</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sdd</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">voxel_spacing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detector_offset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_x</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_y</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#FanBackprojectorFunction.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.FanBackprojectorFunction.forward" title="Link to this definition"></a></dt>
-<dd><p>Compute the 2D fan beam backprojection of a sinogram using CUDA
-acceleration.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>sinogram</strong> (<em>torch.Tensor</em>) – 2D input fan beam sinogram tensor of shape (num_angles, num_detectors), must be on a CUDA device and of type float32.</p></li>
-<li><p><strong>angles</strong> (<em>torch.Tensor</em>) – 1D tensor of projection angles in radians, shape (num_angles,), must be on the same CUDA device as <cite>sinogram</cite>.</p></li>
-<li><p><strong>detector_spacing</strong> (<em>float</em>) – Physical spacing between detector elements.</p></li>
-<li><p><strong>H</strong> (<em>int</em>) – Height of the output reconstruction image.</p></li>
-<li><p><strong>W</strong> (<em>int</em>) – Width of the output reconstruction image.</p></li>
-<li><p><strong>sdd</strong> (<em>float</em>) – Source-to-Detector Distance (SDD). The total distance from the X-ray
-source to the detector, passing through the isocenter.</p></li>
-<li><p><strong>sid</strong> (<em>float</em>) – Source-to-Isocenter Distance (SID). The distance from the X-ray
-source to the center of rotation (isocenter).</p></li>
-<li><p><strong>voxel_spacing</strong> (<em>float</em><em>, </em><em>optional</em>) – Physical size of one voxel (in same units as detector_spacing, sdd, sid, default: 1.0).</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>reco</strong> – 2D tensor of shape (H, W) containing the reconstructed image on the same device as <cite>sinogram</cite>.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>torch.Tensor</p>
-</dd>
-</dl>
-<p class="rubric">Notes</p>
-<ul class="simple">
-<li><p>All input tensors must be on the same CUDA device.</p></li>
-<li><p>The operation is fully differentiable and supports autograd.</p></li>
-<li><p>Fan beam geometry uses divergent rays from a point source to the detector.</p></li>
-<li><p>Uses the Siddon method with interpolation for accurate ray tracing and bilinear interpolation.</p></li>
-</ul>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sinogram</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">360</span><span class="p">,</span> <span class="mi">512</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="o">*</span><span class="n">torch</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">360</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">reco</span> <span class="o">=</span> <span class="n">FanBackprojectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
-<span class="gp">... </span>    <span class="n">sinogram</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">,</span> <span class="mf">500.0</span>
-<span class="gp">... </span><span class="p">)</span>
-</pre></div>
-</div>
-</dd></dl>
-
-</section>
-</dd></dl>
-
-</section>
-<section id="cone-beam-operators">
-<h2>Cone Beam Operators<a class="headerlink" href="#cone-beam-operators" title="Link to this heading"></a></h2>
-<p>Cone beam geometry extends fan beam to 3D with a cone-shaped X-ray beam for volumetric reconstruction.</p>
-<dl class="py class">
-<dt class="sig sig-object py" id="diffct.differentiable.ConeProjectorFunction">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffct.differentiable.</span></span><span class="sig-name descname"><span class="pre">ConeProjectorFunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#ConeProjectorFunction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.ConeProjectorFunction" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
-<section id="id4">
-<h3>Summary<a class="headerlink" href="#id4" title="Link to this heading"></a></h3>
-<p>PyTorch autograd function for differentiable 3D cone beam forward projection.</p>
-<p class="rubric">Notes</p>
-<p>Provides a differentiable interface to the CUDA-accelerated Siddon ray-tracing
-method with interpolation for 3D cone beam geometry. Rays emanate from a point
-X-ray source to a 2D detector array capturing volumetric projection data.
-The forward pass computes 3D projections, and the backward pass computes
-gradients via adjoint 3D backprojection with geometric <code class="docutils literal notranslate"><span class="pre">1/U^2</span></code> distance
-weighting. Requires significant GPU memory.</p>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">diffct.differentiable</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConeProjectorFunction</span>
-<span class="gp">&gt;&gt;&gt;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">volume</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">128</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">360</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">projections</span> <span class="o">=</span> <span class="n">ConeProjectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">volume</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1500.0</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span> <span class="o">=</span> <span class="n">projections</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">volume</span><span class="o">.</span><span class="n">grad</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>  <span class="c1"># (128, 128, 128)</span>
-</pre></div>
-</div>
-<dl class="py method">
-<dt class="sig sig-object py" id="diffct.differentiable.ConeProjectorFunction.backward">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_sinogram</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#ConeProjectorFunction.backward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.ConeProjectorFunction.backward" title="Link to this definition"></a></dt>
-<dd><p>Define a formula for differentiating the operation with backward mode automatic differentiation.</p>
-<p>This function is to be overridden by all subclasses.
-(Defining this function is equivalent to defining the <code class="docutils literal notranslate"><span class="pre">vjp</span></code> function.)</p>
-<p>It must accept a context <code class="xref py py-attr docutils literal notranslate"><span class="pre">ctx</span></code> as the first argument, followed by
-as many outputs as the <a class="reference internal" href="#diffct.differentiable.ConeProjectorFunction.forward" title="diffct.differentiable.ConeProjectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a> returned (None will be passed in
-for non tensor outputs of the forward function),
-and it should return as many tensors, as there were inputs to
-<a class="reference internal" href="#diffct.differentiable.ConeProjectorFunction.forward" title="diffct.differentiable.ConeProjectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a>. Each argument is the gradient w.r.t the given output,
-and each returned value should be the gradient w.r.t. the
-corresponding input. If an input is not a Tensor or is a Tensor not
-requiring grads, you can just pass None as a gradient for that input.</p>
-<p>The context can be used to retrieve tensors saved during the forward
-pass. It also has an attribute <code class="xref py py-attr docutils literal notranslate"><span class="pre">ctx.needs_input_grad</span></code> as a tuple
-of booleans representing whether each input needs gradient. E.g.,
-<a class="reference internal" href="#diffct.differentiable.ConeProjectorFunction.backward" title="diffct.differentiable.ConeProjectorFunction.backward"><code class="xref py py-func docutils literal notranslate"><span class="pre">backward()</span></code></a> will have <code class="docutils literal notranslate"><span class="pre">ctx.needs_input_grad[0]</span> <span class="pre">=</span> <span class="pre">True</span></code> if the
-first input to <a class="reference internal" href="#diffct.differentiable.ConeProjectorFunction.forward" title="diffct.differentiable.ConeProjectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a> needs gradient computed w.r.t. the
-output.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="diffct.differentiable.ConeProjectorFunction.forward">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volume</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">angles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">det_u</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">det_v</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">du</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dv</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sdd</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">voxel_spacing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detector_offset_u</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detector_offset_v</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_x</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_y</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_z</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#ConeProjectorFunction.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.ConeProjectorFunction.forward" title="Link to this definition"></a></dt>
-<dd><p>Compute the 3D cone beam forward projection of a volume using CUDA
-acceleration.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>volume</strong> (<em>torch.Tensor</em>) – 3D input volume tensor of shape (D, H, W), must be on a CUDA device and of type float32.</p></li>
-<li><p><strong>angles</strong> (<em>torch.Tensor</em>) – 1D tensor of projection angles in radians, shape (num_views,), must be on the same CUDA device as <cite>volume</cite>.</p></li>
-<li><p><strong>det_u</strong> (<em>int</em>) – Number of detector elements along the u-axis (width).</p></li>
-<li><p><strong>det_v</strong> (<em>int</em>) – Number of detector elements along the v-axis (height).</p></li>
-<li><p><strong>du</strong> (<em>float</em>) – Physical spacing between detector elements along the u-axis.</p></li>
-<li><p><strong>dv</strong> (<em>float</em>) – Physical spacing between detector elements along the v-axis.</p></li>
-<li><p><strong>sdd</strong> (<em>float</em>) – Source-to-Detector Distance (SDD). The total distance from the X-ray
-source to the detector, passing through the isocenter.</p></li>
-<li><p><strong>sid</strong> (<em>float</em>) – Source-to-Isocenter Distance (SID). The distance from the X-ray
-source to the center of rotation (isocenter).</p></li>
-<li><p><strong>voxel_spacing</strong> (<em>float</em><em>, </em><em>optional</em>) – Physical size of one voxel (in same units as du, dv, sdd, sid, default: 1.0).</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>sino</strong> – 3D tensor of shape (num_views, det_u, det_v) containing the cone beam projections on the same device as <cite>volume</cite>.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>torch.Tensor</p>
-</dd>
-</dl>
-<p class="rubric">Notes</p>
-<ul class="simple">
-<li><p>All input tensors must be on the same CUDA device.</p></li>
-<li><p>The operation is fully differentiable and supports autograd.</p></li>
-<li><p>Cone beam geometry uses a point source and a 2D detector array.</p></li>
-<li><p>Uses the Siddon method with interpolation for accurate 3D ray tracing and trilinear interpolation.</p></li>
-</ul>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">volume</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">128</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="o">*</span><span class="n">torch</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">360</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">sino</span> <span class="o">=</span> <span class="n">ConeProjectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
-<span class="gp">... </span>    <span class="n">volume</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1500.0</span><span class="p">,</span> <span class="mf">1000.0</span>
-<span class="gp">... </span><span class="p">)</span>
-</pre></div>
-</div>
-</dd></dl>
-
-</section>
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="diffct.differentiable.ConeBackprojectorFunction">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffct.differentiable.</span></span><span class="sig-name descname"><span class="pre">ConeBackprojectorFunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#ConeBackprojectorFunction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.ConeBackprojectorFunction" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
-<section id="id5">
-<h3>Summary<a class="headerlink" href="#id5" title="Link to this heading"></a></h3>
-<p>PyTorch autograd function for differentiable 3D cone beam backprojection.</p>
-<p class="rubric">Notes</p>
-<p>Provides a differentiable interface to the CUDA-accelerated Siddon ray-tracing
-method with interpolation for 3D cone beam backprojection. The forward pass
-computes a 3D reconstruction from cone beam projection data using weighted
-backprojection (geometric <code class="docutils literal notranslate"><span class="pre">1/U^2</span></code> term) as the adjoint operation. The
-backward pass computes gradients via 3D cone beam forward projection. Requires
-CUDA-capable hardware and consistent device placements.</p>
-<p>This operation may be memory- and computationally-intensive due to 3D geometry.
-Consider using gradient checkpointing, smaller volumes, or distributed computing
-for large-scale applications, and ensure sufficient GPU memory is available.</p>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">diffct.differentiable</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConeBackprojectorFunction</span>
-<span class="gp">&gt;&gt;&gt;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">projections</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">360</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">360</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span> <span class="o">=</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">128</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">du</span><span class="p">,</span> <span class="n">dv</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">sdd</span><span class="p">,</span> <span class="n">sid</span> <span class="o">=</span> <span class="mf">1500.0</span><span class="p">,</span> <span class="mf">1000.0</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">backprojector</span> <span class="o">=</span> <span class="n">ConeBackprojectorFunction</span><span class="o">.</span><span class="n">apply</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">volume</span> <span class="o">=</span> <span class="n">backprojector</span><span class="p">(</span><span class="n">projections</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">sdd</span><span class="p">,</span> <span class="n">sid</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span> <span class="o">=</span> <span class="n">volume</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Projection gradient shape: </span><span class="si">{</span><span class="n">projections</span><span class="o">.</span><span class="n">grad</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>  <span class="c1"># (360, 256, 256)</span>
-</pre></div>
-</div>
-<dl class="py method">
-<dt class="sig sig-object py" id="diffct.differentiable.ConeBackprojectorFunction.backward">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_output</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#ConeBackprojectorFunction.backward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.ConeBackprojectorFunction.backward" title="Link to this definition"></a></dt>
-<dd><p>Define a formula for differentiating the operation with backward mode automatic differentiation.</p>
-<p>This function is to be overridden by all subclasses.
-(Defining this function is equivalent to defining the <code class="docutils literal notranslate"><span class="pre">vjp</span></code> function.)</p>
-<p>It must accept a context <code class="xref py py-attr docutils literal notranslate"><span class="pre">ctx</span></code> as the first argument, followed by
-as many outputs as the <a class="reference internal" href="#diffct.differentiable.ConeBackprojectorFunction.forward" title="diffct.differentiable.ConeBackprojectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a> returned (None will be passed in
-for non tensor outputs of the forward function),
-and it should return as many tensors, as there were inputs to
-<a class="reference internal" href="#diffct.differentiable.ConeBackprojectorFunction.forward" title="diffct.differentiable.ConeBackprojectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a>. Each argument is the gradient w.r.t the given output,
-and each returned value should be the gradient w.r.t. the
-corresponding input. If an input is not a Tensor or is a Tensor not
-requiring grads, you can just pass None as a gradient for that input.</p>
-<p>The context can be used to retrieve tensors saved during the forward
-pass. It also has an attribute <code class="xref py py-attr docutils literal notranslate"><span class="pre">ctx.needs_input_grad</span></code> as a tuple
-of booleans representing whether each input needs gradient. E.g.,
-<a class="reference internal" href="#diffct.differentiable.ConeBackprojectorFunction.backward" title="diffct.differentiable.ConeBackprojectorFunction.backward"><code class="xref py py-func docutils literal notranslate"><span class="pre">backward()</span></code></a> will have <code class="docutils literal notranslate"><span class="pre">ctx.needs_input_grad[0]</span> <span class="pre">=</span> <span class="pre">True</span></code> if the
-first input to <a class="reference internal" href="#diffct.differentiable.ConeBackprojectorFunction.forward" title="diffct.differentiable.ConeBackprojectorFunction.forward"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward()</span></code></a> needs gradient computed w.r.t. the
-output.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="diffct.differentiable.ConeBackprojectorFunction.forward">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sinogram</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">angles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">D</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">H</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">W</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">du</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dv</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sdd</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">voxel_spacing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detector_offset_u</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detector_offset_v</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_x</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_y</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_offset_z</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/diffct/differentiable.html#ConeBackprojectorFunction.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffct.differentiable.ConeBackprojectorFunction.forward" title="Link to this definition"></a></dt>
-<dd><p>Compute the 3D cone beam backprojection of a projection sinogram
-using CUDA acceleration.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>sinogram</strong> (<em>torch.Tensor</em>) – 3D input cone beam projection tensor of shape (num_views, det_u, det_v), must be on a CUDA device and of type float32.</p></li>
-<li><p><strong>angles</strong> (<em>torch.Tensor</em>) – 1D tensor of projection angles in radians, shape (num_views,), must be on the same CUDA device as <cite>sinogram</cite>.</p></li>
-<li><p><strong>D</strong> (<em>int</em>) – Depth (z-dimension) of the output reconstruction volume.</p></li>
-<li><p><strong>H</strong> (<em>int</em>) – Height (y-dimension) of the output reconstruction volume.</p></li>
-<li><p><strong>W</strong> (<em>int</em>) – Width (x-dimension) of the output reconstruction volume.</p></li>
-<li><p><strong>du</strong> (<em>float</em>) – Physical spacing between detector elements along the u-axis.</p></li>
-<li><p><strong>dv</strong> (<em>float</em>) – Physical spacing between detector elements along the v-axis.</p></li>
-<li><p><strong>sdd</strong> (<em>float</em>) – Source-to-Detector Distance (SDD). The total distance from the X-ray
-source to the detector, passing through the isocenter.</p></li>
-<li><p><strong>sid</strong> (<em>float</em>) – Source-to-Isocenter Distance (SID). The distance from the X-ray
-source to the center of rotation (isocenter).</p></li>
-<li><p><strong>voxel_spacing</strong> (<em>float</em><em>, </em><em>optional</em>) – Physical size of one voxel (in same units as du, dv, sdd, sid, default: 1.0).</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>vol</strong> – 3D tensor of shape (D, H, W) containing the reconstructed volume on the same device as <cite>sinogram</cite>.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>torch.Tensor</p>
-</dd>
-</dl>
-<p class="rubric">Notes</p>
-<ul class="simple">
-<li><p>All input tensors must be on the same CUDA device.</p></li>
-<li><p>The operation is fully differentiable and supports autograd.</p></li>
-<li><p>Cone beam geometry uses a point source and a 2D detector array.</p></li>
-<li><p>Uses the Siddon method with interpolation for accurate 3D ray tracing and trilinear interpolation.</p></li>
-</ul>
-<p class="rubric">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">projections</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">360</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="o">*</span><span class="n">torch</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mi">360</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">vol</span> <span class="o">=</span> <span class="n">ConeBackprojectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
-<span class="gp">... </span>    <span class="n">projections</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1500.0</span><span class="p">,</span> <span class="mf">1000.0</span>
-<span class="gp">... </span><span class="p">)</span>
-</pre></div>
-</div>
-</dd></dl>
-
-</section>
-</dd></dl>
-
-</section>
-<section id="usage-notes">
-<h2>Usage Notes<a class="headerlink" href="#usage-notes" title="Link to this heading"></a></h2>
-<p><strong>Memory Management:</strong>
-- All operators work with GPU tensors for optimal performance
-- Ensure sufficient GPU memory for your problem size
-- Use <code class="docutils literal notranslate"><span class="pre">torch.cuda.empty_cache()</span></code> if encountering memory issues</p>
-<p><strong>Gradient Computation:</strong>
-- All operators support automatic differentiation
-- Gradients flow through both forward and backward passes
-- Set <code class="docutils literal notranslate"><span class="pre">requires_grad=True</span></code> on input tensors to enable gradients</p>
-<p><strong>Performance Considerations:</strong>
-- Use contiguous tensors for optimal memory access
-- Consider batch processing for multiple reconstructions
-- Profile your code to identify bottlenecks</p>
-<p><strong>Coordinate Systems:</strong>
-- Image/volume coordinates: (0,0) at top-left corner
-- Detector coordinates: centered at detector array center
-- Rotation: counter-clockwise around z-axis (right-hand rule)</p>
 </section>
 </section>
 
@@ -750,7 +349,7 @@ source to the center of rotation (isocenter).</p></li>
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2025, Yipeng Sun.</p>
+    <p>&#169; Copyright 2026, Yipeng Sun, Linda-Sophie Schneider.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
