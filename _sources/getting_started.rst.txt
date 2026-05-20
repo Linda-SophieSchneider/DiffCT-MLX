@@ -1,7 +1,7 @@
 Getting Started
 ===============
 
-``diffct-mlx`` targets Apple Silicon and provides differentiable projection,
+``diffct_mlx`` targets Apple Silicon and provides differentiable projection,
 backprojection, geometry helpers, and reconstruction algorithms built on MLX.
 
 Requirements
@@ -14,7 +14,13 @@ Requirements
 Installation
 ------------
 
-Install the package in a virtual environment:
+Install from PyPI:
+
+.. code-block:: bash
+
+   pip install diffct_mlx
+
+Install from source in a virtual environment:
 
 .. code-block:: bash
 

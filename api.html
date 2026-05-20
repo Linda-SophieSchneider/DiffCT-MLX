@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API Reference &mdash; diffct-mlx  documentation</title>
+  <title>API Reference &mdash; diffct_mlx  documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
@@ -32,7 +32,7 @@
           
           
           <a href="index.html" class="icon icon-home">
-            diffct-mlx
+            diffct_mlx
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -59,7 +59,7 @@
 
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="index.html">diffct-mlx</a>
+          <a href="index.html">diffct_mlx</a>
       </nav>
 
       <div class="wy-nav-content">
@@ -108,230 +108,229 @@
 <p>For the exact current exports, inspect:</p>
 <div class="literal-block-wrapper docutils container" id="id1">
 <div class="code-block-caption"><span class="caption-text">Current top-level exports in <code class="docutils literal notranslate"><span class="pre">diffct_mlx/__init__.py</span></code></span><a class="headerlink" href="#id1" title="Link to this code"></a></div>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="c1"># diffct_mlx/__init__.py</span>
-<span class="linenos">  2</span><span class="sd">&quot;&quot;&quot;DiffCT-MLX — Differentiable CT Reconstruction for Apple Silicon.</span>
-<span class="linenos">  3</span>
-<span class="linenos">  4</span><span class="sd">A GPU-accelerated, differentiable computed tomography (CT) forward and backward</span>
-<span class="linenos">  5</span><span class="sd">projection library built with MLX and custom Metal kernels, optimized for</span>
-<span class="linenos">  6</span><span class="sd">Apple Silicon (M-series) chips.</span>
-<span class="linenos">  7</span><span class="sd">&quot;&quot;&quot;</span>
-<span class="linenos">  8</span>
-<span class="linenos">  9</span><span class="kn">from</span><span class="w"> </span><span class="nn">.projectors</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos"> 10</span>    <span class="n">parallel_forward</span><span class="p">,</span>
-<span class="linenos"> 11</span>    <span class="n">parallel_backward</span><span class="p">,</span>
-<span class="linenos"> 12</span>    <span class="n">parallel_forward_footprint</span><span class="p">,</span>
-<span class="linenos"> 13</span>    <span class="n">parallel_backward_footprint</span><span class="p">,</span>
-<span class="linenos"> 14</span>    <span class="n">fan_forward</span><span class="p">,</span>
-<span class="linenos"> 15</span>    <span class="n">fan_backward</span><span class="p">,</span>
-<span class="linenos"> 16</span>    <span class="n">fan_forward_footprint</span><span class="p">,</span>
-<span class="linenos"> 17</span>    <span class="n">fan_backward_footprint</span><span class="p">,</span>
-<span class="linenos"> 18</span>    <span class="n">cone_forward</span><span class="p">,</span>
-<span class="linenos"> 19</span>    <span class="n">cone_backward</span><span class="p">,</span>
-<span class="linenos"> 20</span>    <span class="n">cone_forward_footprint</span><span class="p">,</span>
-<span class="linenos"> 21</span>    <span class="n">cone_backward_footprint</span><span class="p">,</span>
-<span class="linenos"> 22</span><span class="p">)</span>
-<span class="linenos"> 23</span><span class="kn">from</span><span class="w"> </span><span class="nn">.regularizers</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos"> 24</span>    <span class="n">l2_regularizer</span><span class="p">,</span>
-<span class="linenos"> 25</span>    <span class="n">normalize_reconstruction_volume</span><span class="p">,</span>
-<span class="linenos"> 26</span>    <span class="n">tv_regularizer</span><span class="p">,</span>
-<span class="linenos"> 27</span>    <span class="n">tv_regularizer_3d</span><span class="p">,</span>
-<span class="linenos"> 28</span>    <span class="n">awtv_regularizer</span><span class="p">,</span>
-<span class="linenos"> 29</span>    <span class="n">tv_pocs</span><span class="p">,</span>
-<span class="linenos"> 30</span>    <span class="n">asd_pocs</span><span class="p">,</span>
-<span class="linenos"> 31</span>    <span class="n">awtv_pocs</span><span class="p">,</span>
-<span class="linenos"> 32</span><span class="p">)</span>
-<span class="linenos"> 33</span><span class="kn">from</span><span class="w"> </span><span class="nn">.tv_gradients</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos"> 34</span>    <span class="n">tv_gradient</span><span class="p">,</span>
-<span class="linenos"> 35</span>    <span class="n">weight_d_volume</span><span class="p">,</span>
-<span class="linenos"> 36</span>    <span class="n">awtv_gradient</span><span class="p">,</span>
-<span class="linenos"> 37</span><span class="p">)</span>
-<span class="linenos"> 38</span><span class="kn">from</span><span class="w"> </span><span class="nn">.phantoms</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos"> 39</span>    <span class="n">shepp_logan_2d</span><span class="p">,</span>
-<span class="linenos"> 40</span>    <span class="n">shepp_logan_3d</span><span class="p">,</span>
-<span class="linenos"> 41</span><span class="p">)</span>
-<span class="linenos"> 42</span><span class="kn">from</span><span class="w"> </span><span class="nn">.reconstruction_algorithms</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos"> 43</span>    <span class="n">MeasuredConeDataConfig</span><span class="p">,</span>
-<span class="linenos"> 44</span>    <span class="n">NpyProjectionsConfig</span><span class="p">,</span>
-<span class="linenos"> 45</span>    <span class="n">ReconstructionCase</span><span class="p">,</span>
-<span class="linenos"> 46</span>    <span class="n">ReconstructionParameters</span><span class="p">,</span>
-<span class="linenos"> 47</span>    <span class="n">RegularizationParameters</span><span class="p">,</span>
-<span class="linenos"> 48</span>    <span class="n">Reconstruction_Parameter</span><span class="p">,</span>
-<span class="linenos"> 49</span>    <span class="n">Regularisation_Parameter</span><span class="p">,</span>
-<span class="linenos"> 50</span>    <span class="n">build_parallel_2d_case</span><span class="p">,</span>
-<span class="linenos"> 51</span>    <span class="n">build_fan_2d_case</span><span class="p">,</span>
-<span class="linenos"> 52</span>    <span class="n">build_cone_3d_case</span><span class="p">,</span>
-<span class="linenos"> 53</span>    <span class="n">build_measured_cone_3d_case</span><span class="p">,</span>
-<span class="linenos"> 54</span>    <span class="n">build_npy_cone_3d_case</span><span class="p">,</span>
-<span class="linenos"> 55</span>    <span class="n">make_parallel_2d_operators</span><span class="p">,</span>
-<span class="linenos"> 56</span>    <span class="n">make_fan_2d_operators</span><span class="p">,</span>
-<span class="linenos"> 57</span>    <span class="n">make_cone_3d_operators</span><span class="p">,</span>
-<span class="linenos"> 58</span>    <span class="n">SARTParameters</span><span class="p">,</span>
-<span class="linenos"> 59</span>    <span class="n">SIRTParameters</span><span class="p">,</span>
-<span class="linenos"> 60</span>    <span class="n">run_sart</span><span class="p">,</span>
-<span class="linenos"> 61</span>    <span class="n">run_sirt</span><span class="p">,</span>
-<span class="linenos"> 62</span>    <span class="n">reconstruct_sart</span><span class="p">,</span>
-<span class="linenos"> 63</span>    <span class="n">reconstruct_sirt</span><span class="p">,</span>
-<span class="linenos"> 64</span>    <span class="n">TVPOCSParameters</span><span class="p">,</span>
-<span class="linenos"> 65</span>    <span class="n">TV_POCS_Parameter</span><span class="p">,</span>
-<span class="linenos"> 66</span>    <span class="n">run_tv_pocs</span><span class="p">,</span>
-<span class="linenos"> 67</span>    <span class="n">reconstruct_tv_pocs</span><span class="p">,</span>
-<span class="linenos"> 68</span>    <span class="n">ASDPOCSParameters</span><span class="p">,</span>
-<span class="linenos"> 69</span>    <span class="n">ASD_POCS_Parameter</span><span class="p">,</span>
-<span class="linenos"> 70</span>    <span class="n">run_asd_pocs</span><span class="p">,</span>
-<span class="linenos"> 71</span>    <span class="n">reconstruct_asd_pocs</span><span class="p">,</span>
-<span class="linenos"> 72</span>    <span class="n">AwTVPOCSParameters</span><span class="p">,</span>
-<span class="linenos"> 73</span>    <span class="n">AwTV_POCS_Parameter</span><span class="p">,</span>
-<span class="linenos"> 74</span>    <span class="n">run_awtv_pocs</span><span class="p">,</span>
-<span class="linenos"> 75</span>    <span class="n">reconstruct_awtv_pocs</span><span class="p">,</span>
-<span class="linenos"> 76</span>    <span class="n">DARTParameters</span><span class="p">,</span>
-<span class="linenos"> 77</span>    <span class="n">run_dart</span><span class="p">,</span>
-<span class="linenos"> 78</span>    <span class="n">reconstruct_dart</span><span class="p">,</span>
-<span class="linenos"> 79</span>    <span class="n">FBPParameters</span><span class="p">,</span>
-<span class="linenos"> 80</span>    <span class="n">run_fbp</span><span class="p">,</span>
-<span class="linenos"> 81</span>    <span class="n">reconstruct_fbp</span><span class="p">,</span>
-<span class="linenos"> 82</span>    <span class="n">FDKParameters</span><span class="p">,</span>
-<span class="linenos"> 83</span>    <span class="n">run_fdk</span><span class="p">,</span>
-<span class="linenos"> 84</span>    <span class="n">reconstruct_fdk</span><span class="p">,</span>
-<span class="linenos"> 85</span><span class="p">)</span>
-<span class="linenos"> 86</span>
-<span class="linenos"> 87</span><span class="kn">from</span><span class="w"> </span><span class="nn">.real_measured_data_helper</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos"> 88</span>    <span class="n">apply_detector_array_convention</span><span class="p">,</span>
-<span class="linenos"> 89</span>    <span class="n">apply_detector_geometry_convention</span><span class="p">,</span>
-<span class="linenos"> 90</span>    <span class="n">apply_upper_left_detector_transform</span><span class="p">,</span>
-<span class="linenos"> 91</span>    <span class="n">auto_voxel_spacing_from_detector</span><span class="p">,</span>
-<span class="linenos"> 92</span>    <span class="n">build_upper_left_detector_transform</span><span class="p">,</span>
-<span class="linenos"> 93</span>    <span class="n">diagnose_cone_geometry</span><span class="p">,</span>
-<span class="linenos"> 94</span>    <span class="n">estimate_cone_isocenter</span><span class="p">,</span>
-<span class="linenos"> 95</span>    <span class="n">mu_to_hu</span><span class="p">,</span>
-<span class="linenos"> 96</span>    <span class="n">mu_to_uint16</span><span class="p">,</span>
-<span class="linenos"> 97</span>    <span class="n">normalize_volume</span><span class="p">,</span>
-<span class="linenos"> 98</span>    <span class="n">resize_volume_to_shape</span><span class="p">,</span>
-<span class="linenos"> 99</span>    <span class="n">shift_detector_center</span><span class="p">,</span>
-<span class="linenos">100</span>    <span class="n">transform_detector_offsets</span><span class="p">,</span>
-<span class="linenos">101</span><span class="p">)</span>
-<span class="linenos">102</span>
-<span class="linenos">103</span><span class="kn">from</span><span class="w"> </span><span class="nn">.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos">104</span>    <span class="n">circular_trajectory_3d</span><span class="p">,</span>
-<span class="linenos">105</span>    <span class="n">random_trajectory_3d</span><span class="p">,</span>
-<span class="linenos">106</span>    <span class="n">spiral_trajectory_3d</span><span class="p">,</span>
-<span class="linenos">107</span>    <span class="n">sinusoidal_trajectory_3d</span><span class="p">,</span>
-<span class="linenos">108</span>    <span class="n">saddle_trajectory_3d</span><span class="p">,</span>
-<span class="linenos">109</span>    <span class="n">custom_trajectory_3d</span><span class="p">,</span>
-<span class="linenos">110</span>    <span class="n">load_arbitrary_cone_geometry_from_json</span><span class="p">,</span>
-<span class="linenos">111</span>    <span class="n">circular_trajectory_2d_fan</span><span class="p">,</span>
-<span class="linenos">112</span>    <span class="n">sinusoidal_trajectory_2d_fan</span><span class="p">,</span>
-<span class="linenos">113</span>    <span class="n">custom_trajectory_2d_fan</span><span class="p">,</span>
-<span class="linenos">114</span>    <span class="n">circular_trajectory_2d_parallel</span><span class="p">,</span>
-<span class="linenos">115</span>    <span class="n">sinusoidal_trajectory_2d_parallel</span><span class="p">,</span>
-<span class="linenos">116</span>    <span class="n">custom_trajectory_2d_parallel</span><span class="p">,</span>
-<span class="linenos">117</span><span class="p">)</span>
-<span class="linenos">118</span>
-<span class="linenos">119</span><span class="n">__version__</span> <span class="o">=</span> <span class="s1">&#39;1.0.0.dev0&#39;</span>
-<span class="linenos">120</span>
-<span class="linenos">121</span><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
-<span class="linenos">122</span>    <span class="c1"># Projector functions</span>
-<span class="linenos">123</span>    <span class="s1">&#39;parallel_forward&#39;</span><span class="p">,</span>
-<span class="linenos">124</span>    <span class="s1">&#39;parallel_backward&#39;</span><span class="p">,</span>
-<span class="linenos">125</span>    <span class="s1">&#39;parallel_forward_footprint&#39;</span><span class="p">,</span>
-<span class="linenos">126</span>    <span class="s1">&#39;parallel_backward_footprint&#39;</span><span class="p">,</span>
-<span class="linenos">127</span>    <span class="s1">&#39;fan_forward&#39;</span><span class="p">,</span>
-<span class="linenos">128</span>    <span class="s1">&#39;fan_backward&#39;</span><span class="p">,</span>
-<span class="linenos">129</span>    <span class="s1">&#39;fan_forward_footprint&#39;</span><span class="p">,</span>
-<span class="linenos">130</span>    <span class="s1">&#39;fan_backward_footprint&#39;</span><span class="p">,</span>
-<span class="linenos">131</span>    <span class="s1">&#39;cone_forward&#39;</span><span class="p">,</span>
-<span class="linenos">132</span>    <span class="s1">&#39;cone_backward&#39;</span><span class="p">,</span>
-<span class="linenos">133</span>    <span class="s1">&#39;cone_forward_footprint&#39;</span><span class="p">,</span>
-<span class="linenos">134</span>    <span class="s1">&#39;cone_backward_footprint&#39;</span><span class="p">,</span>
-<span class="linenos">135</span>    <span class="s1">&#39;l2_regularizer&#39;</span><span class="p">,</span>
-<span class="linenos">136</span>    <span class="s1">&#39;normalize_reconstruction_volume&#39;</span><span class="p">,</span>
-<span class="linenos">137</span>    <span class="s1">&#39;tv_regularizer&#39;</span><span class="p">,</span>
-<span class="linenos">138</span>    <span class="s1">&#39;tv_regularizer_3d&#39;</span><span class="p">,</span>
-<span class="linenos">139</span>    <span class="s1">&#39;awtv_regularizer&#39;</span><span class="p">,</span>
-<span class="linenos">140</span>    <span class="s1">&#39;tv_pocs&#39;</span><span class="p">,</span>
-<span class="linenos">141</span>    <span class="s1">&#39;asd_pocs&#39;</span><span class="p">,</span>
-<span class="linenos">142</span>    <span class="s1">&#39;awtv_pocs&#39;</span><span class="p">,</span>
-<span class="linenos">143</span>    <span class="s1">&#39;tv_gradient&#39;</span><span class="p">,</span>
-<span class="linenos">144</span>    <span class="s1">&#39;weight_d_volume&#39;</span><span class="p">,</span>
-<span class="linenos">145</span>    <span class="s1">&#39;awtv_gradient&#39;</span><span class="p">,</span>
-<span class="linenos">146</span>    <span class="s1">&#39;shepp_logan_2d&#39;</span><span class="p">,</span>
-<span class="linenos">147</span>    <span class="s1">&#39;shepp_logan_3d&#39;</span><span class="p">,</span>
-<span class="linenos">148</span>    <span class="s1">&#39;MeasuredConeDataConfig&#39;</span><span class="p">,</span>
-<span class="linenos">149</span>    <span class="s1">&#39;NpyProjectionsConfig&#39;</span><span class="p">,</span>
-<span class="linenos">150</span>    <span class="s1">&#39;ReconstructionCase&#39;</span><span class="p">,</span>
-<span class="linenos">151</span>    <span class="s1">&#39;ReconstructionParameters&#39;</span><span class="p">,</span>
-<span class="linenos">152</span>    <span class="s1">&#39;RegularizationParameters&#39;</span><span class="p">,</span>
-<span class="linenos">153</span>    <span class="s1">&#39;Reconstruction_Parameter&#39;</span><span class="p">,</span>
-<span class="linenos">154</span>    <span class="s1">&#39;Regularisation_Parameter&#39;</span><span class="p">,</span>
-<span class="linenos">155</span>    <span class="s1">&#39;build_parallel_2d_case&#39;</span><span class="p">,</span>
-<span class="linenos">156</span>    <span class="s1">&#39;build_fan_2d_case&#39;</span><span class="p">,</span>
-<span class="linenos">157</span>    <span class="s1">&#39;build_cone_3d_case&#39;</span><span class="p">,</span>
-<span class="linenos">158</span>    <span class="s1">&#39;build_measured_cone_3d_case&#39;</span><span class="p">,</span>
-<span class="linenos">159</span>    <span class="s1">&#39;build_npy_cone_3d_case&#39;</span><span class="p">,</span>
-<span class="linenos">160</span>    <span class="s1">&#39;make_parallel_2d_operators&#39;</span><span class="p">,</span>
-<span class="linenos">161</span>    <span class="s1">&#39;make_fan_2d_operators&#39;</span><span class="p">,</span>
-<span class="linenos">162</span>    <span class="s1">&#39;make_cone_3d_operators&#39;</span><span class="p">,</span>
-<span class="linenos">163</span>    <span class="s1">&#39;SARTParameters&#39;</span><span class="p">,</span>
-<span class="linenos">164</span>    <span class="s1">&#39;SIRTParameters&#39;</span><span class="p">,</span>
-<span class="linenos">165</span>    <span class="s1">&#39;SARTDiagnosticsResult&#39;</span><span class="p">,</span>
-<span class="linenos">166</span>    <span class="s1">&#39;SARTProjectionSnapshot&#39;</span><span class="p">,</span>
-<span class="linenos">167</span>    <span class="s1">&#39;default_projection_indices&#39;</span><span class="p">,</span>
-<span class="linenos">168</span>    <span class="s1">&#39;diagnose_sart&#39;</span><span class="p">,</span>
-<span class="linenos">169</span>    <span class="s1">&#39;plot_sart_projection_diagnostics&#39;</span><span class="p">,</span>
-<span class="linenos">170</span>    <span class="s1">&#39;run_sart&#39;</span><span class="p">,</span>
-<span class="linenos">171</span>    <span class="s1">&#39;run_sirt&#39;</span><span class="p">,</span>
-<span class="linenos">172</span>    <span class="s1">&#39;reconstruct_sart&#39;</span><span class="p">,</span>
-<span class="linenos">173</span>    <span class="s1">&#39;reconstruct_sirt&#39;</span><span class="p">,</span>
-<span class="linenos">174</span>    <span class="s1">&#39;TVPOCSParameters&#39;</span><span class="p">,</span>
-<span class="linenos">175</span>    <span class="s1">&#39;TV_POCS_Parameter&#39;</span><span class="p">,</span>
-<span class="linenos">176</span>    <span class="s1">&#39;run_tv_pocs&#39;</span><span class="p">,</span>
-<span class="linenos">177</span>    <span class="s1">&#39;reconstruct_tv_pocs&#39;</span><span class="p">,</span>
-<span class="linenos">178</span>    <span class="s1">&#39;ASDPOCSParameters&#39;</span><span class="p">,</span>
-<span class="linenos">179</span>    <span class="s1">&#39;ASD_POCS_Parameter&#39;</span><span class="p">,</span>
-<span class="linenos">180</span>    <span class="s1">&#39;run_asd_pocs&#39;</span><span class="p">,</span>
-<span class="linenos">181</span>    <span class="s1">&#39;reconstruct_asd_pocs&#39;</span><span class="p">,</span>
-<span class="linenos">182</span>    <span class="s1">&#39;AwTVPOCSParameters&#39;</span><span class="p">,</span>
-<span class="linenos">183</span>    <span class="s1">&#39;AwTV_POCS_Parameter&#39;</span><span class="p">,</span>
-<span class="linenos">184</span>    <span class="s1">&#39;run_awtv_pocs&#39;</span><span class="p">,</span>
-<span class="linenos">185</span>    <span class="s1">&#39;reconstruct_awtv_pocs&#39;</span><span class="p">,</span>
-<span class="linenos">186</span>    <span class="s1">&#39;DARTParameters&#39;</span><span class="p">,</span>
-<span class="linenos">187</span>    <span class="s1">&#39;run_dart&#39;</span><span class="p">,</span>
-<span class="linenos">188</span>    <span class="s1">&#39;reconstruct_dart&#39;</span><span class="p">,</span>
-<span class="linenos">189</span>    <span class="s1">&#39;FBPParameters&#39;</span><span class="p">,</span>
-<span class="linenos">190</span>    <span class="s1">&#39;run_fbp&#39;</span><span class="p">,</span>
-<span class="linenos">191</span>    <span class="s1">&#39;reconstruct_fbp&#39;</span><span class="p">,</span>
-<span class="linenos">192</span>    <span class="s1">&#39;FDKParameters&#39;</span><span class="p">,</span>
-<span class="linenos">193</span>    <span class="s1">&#39;run_fdk&#39;</span><span class="p">,</span>
-<span class="linenos">194</span>    <span class="s1">&#39;reconstruct_fdk&#39;</span><span class="p">,</span>
-<span class="linenos">195</span>    <span class="c1"># 3D trajectory generators</span>
-<span class="linenos">196</span>    <span class="s1">&#39;circular_trajectory_3d&#39;</span><span class="p">,</span>
-<span class="linenos">197</span>    <span class="s1">&#39;random_trajectory_3d&#39;</span><span class="p">,</span>
-<span class="linenos">198</span>    <span class="s1">&#39;spiral_trajectory_3d&#39;</span><span class="p">,</span>
-<span class="linenos">199</span>    <span class="s1">&#39;sinusoidal_trajectory_3d&#39;</span><span class="p">,</span>
-<span class="linenos">200</span>    <span class="s1">&#39;saddle_trajectory_3d&#39;</span><span class="p">,</span>
-<span class="linenos">201</span>    <span class="s1">&#39;custom_trajectory_3d&#39;</span><span class="p">,</span>
-<span class="linenos">202</span>    <span class="s1">&#39;apply_detector_array_convention&#39;</span><span class="p">,</span>
-<span class="linenos">203</span>    <span class="s1">&#39;apply_detector_geometry_convention&#39;</span><span class="p">,</span>
-<span class="linenos">204</span>    <span class="s1">&#39;apply_upper_left_detector_transform&#39;</span><span class="p">,</span>
-<span class="linenos">205</span>    <span class="s1">&#39;auto_voxel_spacing_from_detector&#39;</span><span class="p">,</span>
-<span class="linenos">206</span>    <span class="s1">&#39;build_upper_left_detector_transform&#39;</span><span class="p">,</span>
-<span class="linenos">207</span>    <span class="s1">&#39;diagnose_cone_geometry&#39;</span><span class="p">,</span>
-<span class="linenos">208</span>    <span class="s1">&#39;estimate_cone_isocenter&#39;</span><span class="p">,</span>
-<span class="linenos">209</span>    <span class="s1">&#39;mu_to_hu&#39;</span><span class="p">,</span>
-<span class="linenos">210</span>    <span class="s1">&#39;mu_to_uint16&#39;</span><span class="p">,</span>
-<span class="linenos">211</span>    <span class="s1">&#39;normalize_volume&#39;</span><span class="p">,</span>
-<span class="linenos">212</span>    <span class="s1">&#39;resize_volume_to_shape&#39;</span><span class="p">,</span>
-<span class="linenos">213</span>    <span class="s1">&#39;shift_detector_center&#39;</span><span class="p">,</span>
-<span class="linenos">214</span>    <span class="s1">&#39;transform_detector_offsets&#39;</span><span class="p">,</span>
-<span class="linenos">215</span>    <span class="s1">&#39;load_arbitrary_cone_geometry_from_json&#39;</span><span class="p">,</span>
-<span class="linenos">216</span>    <span class="c1"># 2D fan beam trajectory generators</span>
-<span class="linenos">217</span>    <span class="s1">&#39;circular_trajectory_2d_fan&#39;</span><span class="p">,</span>
-<span class="linenos">218</span>    <span class="s1">&#39;sinusoidal_trajectory_2d_fan&#39;</span><span class="p">,</span>
-<span class="linenos">219</span>    <span class="s1">&#39;custom_trajectory_2d_fan&#39;</span><span class="p">,</span>
-<span class="linenos">220</span>    <span class="c1"># 2D parallel beam trajectory generators</span>
-<span class="linenos">221</span>    <span class="s1">&#39;circular_trajectory_2d_parallel&#39;</span><span class="p">,</span>
-<span class="linenos">222</span>    <span class="s1">&#39;sinusoidal_trajectory_2d_parallel&#39;</span><span class="p">,</span>
-<span class="linenos">223</span>    <span class="s1">&#39;custom_trajectory_2d_parallel&#39;</span><span class="p">,</span>
-<span class="linenos">224</span><span class="p">]</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">&quot;&quot;&quot;DiffCT-MLX — Differentiable CT Reconstruction for Apple Silicon.</span>
+<span class="linenos">  2</span>
+<span class="linenos">  3</span><span class="sd">A GPU-accelerated, differentiable computed tomography (CT) forward and backward</span>
+<span class="linenos">  4</span><span class="sd">projection library built with MLX and custom Metal kernels, optimized for</span>
+<span class="linenos">  5</span><span class="sd">Apple Silicon (M-series) chips.</span>
+<span class="linenos">  6</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="linenos">  7</span>
+<span class="linenos">  8</span><span class="kn">from</span><span class="w"> </span><span class="nn">.projectors</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos">  9</span>    <span class="n">parallel_forward</span><span class="p">,</span>
+<span class="linenos"> 10</span>    <span class="n">parallel_backward</span><span class="p">,</span>
+<span class="linenos"> 11</span>    <span class="n">parallel_forward_footprint</span><span class="p">,</span>
+<span class="linenos"> 12</span>    <span class="n">parallel_backward_footprint</span><span class="p">,</span>
+<span class="linenos"> 13</span>    <span class="n">fan_forward</span><span class="p">,</span>
+<span class="linenos"> 14</span>    <span class="n">fan_backward</span><span class="p">,</span>
+<span class="linenos"> 15</span>    <span class="n">fan_forward_footprint</span><span class="p">,</span>
+<span class="linenos"> 16</span>    <span class="n">fan_backward_footprint</span><span class="p">,</span>
+<span class="linenos"> 17</span>    <span class="n">cone_forward</span><span class="p">,</span>
+<span class="linenos"> 18</span>    <span class="n">cone_backward</span><span class="p">,</span>
+<span class="linenos"> 19</span>    <span class="n">cone_forward_footprint</span><span class="p">,</span>
+<span class="linenos"> 20</span>    <span class="n">cone_backward_footprint</span><span class="p">,</span>
+<span class="linenos"> 21</span><span class="p">)</span>
+<span class="linenos"> 22</span><span class="kn">from</span><span class="w"> </span><span class="nn">.regularizers</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 23</span>    <span class="n">l2_regularizer</span><span class="p">,</span>
+<span class="linenos"> 24</span>    <span class="n">normalize_reconstruction_volume</span><span class="p">,</span>
+<span class="linenos"> 25</span>    <span class="n">tv_regularizer</span><span class="p">,</span>
+<span class="linenos"> 26</span>    <span class="n">tv_regularizer_3d</span><span class="p">,</span>
+<span class="linenos"> 27</span>    <span class="n">awtv_regularizer</span><span class="p">,</span>
+<span class="linenos"> 28</span>    <span class="n">tv_pocs</span><span class="p">,</span>
+<span class="linenos"> 29</span>    <span class="n">asd_pocs</span><span class="p">,</span>
+<span class="linenos"> 30</span>    <span class="n">awtv_pocs</span><span class="p">,</span>
+<span class="linenos"> 31</span><span class="p">)</span>
+<span class="linenos"> 32</span><span class="kn">from</span><span class="w"> </span><span class="nn">.tv_gradients</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 33</span>    <span class="n">tv_gradient</span><span class="p">,</span>
+<span class="linenos"> 34</span>    <span class="n">weight_d_volume</span><span class="p">,</span>
+<span class="linenos"> 35</span>    <span class="n">awtv_gradient</span><span class="p">,</span>
+<span class="linenos"> 36</span><span class="p">)</span>
+<span class="linenos"> 37</span><span class="kn">from</span><span class="w"> </span><span class="nn">.phantoms</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 38</span>    <span class="n">shepp_logan_2d</span><span class="p">,</span>
+<span class="linenos"> 39</span>    <span class="n">shepp_logan_3d</span><span class="p">,</span>
+<span class="linenos"> 40</span><span class="p">)</span>
+<span class="linenos"> 41</span><span class="kn">from</span><span class="w"> </span><span class="nn">.reconstruction_algorithms</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 42</span>    <span class="n">MeasuredConeDataConfig</span><span class="p">,</span>
+<span class="linenos"> 43</span>    <span class="n">NpyProjectionsConfig</span><span class="p">,</span>
+<span class="linenos"> 44</span>    <span class="n">ReconstructionCase</span><span class="p">,</span>
+<span class="linenos"> 45</span>    <span class="n">ReconstructionParameters</span><span class="p">,</span>
+<span class="linenos"> 46</span>    <span class="n">RegularizationParameters</span><span class="p">,</span>
+<span class="linenos"> 47</span>    <span class="n">Reconstruction_Parameter</span><span class="p">,</span>
+<span class="linenos"> 48</span>    <span class="n">Regularisation_Parameter</span><span class="p">,</span>
+<span class="linenos"> 49</span>    <span class="n">build_parallel_2d_case</span><span class="p">,</span>
+<span class="linenos"> 50</span>    <span class="n">build_fan_2d_case</span><span class="p">,</span>
+<span class="linenos"> 51</span>    <span class="n">build_cone_3d_case</span><span class="p">,</span>
+<span class="linenos"> 52</span>    <span class="n">build_measured_cone_3d_case</span><span class="p">,</span>
+<span class="linenos"> 53</span>    <span class="n">build_npy_cone_3d_case</span><span class="p">,</span>
+<span class="linenos"> 54</span>    <span class="n">make_parallel_2d_operators</span><span class="p">,</span>
+<span class="linenos"> 55</span>    <span class="n">make_fan_2d_operators</span><span class="p">,</span>
+<span class="linenos"> 56</span>    <span class="n">make_cone_3d_operators</span><span class="p">,</span>
+<span class="linenos"> 57</span>    <span class="n">SARTParameters</span><span class="p">,</span>
+<span class="linenos"> 58</span>    <span class="n">SIRTParameters</span><span class="p">,</span>
+<span class="linenos"> 59</span>    <span class="n">run_sart</span><span class="p">,</span>
+<span class="linenos"> 60</span>    <span class="n">run_sirt</span><span class="p">,</span>
+<span class="linenos"> 61</span>    <span class="n">reconstruct_sart</span><span class="p">,</span>
+<span class="linenos"> 62</span>    <span class="n">reconstruct_sirt</span><span class="p">,</span>
+<span class="linenos"> 63</span>    <span class="n">TVPOCSParameters</span><span class="p">,</span>
+<span class="linenos"> 64</span>    <span class="n">TV_POCS_Parameter</span><span class="p">,</span>
+<span class="linenos"> 65</span>    <span class="n">run_tv_pocs</span><span class="p">,</span>
+<span class="linenos"> 66</span>    <span class="n">reconstruct_tv_pocs</span><span class="p">,</span>
+<span class="linenos"> 67</span>    <span class="n">ASDPOCSParameters</span><span class="p">,</span>
+<span class="linenos"> 68</span>    <span class="n">ASD_POCS_Parameter</span><span class="p">,</span>
+<span class="linenos"> 69</span>    <span class="n">run_asd_pocs</span><span class="p">,</span>
+<span class="linenos"> 70</span>    <span class="n">reconstruct_asd_pocs</span><span class="p">,</span>
+<span class="linenos"> 71</span>    <span class="n">AwTVPOCSParameters</span><span class="p">,</span>
+<span class="linenos"> 72</span>    <span class="n">AwTV_POCS_Parameter</span><span class="p">,</span>
+<span class="linenos"> 73</span>    <span class="n">run_awtv_pocs</span><span class="p">,</span>
+<span class="linenos"> 74</span>    <span class="n">reconstruct_awtv_pocs</span><span class="p">,</span>
+<span class="linenos"> 75</span>    <span class="n">DARTParameters</span><span class="p">,</span>
+<span class="linenos"> 76</span>    <span class="n">run_dart</span><span class="p">,</span>
+<span class="linenos"> 77</span>    <span class="n">reconstruct_dart</span><span class="p">,</span>
+<span class="linenos"> 78</span>    <span class="n">FBPParameters</span><span class="p">,</span>
+<span class="linenos"> 79</span>    <span class="n">run_fbp</span><span class="p">,</span>
+<span class="linenos"> 80</span>    <span class="n">reconstruct_fbp</span><span class="p">,</span>
+<span class="linenos"> 81</span>    <span class="n">FDKParameters</span><span class="p">,</span>
+<span class="linenos"> 82</span>    <span class="n">run_fdk</span><span class="p">,</span>
+<span class="linenos"> 83</span>    <span class="n">reconstruct_fdk</span><span class="p">,</span>
+<span class="linenos"> 84</span><span class="p">)</span>
+<span class="linenos"> 85</span>
+<span class="linenos"> 86</span><span class="kn">from</span><span class="w"> </span><span class="nn">.real_measured_data_helper</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 87</span>    <span class="n">apply_detector_array_convention</span><span class="p">,</span>
+<span class="linenos"> 88</span>    <span class="n">apply_detector_geometry_convention</span><span class="p">,</span>
+<span class="linenos"> 89</span>    <span class="n">apply_upper_left_detector_transform</span><span class="p">,</span>
+<span class="linenos"> 90</span>    <span class="n">auto_voxel_spacing_from_detector</span><span class="p">,</span>
+<span class="linenos"> 91</span>    <span class="n">build_upper_left_detector_transform</span><span class="p">,</span>
+<span class="linenos"> 92</span>    <span class="n">diagnose_cone_geometry</span><span class="p">,</span>
+<span class="linenos"> 93</span>    <span class="n">estimate_cone_isocenter</span><span class="p">,</span>
+<span class="linenos"> 94</span>    <span class="n">mu_to_hu</span><span class="p">,</span>
+<span class="linenos"> 95</span>    <span class="n">mu_to_uint16</span><span class="p">,</span>
+<span class="linenos"> 96</span>    <span class="n">normalize_volume</span><span class="p">,</span>
+<span class="linenos"> 97</span>    <span class="n">resize_volume_to_shape</span><span class="p">,</span>
+<span class="linenos"> 98</span>    <span class="n">shift_detector_center</span><span class="p">,</span>
+<span class="linenos"> 99</span>    <span class="n">transform_detector_offsets</span><span class="p">,</span>
+<span class="linenos">100</span><span class="p">)</span>
+<span class="linenos">101</span>
+<span class="linenos">102</span><span class="kn">from</span><span class="w"> </span><span class="nn">.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos">103</span>    <span class="n">circular_trajectory_3d</span><span class="p">,</span>
+<span class="linenos">104</span>    <span class="n">random_trajectory_3d</span><span class="p">,</span>
+<span class="linenos">105</span>    <span class="n">spiral_trajectory_3d</span><span class="p">,</span>
+<span class="linenos">106</span>    <span class="n">sinusoidal_trajectory_3d</span><span class="p">,</span>
+<span class="linenos">107</span>    <span class="n">saddle_trajectory_3d</span><span class="p">,</span>
+<span class="linenos">108</span>    <span class="n">custom_trajectory_3d</span><span class="p">,</span>
+<span class="linenos">109</span>    <span class="n">load_arbitrary_cone_geometry_from_json</span><span class="p">,</span>
+<span class="linenos">110</span>    <span class="n">circular_trajectory_2d_fan</span><span class="p">,</span>
+<span class="linenos">111</span>    <span class="n">sinusoidal_trajectory_2d_fan</span><span class="p">,</span>
+<span class="linenos">112</span>    <span class="n">custom_trajectory_2d_fan</span><span class="p">,</span>
+<span class="linenos">113</span>    <span class="n">circular_trajectory_2d_parallel</span><span class="p">,</span>
+<span class="linenos">114</span>    <span class="n">sinusoidal_trajectory_2d_parallel</span><span class="p">,</span>
+<span class="linenos">115</span>    <span class="n">custom_trajectory_2d_parallel</span><span class="p">,</span>
+<span class="linenos">116</span><span class="p">)</span>
+<span class="linenos">117</span>
+<span class="linenos">118</span><span class="kn">from</span><span class="w"> </span><span class="nn">.__about__</span><span class="w"> </span><span class="kn">import</span> <span class="n">__version__</span>
+<span class="linenos">119</span>
+<span class="linenos">120</span><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
+<span class="linenos">121</span>    <span class="c1"># Projector functions</span>
+<span class="linenos">122</span>    <span class="s1">&#39;parallel_forward&#39;</span><span class="p">,</span>
+<span class="linenos">123</span>    <span class="s1">&#39;parallel_backward&#39;</span><span class="p">,</span>
+<span class="linenos">124</span>    <span class="s1">&#39;parallel_forward_footprint&#39;</span><span class="p">,</span>
+<span class="linenos">125</span>    <span class="s1">&#39;parallel_backward_footprint&#39;</span><span class="p">,</span>
+<span class="linenos">126</span>    <span class="s1">&#39;fan_forward&#39;</span><span class="p">,</span>
+<span class="linenos">127</span>    <span class="s1">&#39;fan_backward&#39;</span><span class="p">,</span>
+<span class="linenos">128</span>    <span class="s1">&#39;fan_forward_footprint&#39;</span><span class="p">,</span>
+<span class="linenos">129</span>    <span class="s1">&#39;fan_backward_footprint&#39;</span><span class="p">,</span>
+<span class="linenos">130</span>    <span class="s1">&#39;cone_forward&#39;</span><span class="p">,</span>
+<span class="linenos">131</span>    <span class="s1">&#39;cone_backward&#39;</span><span class="p">,</span>
+<span class="linenos">132</span>    <span class="s1">&#39;cone_forward_footprint&#39;</span><span class="p">,</span>
+<span class="linenos">133</span>    <span class="s1">&#39;cone_backward_footprint&#39;</span><span class="p">,</span>
+<span class="linenos">134</span>    <span class="s1">&#39;l2_regularizer&#39;</span><span class="p">,</span>
+<span class="linenos">135</span>    <span class="s1">&#39;normalize_reconstruction_volume&#39;</span><span class="p">,</span>
+<span class="linenos">136</span>    <span class="s1">&#39;tv_regularizer&#39;</span><span class="p">,</span>
+<span class="linenos">137</span>    <span class="s1">&#39;tv_regularizer_3d&#39;</span><span class="p">,</span>
+<span class="linenos">138</span>    <span class="s1">&#39;awtv_regularizer&#39;</span><span class="p">,</span>
+<span class="linenos">139</span>    <span class="s1">&#39;tv_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">140</span>    <span class="s1">&#39;asd_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">141</span>    <span class="s1">&#39;awtv_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">142</span>    <span class="s1">&#39;tv_gradient&#39;</span><span class="p">,</span>
+<span class="linenos">143</span>    <span class="s1">&#39;weight_d_volume&#39;</span><span class="p">,</span>
+<span class="linenos">144</span>    <span class="s1">&#39;awtv_gradient&#39;</span><span class="p">,</span>
+<span class="linenos">145</span>    <span class="s1">&#39;shepp_logan_2d&#39;</span><span class="p">,</span>
+<span class="linenos">146</span>    <span class="s1">&#39;shepp_logan_3d&#39;</span><span class="p">,</span>
+<span class="linenos">147</span>    <span class="s1">&#39;MeasuredConeDataConfig&#39;</span><span class="p">,</span>
+<span class="linenos">148</span>    <span class="s1">&#39;NpyProjectionsConfig&#39;</span><span class="p">,</span>
+<span class="linenos">149</span>    <span class="s1">&#39;ReconstructionCase&#39;</span><span class="p">,</span>
+<span class="linenos">150</span>    <span class="s1">&#39;ReconstructionParameters&#39;</span><span class="p">,</span>
+<span class="linenos">151</span>    <span class="s1">&#39;RegularizationParameters&#39;</span><span class="p">,</span>
+<span class="linenos">152</span>    <span class="s1">&#39;Reconstruction_Parameter&#39;</span><span class="p">,</span>
+<span class="linenos">153</span>    <span class="s1">&#39;Regularisation_Parameter&#39;</span><span class="p">,</span>
+<span class="linenos">154</span>    <span class="s1">&#39;build_parallel_2d_case&#39;</span><span class="p">,</span>
+<span class="linenos">155</span>    <span class="s1">&#39;build_fan_2d_case&#39;</span><span class="p">,</span>
+<span class="linenos">156</span>    <span class="s1">&#39;build_cone_3d_case&#39;</span><span class="p">,</span>
+<span class="linenos">157</span>    <span class="s1">&#39;build_measured_cone_3d_case&#39;</span><span class="p">,</span>
+<span class="linenos">158</span>    <span class="s1">&#39;build_npy_cone_3d_case&#39;</span><span class="p">,</span>
+<span class="linenos">159</span>    <span class="s1">&#39;make_parallel_2d_operators&#39;</span><span class="p">,</span>
+<span class="linenos">160</span>    <span class="s1">&#39;make_fan_2d_operators&#39;</span><span class="p">,</span>
+<span class="linenos">161</span>    <span class="s1">&#39;make_cone_3d_operators&#39;</span><span class="p">,</span>
+<span class="linenos">162</span>    <span class="s1">&#39;SARTParameters&#39;</span><span class="p">,</span>
+<span class="linenos">163</span>    <span class="s1">&#39;SIRTParameters&#39;</span><span class="p">,</span>
+<span class="linenos">164</span>    <span class="s1">&#39;SARTDiagnosticsResult&#39;</span><span class="p">,</span>
+<span class="linenos">165</span>    <span class="s1">&#39;SARTProjectionSnapshot&#39;</span><span class="p">,</span>
+<span class="linenos">166</span>    <span class="s1">&#39;default_projection_indices&#39;</span><span class="p">,</span>
+<span class="linenos">167</span>    <span class="s1">&#39;diagnose_sart&#39;</span><span class="p">,</span>
+<span class="linenos">168</span>    <span class="s1">&#39;plot_sart_projection_diagnostics&#39;</span><span class="p">,</span>
+<span class="linenos">169</span>    <span class="s1">&#39;run_sart&#39;</span><span class="p">,</span>
+<span class="linenos">170</span>    <span class="s1">&#39;run_sirt&#39;</span><span class="p">,</span>
+<span class="linenos">171</span>    <span class="s1">&#39;reconstruct_sart&#39;</span><span class="p">,</span>
+<span class="linenos">172</span>    <span class="s1">&#39;reconstruct_sirt&#39;</span><span class="p">,</span>
+<span class="linenos">173</span>    <span class="s1">&#39;TVPOCSParameters&#39;</span><span class="p">,</span>
+<span class="linenos">174</span>    <span class="s1">&#39;TV_POCS_Parameter&#39;</span><span class="p">,</span>
+<span class="linenos">175</span>    <span class="s1">&#39;run_tv_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">176</span>    <span class="s1">&#39;reconstruct_tv_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">177</span>    <span class="s1">&#39;ASDPOCSParameters&#39;</span><span class="p">,</span>
+<span class="linenos">178</span>    <span class="s1">&#39;ASD_POCS_Parameter&#39;</span><span class="p">,</span>
+<span class="linenos">179</span>    <span class="s1">&#39;run_asd_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">180</span>    <span class="s1">&#39;reconstruct_asd_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">181</span>    <span class="s1">&#39;AwTVPOCSParameters&#39;</span><span class="p">,</span>
+<span class="linenos">182</span>    <span class="s1">&#39;AwTV_POCS_Parameter&#39;</span><span class="p">,</span>
+<span class="linenos">183</span>    <span class="s1">&#39;run_awtv_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">184</span>    <span class="s1">&#39;reconstruct_awtv_pocs&#39;</span><span class="p">,</span>
+<span class="linenos">185</span>    <span class="s1">&#39;DARTParameters&#39;</span><span class="p">,</span>
+<span class="linenos">186</span>    <span class="s1">&#39;run_dart&#39;</span><span class="p">,</span>
+<span class="linenos">187</span>    <span class="s1">&#39;reconstruct_dart&#39;</span><span class="p">,</span>
+<span class="linenos">188</span>    <span class="s1">&#39;FBPParameters&#39;</span><span class="p">,</span>
+<span class="linenos">189</span>    <span class="s1">&#39;run_fbp&#39;</span><span class="p">,</span>
+<span class="linenos">190</span>    <span class="s1">&#39;reconstruct_fbp&#39;</span><span class="p">,</span>
+<span class="linenos">191</span>    <span class="s1">&#39;FDKParameters&#39;</span><span class="p">,</span>
+<span class="linenos">192</span>    <span class="s1">&#39;run_fdk&#39;</span><span class="p">,</span>
+<span class="linenos">193</span>    <span class="s1">&#39;reconstruct_fdk&#39;</span><span class="p">,</span>
+<span class="linenos">194</span>    <span class="c1"># 3D trajectory generators</span>
+<span class="linenos">195</span>    <span class="s1">&#39;circular_trajectory_3d&#39;</span><span class="p">,</span>
+<span class="linenos">196</span>    <span class="s1">&#39;random_trajectory_3d&#39;</span><span class="p">,</span>
+<span class="linenos">197</span>    <span class="s1">&#39;spiral_trajectory_3d&#39;</span><span class="p">,</span>
+<span class="linenos">198</span>    <span class="s1">&#39;sinusoidal_trajectory_3d&#39;</span><span class="p">,</span>
+<span class="linenos">199</span>    <span class="s1">&#39;saddle_trajectory_3d&#39;</span><span class="p">,</span>
+<span class="linenos">200</span>    <span class="s1">&#39;custom_trajectory_3d&#39;</span><span class="p">,</span>
+<span class="linenos">201</span>    <span class="s1">&#39;apply_detector_array_convention&#39;</span><span class="p">,</span>
+<span class="linenos">202</span>    <span class="s1">&#39;apply_detector_geometry_convention&#39;</span><span class="p">,</span>
+<span class="linenos">203</span>    <span class="s1">&#39;apply_upper_left_detector_transform&#39;</span><span class="p">,</span>
+<span class="linenos">204</span>    <span class="s1">&#39;auto_voxel_spacing_from_detector&#39;</span><span class="p">,</span>
+<span class="linenos">205</span>    <span class="s1">&#39;build_upper_left_detector_transform&#39;</span><span class="p">,</span>
+<span class="linenos">206</span>    <span class="s1">&#39;diagnose_cone_geometry&#39;</span><span class="p">,</span>
+<span class="linenos">207</span>    <span class="s1">&#39;estimate_cone_isocenter&#39;</span><span class="p">,</span>
+<span class="linenos">208</span>    <span class="s1">&#39;mu_to_hu&#39;</span><span class="p">,</span>
+<span class="linenos">209</span>    <span class="s1">&#39;mu_to_uint16&#39;</span><span class="p">,</span>
+<span class="linenos">210</span>    <span class="s1">&#39;normalize_volume&#39;</span><span class="p">,</span>
+<span class="linenos">211</span>    <span class="s1">&#39;resize_volume_to_shape&#39;</span><span class="p">,</span>
+<span class="linenos">212</span>    <span class="s1">&#39;shift_detector_center&#39;</span><span class="p">,</span>
+<span class="linenos">213</span>    <span class="s1">&#39;transform_detector_offsets&#39;</span><span class="p">,</span>
+<span class="linenos">214</span>    <span class="s1">&#39;load_arbitrary_cone_geometry_from_json&#39;</span><span class="p">,</span>
+<span class="linenos">215</span>    <span class="c1"># 2D fan beam trajectory generators</span>
+<span class="linenos">216</span>    <span class="s1">&#39;circular_trajectory_2d_fan&#39;</span><span class="p">,</span>
+<span class="linenos">217</span>    <span class="s1">&#39;sinusoidal_trajectory_2d_fan&#39;</span><span class="p">,</span>
+<span class="linenos">218</span>    <span class="s1">&#39;custom_trajectory_2d_fan&#39;</span><span class="p">,</span>
+<span class="linenos">219</span>    <span class="c1"># 2D parallel beam trajectory generators</span>
+<span class="linenos">220</span>    <span class="s1">&#39;circular_trajectory_2d_parallel&#39;</span><span class="p">,</span>
+<span class="linenos">221</span>    <span class="s1">&#39;sinusoidal_trajectory_2d_parallel&#39;</span><span class="p">,</span>
+<span class="linenos">222</span>    <span class="s1">&#39;custom_trajectory_2d_parallel&#39;</span><span class="p">,</span>
+<span class="linenos">223</span><span class="p">]</span>
 </pre></div>
 </div>
 </div>
