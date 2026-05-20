@@ -268,7 +268,9 @@ def parallel_forward_vjp(primals, cotangent, _):
         cotangent, ray_dir, det_origin, det_u_vec,
         detector_spacing, Ny, Nx, voxel_spacing
     )
-    return (grad_image, None, None, None, None, None, None)
+    return (grad_image,
+            mx.zeros_like(ray_dir), mx.zeros_like(det_origin), mx.zeros_like(det_u_vec),
+            None, None, None)
 
 
 @mx.custom_function
@@ -312,7 +314,9 @@ def parallel_backward_vjp(primals, cotangent, _):
         cotangent, ray_dir, det_origin, det_u_vec,
         n_det, detector_spacing, 1.0
     )
-    return (grad_sinogram, None, None, None, None, None, None, None)
+    return (grad_sinogram,
+            mx.zeros_like(ray_dir), mx.zeros_like(det_origin), mx.zeros_like(det_u_vec),
+            None, None, None, None)
 
 
 @mx.custom_function
@@ -347,7 +351,9 @@ def parallel_forward_footprint_vjp(primals, cotangent, _):
         Nx,
         voxel_spacing,
     )
-    return (grad_image, None, None, None, None, None, None)
+    return (grad_image,
+            mx.zeros_like(ray_dir), mx.zeros_like(det_origin), mx.zeros_like(det_u_vec),
+            None, None, None)
 
 
 @mx.custom_function
@@ -382,7 +388,9 @@ def parallel_backward_footprint_vjp(primals, cotangent, _):
         detector_spacing,
         voxel_spacing,
     )
-    return (grad_sinogram, None, None, None, None, None, None, None)
+    return (grad_sinogram,
+            mx.zeros_like(ray_dir), mx.zeros_like(det_origin), mx.zeros_like(det_u_vec),
+            None, None, None, None)
 
 
 # ============================================================================
@@ -563,7 +571,9 @@ def fan_forward_vjp(primals, cotangent, _):
         cotangent, src_pos, det_center, det_u_vec,
         detector_spacing, Ny, Nx, voxel_spacing
     )
-    return (grad_image, None, None, None, None, None, None)
+    return (grad_image,
+            mx.zeros_like(src_pos), mx.zeros_like(det_center), mx.zeros_like(det_u_vec),
+            None, None, None)
 
 
 @mx.custom_function
@@ -607,7 +617,9 @@ def fan_backward_vjp(primals, cotangent, _):
         cotangent, src_pos, det_center, det_u_vec,
         n_det, detector_spacing, 1.0
     )
-    return (grad_sinogram, None, None, None, None, None, None, None)
+    return (grad_sinogram,
+            mx.zeros_like(src_pos), mx.zeros_like(det_center), mx.zeros_like(det_u_vec),
+            None, None, None, None)
 
 
 @mx.custom_function
@@ -642,7 +654,9 @@ def fan_forward_footprint_vjp(primals, cotangent, _):
         Nx,
         voxel_spacing,
     )
-    return (grad_image, None, None, None, None, None, None)
+    return (grad_image,
+            mx.zeros_like(src_pos), mx.zeros_like(det_center), mx.zeros_like(det_u_vec),
+            None, None, None)
 
 
 @mx.custom_function
@@ -677,7 +691,9 @@ def fan_backward_footprint_vjp(primals, cotangent, _):
         detector_spacing,
         voxel_spacing,
     )
-    return (grad_sinogram, None, None, None, None, None, None, None)
+    return (grad_sinogram,
+            mx.zeros_like(src_pos), mx.zeros_like(det_center), mx.zeros_like(det_u_vec),
+            None, None, None, None)
 
 
 # ============================================================================
@@ -919,7 +935,10 @@ def cone_forward_vjp(primals, cotangent, _):
         cotangent, src_pos, det_center, det_u_vec, det_v_vec,
         D, H, W, du, dv, voxel_spacing
     )
-    return (grad_volume, None, None, None, None, None, None, None, None, None)
+    return (grad_volume,
+            mx.zeros_like(src_pos), mx.zeros_like(det_center),
+            mx.zeros_like(det_u_vec), mx.zeros_like(det_v_vec),
+            None, None, None, None, None)
 
 
 @mx.custom_function
@@ -968,7 +987,10 @@ def cone_backward_vjp(primals, cotangent, _):
         cotangent, src_pos, det_center, det_u_vec, det_v_vec,
         n_u, n_v, du, dv, voxel_spacing
     )
-    return (grad_sinogram, None, None, None, None, None, None, None, None, None, None)
+    return (grad_sinogram,
+            mx.zeros_like(src_pos), mx.zeros_like(det_center),
+            mx.zeros_like(det_u_vec), mx.zeros_like(det_v_vec),
+            None, None, None, None, None, None)
 
 
 @mx.custom_function
@@ -1010,7 +1032,10 @@ def cone_forward_footprint_vjp(primals, cotangent, _):
         dv,
         voxel_spacing,
     )
-    return (grad_volume, None, None, None, None, None, None, None, None, None)
+    return (grad_volume,
+            mx.zeros_like(src_pos), mx.zeros_like(det_center),
+            mx.zeros_like(det_u_vec), mx.zeros_like(det_v_vec),
+            None, None, None, None, None)
 
 
 @mx.custom_function
@@ -1053,4 +1078,7 @@ def cone_backward_footprint_vjp(primals, cotangent, _):
         dv,
         voxel_spacing,
     )
-    return (grad_sinogram, None, None, None, None, None, None, None, None, None, None)
+    return (grad_sinogram,
+            mx.zeros_like(src_pos), mx.zeros_like(det_center),
+            mx.zeros_like(det_u_vec), mx.zeros_like(det_v_vec),
+            None, None, None, None, None, None)
