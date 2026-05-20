@@ -47,7 +47,7 @@ def main():
     )
 
     # Forward projection
-    sinogram = diffct_mlx.parallel_forward(
+    sinogram = diffct_mlx.parallel_forward_footprint(
         image, ray_dir, det_origin, det_u_vec,
         num_detectors, detector_spacing, voxel_spacing,
     )
@@ -56,7 +56,7 @@ def main():
     # Ramp-filtered backprojection (FBP)
     sinogram_filt = ramp_filter(sinogram)
 
-    reco = diffct_mlx.parallel_backward(
+    reco = diffct_mlx.parallel_backward_footprint(
         sinogram_filt, ray_dir, det_origin, det_u_vec,
         detector_spacing=detector_spacing, H=Ny, W=Nx, voxel_spacing=voxel_spacing,
     )
@@ -66,12 +66,12 @@ def main():
 
     # ── Gradient demo ────────────────────────────────────────────────────────
     def loss_fn(img):
-        s = diffct_mlx.parallel_forward(
+        s = diffct_mlx.parallel_forward_footprint(
             img, ray_dir, det_origin, det_u_vec,
             num_detectors, detector_spacing, voxel_spacing,
         )
         sf = ramp_filter(s)
-        r = diffct_mlx.parallel_backward(
+        r = diffct_mlx.parallel_backward_footprint(
             sf, ray_dir, det_origin, det_u_vec,
             detector_spacing=detector_spacing, H=Ny, W=Nx,
             voxel_spacing=voxel_spacing,

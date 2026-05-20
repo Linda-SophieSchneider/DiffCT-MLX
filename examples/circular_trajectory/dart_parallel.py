@@ -41,7 +41,7 @@ def main() -> None:
     reference_mx = mx.array(reference, dtype=mx.float32)
 
     ray_dir, det_origin, det_u_vec = diffct_mlx.circular_trajectory_2d_parallel(num_views)
-    sinogram = diffct_mlx.parallel_forward(
+    sinogram = diffct_mlx.parallel_forward_footprint(
         reference_mx,
         ray_dir,
         det_origin,
@@ -72,6 +72,7 @@ def main() -> None:
             iteration_count=12,
             sart_iteration_count=1,
             voxel_extreme_values=(0.0, 1.0),
+            voxel_sensitivity_normalization=True,
             backprojection_scale=0.18,
             shuffle_projection_order=False,
         ),
@@ -91,6 +92,7 @@ def main() -> None:
             gray_levels=tuple(float(level) for level in gray_levels),
             free_pixel_probability=0.12,
             voxel_extreme_values=(0.0, 1.0),
+            voxel_sensitivity_normalization=True,
             backprojection_scale=0.18,
             shuffle_projection_order=False,
             random_seed=7,

@@ -45,7 +45,7 @@ def main() -> None:
 
     det_u_count, det_v_count = detector_shape
     src_pos, det_center, det_u_vec, det_v_vec = diffct_mlx.circular_trajectory_3d(num_views, sid, sdd)
-    sinogram = diffct_mlx.cone_forward(
+    sinogram = diffct_mlx.cone_forward_footprint(
         reference_mx,
         src_pos,
         det_center,
@@ -81,6 +81,7 @@ def main() -> None:
             iteration_count=8,
             sart_iteration_count=1,
             voxel_extreme_values=(0.0, 1.0),
+            voxel_sensitivity_normalization=True,
             backprojection_scale=0.1,
             shuffle_projection_order=False,
         ),
@@ -100,6 +101,7 @@ def main() -> None:
             gray_levels=tuple(float(level) for level in gray_levels),
             free_pixel_probability=0.08,
             voxel_extreme_values=(0.0, 1.0),
+            voxel_sensitivity_normalization=True,
             backprojection_scale=0.1,
             shuffle_projection_order=False,
             random_seed=7,

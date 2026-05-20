@@ -298,3 +298,205 @@ fan_2d_backward_kernel = mx.fast.metal_kernel(
     source=_FAN_2D_BACKWARD_SOURCE,
     atomic_outputs=True,
 )
+
+# ============================================================================
+# 2D Fan Beam Footprint-Matched Projector Pair
+# ============================================================================
+
+_FAN_2D_FOOTPRINT_FORWARD_SOURCE = """
+    // Thread position: (iang, iy)
+    uint iang = thread_position_in_grid.x;
+    uint iy   = thread_position_in_grid.y;
+
+    int n_ang = params[0];
+    int n_det = params[1];
+    int Nx    = params[2];
+    int Ny    = params[3];
+
+    float det_spacing   = fparams[0];
+    float cx            = fparams[1];
+    float cy            = fparams[2];
+    float voxel_spacing = fparams[3];
+
+    if ((int)iang >= n_ang || (int)iy >= Ny) return;
+
+    float eps = """ + _EPSILON_STR + """;
+    float det_spacing_vox = det_spacing / voxel_spacing;
+    float center_u = (float)n_det * 0.5f;
+
+    float src_x = src_pos[iang * 2 + 0] / voxel_spacing;
+    float src_y = src_pos[iang * 2 + 1] / voxel_spacing;
+    float det_cx = det_center[iang * 2 + 0] / voxel_spacing;
+    float det_cy = det_center[iang * 2 + 1] / voxel_spacing;
+    float u_vec_x = det_u_vec[iang * 2 + 0];
+    float u_vec_y = det_u_vec[iang * 2 + 1];
+    float n_x = -u_vec_y;
+    float n_y = u_vec_x;
+
+    float plane_dx = det_cx - src_x;
+    float plane_dy = det_cy - src_y;
+    float plane_dist = plane_dx * n_x + plane_dy * n_y;
+    if (metal::abs(plane_dist) <= eps) return;
+
+    float py = ((float)iy + 0.5f) - cy;
+
+    for (int ix = 0; ix < Nx; ++ix) {
+        float val = image[(int)iy * Nx + ix];
+        if (metal::abs(val) <= eps) continue;
+
+        float px = ((float)ix + 0.5f) - cx;
+        float rx = px - src_x;
+        float ry = py - src_y;
+        float denom = rx * n_x + ry * n_y;
+        if (metal::abs(denom) <= eps) continue;
+
+        float t = plane_dist / denom;
+        if (t <= 0.0f) continue;
+
+        float qx = src_x + t * rx;
+        float qy = src_y + t * ry;
+        float rel_x = qx - det_cx;
+        float rel_y = qy - det_cy;
+        float u0 = rel_x * u_vec_x + rel_y * u_vec_y;
+
+        float ru = rx * u_vec_x + ry * u_vec_y;
+        float inv_denom = 1.0f / denom;
+        float grad_ux = t * u_vec_x - t * ru * inv_denom * n_x;
+        float grad_uy = t * u_vec_y - t * ru * inv_denom * n_y;
+        float half_u = 0.5f * (metal::abs(grad_ux) + metal::abs(grad_uy));
+        half_u = metal::max(half_u, 0.5f * det_spacing_vox);
+        float width_u = metal::max(2.0f * half_u, det_spacing_vox);
+        float support_u = half_u + 0.5f * det_spacing_vox;
+
+        float ray_len = metal::sqrt(rx * rx + ry * ry);
+        if (ray_len <= eps) continue;
+        float dir_x = rx / ray_len;
+        float dir_y = ry / ray_len;
+        float l_phi = 1.0f / metal::max(metal::max(metal::abs(dir_x), metal::abs(dir_y)), eps);
+
+        int idet_min = (int)metal::floor(u0 / det_spacing_vox + center_u - support_u / det_spacing_vox);
+        int idet_max = (int)metal::ceil(u0 / det_spacing_vox + center_u + support_u / det_spacing_vox);
+        idet_min = metal::max(0, idet_min);
+        idet_max = metal::min(n_det - 1, idet_max);
+
+        float fp_lo = u0 - half_u;
+        float fp_hi = u0 + half_u;
+        float scaled_val = val * l_phi;
+
+        for (int idet = idet_min; idet <= idet_max; ++idet) {
+            float pixel_u = ((float)idet - center_u) * det_spacing_vox;
+            float pixel_lo = pixel_u - 0.5f * det_spacing_vox;
+            float pixel_hi = pixel_u + 0.5f * det_spacing_vox;
+            float overlap = metal::min(pixel_hi, fp_hi) - metal::max(pixel_lo, fp_lo);
+            if (overlap <= eps) continue;
+            float weight = overlap / width_u;
+            atomic_fetch_add_explicit(&sino[iang * n_det + idet], scaled_val * weight, memory_order_relaxed);
+        }
+    }
+"""
+
+fan_2d_footprint_forward_kernel = mx.fast.metal_kernel(
+    name="fan_2d_footprint_forward",
+    input_names=["image", "src_pos", "det_center", "det_u_vec", "params", "fparams"],
+    output_names=["sino"],
+    source=_FAN_2D_FOOTPRINT_FORWARD_SOURCE,
+    atomic_outputs=True,
+)
+
+_FAN_2D_FOOTPRINT_BACKWARD_SOURCE = """
+    // Thread position: (ix, iy)
+    uint ix = thread_position_in_grid.x;
+    uint iy = thread_position_in_grid.y;
+
+    int n_ang = params[0];
+    int n_det = params[1];
+    int Nx    = params[2];
+    int Ny    = params[3];
+
+    float det_spacing   = fparams[0];
+    float cx            = fparams[1];
+    float cy            = fparams[2];
+    float voxel_spacing = fparams[3];
+
+    if ((int)ix >= Nx || (int)iy >= Ny) return;
+
+    float eps = """ + _EPSILON_STR + """;
+    float det_spacing_vox = det_spacing / voxel_spacing;
+    float center_u = (float)n_det * 0.5f;
+    float px = ((float)ix + 0.5f) - cx;
+    float py = ((float)iy + 0.5f) - cy;
+
+    float accum = 0.0f;
+
+    for (int iang = 0; iang < n_ang; ++iang) {
+        float src_x = src_pos[iang * 2 + 0] / voxel_spacing;
+        float src_y = src_pos[iang * 2 + 1] / voxel_spacing;
+        float det_cx = det_center_arr[iang * 2 + 0] / voxel_spacing;
+        float det_cy = det_center_arr[iang * 2 + 1] / voxel_spacing;
+        float u_vec_x = det_u_vec[iang * 2 + 0];
+        float u_vec_y = det_u_vec[iang * 2 + 1];
+        float n_x = -u_vec_y;
+        float n_y = u_vec_x;
+
+        float plane_dx = det_cx - src_x;
+        float plane_dy = det_cy - src_y;
+        float plane_dist = plane_dx * n_x + plane_dy * n_y;
+        if (metal::abs(plane_dist) <= eps) continue;
+
+        float rx = px - src_x;
+        float ry = py - src_y;
+        float denom = rx * n_x + ry * n_y;
+        if (metal::abs(denom) <= eps) continue;
+
+        float t = plane_dist / denom;
+        if (t <= 0.0f) continue;
+
+        float qx = src_x + t * rx;
+        float qy = src_y + t * ry;
+        float rel_x = qx - det_cx;
+        float rel_y = qy - det_cy;
+        float u0 = rel_x * u_vec_x + rel_y * u_vec_y;
+
+        float ru = rx * u_vec_x + ry * u_vec_y;
+        float inv_denom = 1.0f / denom;
+        float grad_ux = t * u_vec_x - t * ru * inv_denom * n_x;
+        float grad_uy = t * u_vec_y - t * ru * inv_denom * n_y;
+        float half_u = 0.5f * (metal::abs(grad_ux) + metal::abs(grad_uy));
+        half_u = metal::max(half_u, 0.5f * det_spacing_vox);
+        float width_u = metal::max(2.0f * half_u, det_spacing_vox);
+        float support_u = half_u + 0.5f * det_spacing_vox;
+
+        float ray_len = metal::sqrt(rx * rx + ry * ry);
+        if (ray_len <= eps) continue;
+        float dir_x = rx / ray_len;
+        float dir_y = ry / ray_len;
+        float l_phi = 1.0f / metal::max(metal::max(metal::abs(dir_x), metal::abs(dir_y)), eps);
+
+        int idet_min = (int)metal::floor(u0 / det_spacing_vox + center_u - support_u / det_spacing_vox);
+        int idet_max = (int)metal::ceil(u0 / det_spacing_vox + center_u + support_u / det_spacing_vox);
+        idet_min = metal::max(0, idet_min);
+        idet_max = metal::min(n_det - 1, idet_max);
+
+        float fp_lo = u0 - half_u;
+        float fp_hi = u0 + half_u;
+
+        for (int idet = idet_min; idet <= idet_max; ++idet) {
+            float pixel_u = ((float)idet - center_u) * det_spacing_vox;
+            float pixel_lo = pixel_u - 0.5f * det_spacing_vox;
+            float pixel_hi = pixel_u + 0.5f * det_spacing_vox;
+            float overlap = metal::min(pixel_hi, fp_hi) - metal::max(pixel_lo, fp_lo);
+            if (overlap <= eps) continue;
+            float weight = overlap / width_u;
+            accum += sino[iang * n_det + idet] * weight * l_phi;
+        }
+    }
+
+    grad_image[(int)iy * Nx + (int)ix] = accum;
+"""
+
+fan_2d_footprint_backward_kernel = mx.fast.metal_kernel(
+    name="fan_2d_footprint_backward",
+    input_names=["sino", "src_pos", "det_center_arr", "det_u_vec", "params", "fparams"],
+    output_names=["grad_image"],
+    source=_FAN_2D_FOOTPRINT_BACKWARD_SOURCE,
+)

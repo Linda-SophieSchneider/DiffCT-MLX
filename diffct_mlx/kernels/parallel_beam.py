@@ -280,3 +280,152 @@ parallel_2d_backward_kernel = mx.fast.metal_kernel(
     source=_PARALLEL_2D_BACKWARD_SOURCE,
     atomic_outputs=True,
 )
+
+# ============================================================================
+# 2D Parallel Beam Footprint-Matched Projector Pair
+# ============================================================================
+
+_PARALLEL_2D_FOOTPRINT_FORWARD_SOURCE = """
+    // Thread position: (iang, iy)
+    uint iang = thread_position_in_grid.x;
+    uint iy   = thread_position_in_grid.y;
+
+    int n_ang = params[0];
+    int n_det = params[1];
+    int Nx    = params[2];
+    int Ny    = params[3];
+
+    float det_spacing   = fparams[0];
+    float cx            = fparams[1];
+    float cy            = fparams[2];
+    float voxel_spacing = fparams[3];
+
+    if ((int)iang >= n_ang || (int)iy >= Ny) return;
+
+    float eps = """ + _EPSILON_STR + """;
+    float det_spacing_vox = det_spacing / voxel_spacing;
+    float center_u = (float)n_det * 0.5f;
+
+    float dir_x = ray_dir[iang * 2 + 0];
+    float dir_y = ray_dir[iang * 2 + 1];
+    float det_ox = det_origin[iang * 2 + 0] / voxel_spacing;
+    float det_oy = det_origin[iang * 2 + 1] / voxel_spacing;
+    float u_vec_x = det_u_vec[iang * 2 + 0];
+    float u_vec_y = det_u_vec[iang * 2 + 1];
+
+    float l_phi = 1.0f / metal::max(metal::max(metal::abs(dir_x), metal::abs(dir_y)), eps);
+    float half_u = 0.5f * (metal::abs(u_vec_x) + metal::abs(u_vec_y));
+    half_u = metal::max(half_u, 0.5f * det_spacing_vox);
+    float width_u = metal::max(2.0f * half_u, det_spacing_vox);
+    float support_u = half_u + 0.5f * det_spacing_vox;
+    float py = ((float)iy + 0.5f) - cy;
+
+    for (int ix = 0; ix < Nx; ++ix) {
+        float val = image[(int)iy * Nx + ix];
+        if (metal::abs(val) <= eps) continue;
+
+        float px = ((float)ix + 0.5f) - cx;
+        float rel_x = px - det_ox;
+        float rel_y = py - det_oy;
+        float u0 = rel_x * u_vec_x + rel_y * u_vec_y;
+
+        int idet_min = (int)metal::floor(u0 / det_spacing_vox + center_u - support_u / det_spacing_vox);
+        int idet_max = (int)metal::ceil(u0 / det_spacing_vox + center_u + support_u / det_spacing_vox);
+        idet_min = metal::max(0, idet_min);
+        idet_max = metal::min(n_det - 1, idet_max);
+
+        float fp_lo = u0 - half_u;
+        float fp_hi = u0 + half_u;
+        float scaled_val = val * l_phi;
+
+        for (int idet = idet_min; idet <= idet_max; ++idet) {
+            float pixel_u = ((float)idet - center_u) * det_spacing_vox;
+            float pixel_lo = pixel_u - 0.5f * det_spacing_vox;
+            float pixel_hi = pixel_u + 0.5f * det_spacing_vox;
+            float overlap = metal::min(pixel_hi, fp_hi) - metal::max(pixel_lo, fp_lo);
+            if (overlap <= eps) continue;
+            float weight = overlap / width_u;
+            atomic_fetch_add_explicit(&sino[iang * n_det + idet], scaled_val * weight, memory_order_relaxed);
+        }
+    }
+"""
+
+parallel_2d_footprint_forward_kernel = mx.fast.metal_kernel(
+    name="parallel_2d_footprint_forward",
+    input_names=["image", "ray_dir", "det_origin", "det_u_vec", "params", "fparams"],
+    output_names=["sino"],
+    source=_PARALLEL_2D_FOOTPRINT_FORWARD_SOURCE,
+    atomic_outputs=True,
+)
+
+_PARALLEL_2D_FOOTPRINT_BACKWARD_SOURCE = """
+    // Thread position: (ix, iy)
+    uint ix = thread_position_in_grid.x;
+    uint iy = thread_position_in_grid.y;
+
+    int n_ang = params[0];
+    int n_det = params[1];
+    int Nx    = params[2];
+    int Ny    = params[3];
+
+    float det_spacing   = fparams[0];
+    float cx            = fparams[1];
+    float cy            = fparams[2];
+    float voxel_spacing = fparams[3];
+
+    if ((int)ix >= Nx || (int)iy >= Ny) return;
+
+    float eps = """ + _EPSILON_STR + """;
+    float det_spacing_vox = det_spacing / voxel_spacing;
+    float center_u = (float)n_det * 0.5f;
+    float px = ((float)ix + 0.5f) - cx;
+    float py = ((float)iy + 0.5f) - cy;
+
+    float accum = 0.0f;
+
+    for (int iang = 0; iang < n_ang; ++iang) {
+        float dir_x = ray_dir[iang * 2 + 0];
+        float dir_y = ray_dir[iang * 2 + 1];
+        float det_ox = det_origin_arr[iang * 2 + 0] / voxel_spacing;
+        float det_oy = det_origin_arr[iang * 2 + 1] / voxel_spacing;
+        float u_vec_x = det_u_vec[iang * 2 + 0];
+        float u_vec_y = det_u_vec[iang * 2 + 1];
+
+        float l_phi = 1.0f / metal::max(metal::max(metal::abs(dir_x), metal::abs(dir_y)), eps);
+        float half_u = 0.5f * (metal::abs(u_vec_x) + metal::abs(u_vec_y));
+        half_u = metal::max(half_u, 0.5f * det_spacing_vox);
+        float width_u = metal::max(2.0f * half_u, det_spacing_vox);
+        float support_u = half_u + 0.5f * det_spacing_vox;
+
+        float rel_x = px - det_ox;
+        float rel_y = py - det_oy;
+        float u0 = rel_x * u_vec_x + rel_y * u_vec_y;
+
+        int idet_min = (int)metal::floor(u0 / det_spacing_vox + center_u - support_u / det_spacing_vox);
+        int idet_max = (int)metal::ceil(u0 / det_spacing_vox + center_u + support_u / det_spacing_vox);
+        idet_min = metal::max(0, idet_min);
+        idet_max = metal::min(n_det - 1, idet_max);
+
+        float fp_lo = u0 - half_u;
+        float fp_hi = u0 + half_u;
+
+        for (int idet = idet_min; idet <= idet_max; ++idet) {
+            float pixel_u = ((float)idet - center_u) * det_spacing_vox;
+            float pixel_lo = pixel_u - 0.5f * det_spacing_vox;
+            float pixel_hi = pixel_u + 0.5f * det_spacing_vox;
+            float overlap = metal::min(pixel_hi, fp_hi) - metal::max(pixel_lo, fp_lo);
+            if (overlap <= eps) continue;
+            float weight = overlap / width_u;
+            accum += sino[iang * n_det + idet] * weight * l_phi;
+        }
+    }
+
+    grad_image[(int)iy * Nx + (int)ix] = accum;
+"""
+
+parallel_2d_footprint_backward_kernel = mx.fast.metal_kernel(
+    name="parallel_2d_footprint_backward",
+    input_names=["sino", "ray_dir", "det_origin_arr", "det_u_vec", "params", "fparams"],
+    output_names=["grad_image"],
+    source=_PARALLEL_2D_FOOTPRINT_BACKWARD_SOURCE,
+)

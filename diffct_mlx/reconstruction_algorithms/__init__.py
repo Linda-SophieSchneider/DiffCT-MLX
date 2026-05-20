@@ -2,10 +2,12 @@
 
 from .cases import (
     MeasuredConeDataConfig,
+    NpyProjectionsConfig,
     ReconstructionCase,
     build_cone_3d_case,
     build_fan_2d_case,
     build_measured_cone_3d_case,
+    build_npy_cone_3d_case,
     build_parallel_2d_case,
     make_cone_3d_operators,
     make_fan_2d_operators,
@@ -32,11 +34,13 @@ Regularisation_Parameter = RegularizationParameters
 
 __all__ = [
     "MeasuredConeDataConfig",
+    "NpyProjectionsConfig",
     "ReconstructionCase",
     "build_parallel_2d_case",
     "build_fan_2d_case",
     "build_cone_3d_case",
     "build_measured_cone_3d_case",
+    "build_npy_cone_3d_case",
     "make_parallel_2d_operators",
     "make_fan_2d_operators",
     "make_cone_3d_operators",

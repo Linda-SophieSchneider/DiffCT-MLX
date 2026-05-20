@@ -39,7 +39,7 @@ def run_reconstruction(trajectory_name, ray_dir, det_origin, det_u_vec,
 
     # Generate ground-truth sinogram
     print("Generating sinogram...")
-    target_sino = diffct_mlx.parallel_forward(
+    target_sino = diffct_mlx.parallel_forward_footprint(
         phantom, ray_dir, det_origin, det_u_vec,
         n_det, det_spacing, voxel_spacing,
     )
@@ -50,7 +50,7 @@ def run_reconstruction(trajectory_name, ray_dir, det_origin, det_u_vec,
     lr = 1e-1
 
     def loss_fn(reco_val):
-        current_sino = diffct_mlx.parallel_forward(
+        current_sino = diffct_mlx.parallel_forward_footprint(
             reco_val,
             ray_dir, det_origin, det_u_vec,
             n_det, det_spacing, voxel_spacing,

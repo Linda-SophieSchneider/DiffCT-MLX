@@ -101,10 +101,13 @@ def reconstruct_asd_pocs(
 
             beta *= float(reg_params.beta_red)
 
+        mx.eval(volume)
+
         if show_progress:
             print_progress(iteration, reco_params.iteration_count)
 
     volume = clamp_reconstruction_volume(volume, reco_params, stage="final")
+    mx.eval(volume)
     return volume
 
 

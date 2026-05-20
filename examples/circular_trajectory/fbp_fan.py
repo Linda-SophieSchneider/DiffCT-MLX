@@ -49,7 +49,7 @@ def main():
     )
 
     # Forward projection
-    sinogram = diffct_mlx.fan_forward(
+    sinogram = diffct_mlx.fan_forward_footprint(
         image, src_pos, det_center, det_u_vec,
         num_detectors, detector_spacing, voxel_spacing,
     )
@@ -64,7 +64,7 @@ def main():
     sino_weighted = sinogram * weights
     sinogram_filt = ramp_filter(sino_weighted)
 
-    reco = diffct_mlx.fan_backward(
+    reco = diffct_mlx.fan_backward_footprint(
         sinogram_filt, src_pos, det_center, det_u_vec,
         detector_spacing=detector_spacing, H=Ny, W=Nx, voxel_spacing=voxel_spacing,
     )
@@ -75,13 +75,13 @@ def main():
 
     # ── Gradient demo ────────────────────────────────────────────────────────
     def loss_fn(img):
-        s = diffct_mlx.fan_forward(
+        s = diffct_mlx.fan_forward_footprint(
             img, src_pos, det_center, det_u_vec,
             num_detectors, detector_spacing, voxel_spacing,
         )
         sw = s * weights
         sf = ramp_filter(sw)
-        r = diffct_mlx.fan_backward(
+        r = diffct_mlx.fan_backward_footprint(
             sf, src_pos, det_center, det_u_vec,
             detector_spacing=detector_spacing, H=Ny, W=Nx,
             voxel_spacing=voxel_spacing,

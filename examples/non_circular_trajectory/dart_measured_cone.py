@@ -75,6 +75,9 @@ def main() -> None:
         detector_border_v=16,  # Ignore this many detector rows at each vertical edge; try 0-32 when top/bottom rows contain air or truncation artifacts.
         projection_chunk_size=16,  # Batch geometry-invariant forward passes over small view chunks to reduce Python/kernel-launch overhead without changing SART semantics.
         voxel_extreme_values=(0.0, 1.0),  # Expected min/max voxel values used for clipping/normalization; set to your material range, often (0, 1) or known attenuation bounds.
+        volume_support_mask=case.iterative_volume_support_mask,  # Reuse the measured-case support estimate, but only in the configured stage mode.
+        volume_support_mask_mode=case.iterative_volume_support_mask_mode,  # Measured cone defaults to final-only masking to avoid over-constraining the iterative updates.
+        voxel_sensitivity_normalization=case.iterative_voxel_sensitivity_normalization,  # Divide updates by per-voxel ray coverage when using the matched footprint projector.
         backprojection_scale=0.05,  # Relaxation step size for backprojection updates; ~0.01-0.2 is a common tuning range, smaller is safer, larger converges faster but can overshoot.
         shuffle_projection_order=False,  # Randomize view order each sweep; False is more reproducible, True can reduce directional bias in some cases.
     )
@@ -99,6 +102,9 @@ def main() -> None:
         detector_border_v=16,  # Ignore this many detector rows at each vertical edge; 0-32 is common when detector edges are noisy or truncated.
         projection_chunk_size=16,  # Use chunked multi-view forwards for fixed-part and raylength passes; this helps throughput on large measured datasets.
         voxel_extreme_values=(0.0, 1.0),  # Expected min/max voxel values for clipping/normalization; match the discrete gray-level range when possible.
+        volume_support_mask=case.iterative_volume_support_mask,  # Keep the same measured-case support estimate for the final DART volume cleanup.
+        volume_support_mask_mode=case.iterative_volume_support_mask_mode,  # Final-only masking matches the measured SART path and avoids starving DART's inner updates.
+        voxel_sensitivity_normalization=case.iterative_voxel_sensitivity_normalization,  # Keep DART's inner SART updates on the same normalized matched-projector path as the measured baseline.
         backprojection_scale=0.05,  # Relaxation step size for update strength; ~0.01-0.2 is a useful tuning range depending on stability and noise.
         shuffle_projection_order=True,  # Randomize projection order between sweeps; often helpful in DART to reduce view-order bias.
         return_segmented_volume=True,  # Return the discretized DART result instead of the intermediate continuous image; usually True for segmentation-focused use.

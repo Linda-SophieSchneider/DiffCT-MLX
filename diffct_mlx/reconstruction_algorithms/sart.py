@@ -16,7 +16,7 @@ from ._core import (
     initialize_volume,
     normalize_measured_projections,
     print_progress,
-    run_sart_sweeps,
+    run_iterative_sweeps,
     validate_reconstruction_inputs,
 )
 
@@ -42,7 +42,7 @@ def reconstruct_sart(
     for iteration in range(params.iteration_count):
         skip_first_sart = iteration == 0 and params.initial_volume is not None
         if not skip_first_sart:
-            volume = run_sart_sweeps(
+            volume = run_iterative_sweeps(
                 volume=volume,
                 measured_projections=measured,
                 ones_volume=ones_volume,
@@ -52,10 +52,14 @@ def reconstruct_sart(
                 outer_iteration_index=iteration,
             )
         volume = clamp_reconstruction_volume(volume, params, stage="iteration")
+        # Force evaluation per outer iteration so long measured-data runs do not
+        # accumulate an unbounded lazy graph on Metal.
+        mx.eval(volume)
         if show_progress:
             print_progress(iteration, params.iteration_count)
 
     volume = clamp_reconstruction_volume(volume, params, stage="final")
+    mx.eval(volume)
     return volume
 
 

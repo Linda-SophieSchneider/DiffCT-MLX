@@ -45,7 +45,8 @@ def run_reconstruction(trajectory_name,
                        voxel_spacing, epochs=100, lr=1e-1,
                        target_sino=None, reference_volume=None,
                        tv_weight=0.0, l2_weight=0.0,
-                       fit_projection_gain=False):
+                       fit_projection_gain=False,
+                       backprojection_init=False):
     """Run gradient-based iterative reconstruction for a cone beam trajectory."""
     print(f"\n{'=' * 60}")
     print(f"Processing {trajectory_name} Trajectory")
@@ -55,7 +56,7 @@ def run_reconstruction(trajectory_name,
 
     if target_sino is None:
         print("Generating sinogram...")
-        target_sino = diffct_mlx.cone_forward(
+        target_sino = diffct_mlx.cone_forward_footprint(
             phantom, src_pos, det_center, det_u_vec, det_v_vec,
             det_u, det_v, du, dv, voxel_spacing,
         )
@@ -64,17 +65,28 @@ def run_reconstruction(trajectory_name,
         target_sino = mx.array(target_sino, dtype=mx.float32)
     mx.eval(target_sino)
 
-    # With analytic projection-gain fitting, exact zero init becomes a stationary
-    # point because the forward projection is also zero.
-    init_value = 1e-3 if fit_projection_gain else 0.0
-    params = {"reco": mx.full((Nz, Ny, Nx), init_value, dtype=mx.float32)}
+    if backprojection_init:
+        print("Initialising with averaged backprojection...")
+        initial_reco = diffct_mlx.cone_backward_footprint(
+            target_sino,
+            src_pos, det_center, det_u_vec, det_v_vec,
+            D=Nz, H=Ny, W=Nx, du=du, dv=dv, voxel_spacing=voxel_spacing,
+        )
+        initial_reco = mx.maximum(initial_reco / float(max(1, int(target_sino.shape[0]))), 0.0)
+        params = {"reco": initial_reco}
+    else:
+        # With analytic projection-gain fitting, exact zero init becomes a stationary
+        # point because the forward projection is also zero.
+        init_value = 1e-3 if fit_projection_gain else 0.0
+        params = {"reco": mx.full((Nz, Ny, Nx), init_value, dtype=mx.float32)}
     if fit_projection_gain:
         params["log_gain"] = mx.array(0.0, dtype=mx.float32)
+    mx.eval(params["reco"])
     optimizer = optim.Adam(learning_rate=lr, bias_correction=True)
 
     def loss_fn(current_params):
         reco_val = current_params["reco"]
-        current_sino = diffct_mlx.cone_forward(
+        current_sino = diffct_mlx.cone_forward_footprint(
             reco_val,
             src_pos, det_center, det_u_vec, det_v_vec,
             det_u, det_v, du, dv, voxel_spacing,
@@ -143,9 +155,9 @@ def run_reconstruction(trajectory_name,
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    Nx, Ny, Nz = 200, 200, 200
-    phantom_np = diffct_mlx.shepp_logan_3d((Nz, Ny, Nx))
-    phantom = mx.array(phantom_np)
+    Nx, Ny, Nz = 400, 400, 400
+    # phantom_np = diffct_mlx.shepp_logan_3d((Nz, Ny, Nx))
+    # phantom = mx.array(phantom_np)
 
     num_views = 200
     det_u, det_v = 256, 256
@@ -162,82 +174,82 @@ def main():
     results = {}
 
     # 1. Spiral trajectory
-    print("\nGenerating Spiral Trajectory...")
-    s, dc, du_v, dv_v = diffct_mlx.spiral_trajectory_3d(
-        num_views, sid, sdd, z_range=80.0, n_turns=2.0,
-    )
-    lv, reco, metrics = run_reconstruction(
-        "Spiral", s, dc, du_v, dv_v,
-        phantom, det_u, det_v, du, dv, voxel_spacing, epochs,
-        reference_volume=phantom_np,
-    )
-    results["Spiral"] = {
-        "loss": lv,
-        "reco": reco,
-        "reference": phantom_np[mid],
-        "reference_title": "Original",
-        "metrics": metrics,
-    }
+    # print("\nGenerating Spiral Trajectory...")
+    # s, dc, du_v, dv_v = diffct_mlx.spiral_trajectory_3d(
+    #     num_views, sid, sdd, z_range=80.0, n_turns=2.0,
+    # )
+    # lv, reco, metrics = run_reconstruction(
+    #     "Spiral", s, dc, du_v, dv_v,
+    #     phantom, det_u, det_v, du, dv, voxel_spacing, epochs,
+    #     reference_volume=phantom_np,
+    # )
+    # results["Spiral"] = {
+    #     "loss": lv,
+    #     "reco": reco,
+    #     "reference": phantom_np[mid],
+    #     "reference_title": "Original",
+    #     "metrics": metrics,
+    # }
 
     # 2. Sinusoidal trajectory
-    print("\nGenerating Sinusoidal Trajectory...")
-    s, dc, du_v, dv_v = diffct_mlx.sinusoidal_trajectory_3d(
-        num_views, sid, sdd, amplitude=50.0, frequency=3.0,
-    )
-    lv, reco, metrics = run_reconstruction(
-        "Sinusoidal", s, dc, du_v, dv_v,
-        phantom, det_u, det_v, du, dv, voxel_spacing, epochs,
-        reference_volume=phantom_np,
-    )
-    results["Sinusoidal"] = {
-        "loss": lv,
-        "reco": reco,
-        "reference": phantom_np[mid],
-        "reference_title": "Original",
-        "metrics": metrics,
-    }
+    # print("\nGenerating Sinusoidal Trajectory...")
+    # s, dc, du_v, dv_v = diffct_mlx.sinusoidal_trajectory_3d(
+    #     num_views, sid, sdd, amplitude=50.0, frequency=3.0,
+    # )
+    # lv, reco, metrics = run_reconstruction(
+    #     "Sinusoidal", s, dc, du_v, dv_v,
+    #     phantom, det_u, det_v, du, dv, voxel_spacing, epochs,
+    #     reference_volume=phantom_np,
+    # )
+    # results["Sinusoidal"] = {
+    #     "loss": lv,
+    #     "reco": reco,
+    #     "reference": phantom_np[mid],
+    #     "reference_title": "Original",
+    #     "metrics": metrics,
+    # }
 
     # 3. Saddle trajectory
-    print("\nGenerating Saddle Trajectory...")
-    s, dc, du_v, dv_v = diffct_mlx.saddle_trajectory_3d(
-        num_views, sid, sdd, z_amplitude=60.0, radial_amplitude=40.0,
-    )
-    lv, reco, metrics = run_reconstruction(
-        "Saddle", s, dc, du_v, dv_v,
-        phantom, det_u, det_v, du, dv, voxel_spacing, epochs,
-        reference_volume=phantom_np,
-    )
-    results["Saddle"] = {
-        "loss": lv,
-        "reco": reco,
-        "reference": phantom_np[mid],
-        "reference_title": "Original",
-        "metrics": metrics,
-    }
+    # print("\nGenerating Saddle Trajectory...")
+    # s, dc, du_v, dv_v = diffct_mlx.saddle_trajectory_3d(
+    #     num_views, sid, sdd, z_amplitude=60.0, radial_amplitude=40.0,
+    # )
+    # lv, reco, metrics = run_reconstruction(
+    #     "Saddle", s, dc, du_v, dv_v,
+    #     phantom, det_u, det_v, du, dv, voxel_spacing, epochs,
+    #     reference_volume=phantom_np,
+    # )
+    # results["Saddle"] = {
+    #     "loss": lv,
+    #     "reco": reco,
+    #     "reference": phantom_np[mid],
+    #     "reference_title": "Original",
+    #     "metrics": metrics,
+    # }
 
     # 4. Custom figure-8 trajectory
-    print("\nGenerating Custom (Figure-8) Trajectory...")
-    s, dc, du_v, dv_v = diffct_mlx.custom_trajectory_3d(
-        num_views, sid, sdd, source_path_fn=custom_figure8_trajectory,
-    )
-    lv, reco, metrics = run_reconstruction(
-        "Figure-8", s, dc, du_v, dv_v,
-        phantom, det_u, det_v, du, dv, voxel_spacing, epochs,
-        reference_volume=phantom_np,
-    )
-    results["Figure-8"] = {
-        "loss": lv,
-        "reco": reco,
-        "reference": phantom_np[mid],
-        "reference_title": "Original",
-        "metrics": metrics,
-    }
+    # print("\nGenerating Custom (Figure-8) Trajectory...")
+    # s, dc, du_v, dv_v = diffct_mlx.custom_trajectory_3d(
+    #     num_views, sid, sdd, source_path_fn=custom_figure8_trajectory,
+    # )
+    # lv, reco, metrics = run_reconstruction(
+    #     "Figure-8", s, dc, du_v, dv_v,
+    #     phantom, det_u, det_v, du, dv, voxel_spacing, epochs,
+    #     reference_volume=phantom_np,
+    # )
+    # results["Figure-8"] = {
+    #     "loss": lv,
+    #     "reco": reco,
+    #     "reference": phantom_np[mid],
+    #     "reference_title": "Original",
+    #     "metrics": metrics,
+    # }
 
     # 5. Real measured arbitrary trajectory
     print("\nLoading measured TIFF data and arbitrary geometry...")
     real_data_dir = Path(__file__).parent / "sample_data" / "sim_obj_1_tif"
     trajectory_json_path = real_data_dir / "sim_obj_1_geometry_diffct.json"
-    reference_volume_path = Path(__file__).parent / "sample_data" / "reko" / "sim_obj_1_diffct.npy"
+    reference_volume_path = Path(__file__).parent / "sample_data" / "reko" / "sim_obj_1_firefly.npy"
     reference_meta_path = Path(__file__).parent / "sample_data" / "reko" / "sim_obj_1_diffct.json"
     reference_meta = None
     resized_reference_voxel_spacing = None
@@ -274,8 +286,8 @@ def main():
     det_u_binning = max(1, int(np.ceil(geometry_payload["detector"]["num_pixels"]["u"] / det_u)))
     measured_sino_np = load_tiff_projections(
         real_data_dir,
-        log_transform=False,
-        revert=True,
+        log_transform=True,
+        revert=False,
         view_stride=view_stride,
         detector_binning_u=det_u_binning,
         detector_binning_v=det_v_binning,
@@ -351,6 +363,7 @@ def main():
         tv_weight=measured_tv_weight,
         l2_weight=measured_l2_weight,
         fit_projection_gain=False,
+        backprojection_init=True,
     )
 
     if reference_volume_np is not None:
@@ -383,6 +396,14 @@ def main():
     #     f"{diag['estimated_isocenter_y_mm']:.1f}, "
     #     f"{diag['estimated_isocenter_z_mm']:.1f}) mm"
     # )
+
+    for name, result in results.items():
+        technique_name = "_".join(
+            "".join(ch.lower() if ch.isalnum() else " " for ch in name).split()
+        )
+        volume_output_path = Path(f"iterative_cone_{technique_name}.npy")
+        np.save(volume_output_path, result["reco"])
+        print(f"Saved {name} reconstruction to {volume_output_path.resolve()}")
 
 
     # ── Plot ─────────────────────────────────────────────────────────────────
