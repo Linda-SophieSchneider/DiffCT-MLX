@@ -5,6 +5,7 @@ functions using custom Metal kernels on Apple Silicon, with VJP (vector-Jacobian
 product) support for gradient computation via ``mx.custom_function``.
 """
 
+import os
 from functools import lru_cache
 
 import numpy as np
@@ -25,7 +26,12 @@ from .kernels import (
     cone_3d_backward_kernel,
     cone_3d_footprint_forward_kernel,
     cone_3d_footprint_backward_kernel,
+    cone_3d_geometry_grad_kernel,
 )
+
+# Set DIFFCT_GEOMETRY_VJP=1 to use the analytical geometry gradient kernel
+# instead of the finite-difference fallback for cone_forward.
+_GEOMETRY_VJP_ENABLED: bool = os.getenv("DIFFCT_GEOMETRY_VJP", "0") == "1"
 
 
 def _as_mx_float_array(value):
@@ -700,6 +706,68 @@ def fan_backward_footprint_vjp(primals, cotangent, _):
 # 3D Cone Beam
 # ============================================================================
 
+#: Perturbation step (in the same length unit as src_pos, typically mm) used
+#: for the finite-difference source-position VJP.  A value of ~0.5 mm gives
+#: good accuracy for source-to-isocenter distances in the 100–1000 mm range.
+_FD_EPS_SRC: float = 0.5
+
+
+def _src_pos_grad_fd(
+    volume, src_pos, det_center, det_u_vec, det_v_vec,
+    det_u, det_v, du, dv, voxel_spacing,
+    cotangent,
+    eps: float = _FD_EPS_SRC,
+) -> "mx.array":
+    """Finite-difference VJP for *src_pos* in cone-beam forward projection.
+
+    Uses 6 forward passes (±ε per spatial axis) to approximate
+    ``cotangent^T · ∂F/∂src_pos``.  Because each view's projection depends
+    only on that view's source position, all views can be perturbed
+    simultaneously with the same Δ, giving the correct per-view gradient
+    without any extra passes per additional view.
+
+    Parameters
+    ----------
+    cotangent : mx.array, shape ``(n_views, det_u, det_v)``
+        Upstream gradient from the objective.
+    eps : float
+        Finite-difference step size in the same units as *src_pos*.
+
+    Returns
+    -------
+    grad_src_pos : mx.array, shape ``(n_views, 3)``
+    """
+    # Convert all inputs to plain MLX arrays to detach them from any autograd
+    # tape that may be active in the calling context (second-order
+    # differentiation is not desired here).
+    volume = _as_mx_float_array(volume)
+    src_pos = _as_mx_float_array(src_pos)
+    det_center = _as_mx_float_array(det_center)
+    det_u_vec = _as_mx_float_array(det_u_vec)
+    det_v_vec = _as_mx_float_array(det_v_vec)
+    cotangent = _as_mx_float_array(cotangent)
+
+    grads = []
+    for j in range(3):
+        delta_list = [[0.0, 0.0, 0.0]]
+        delta_list[0][j] = eps
+        delta = mx.array(delta_list, dtype=src_pos.dtype)  # (1, 3) — broadcast
+
+        f_plus = _cone_forward_impl(
+            volume, src_pos + delta, det_center, det_u_vec, det_v_vec,
+            det_u, det_v, du, dv, voxel_spacing,
+        )
+        f_minus = _cone_forward_impl(
+            volume, src_pos - delta, det_center, det_u_vec, det_v_vec,
+            det_u, det_v, du, dv, voxel_spacing,
+        )
+        # Directional derivative w.r.t. src_pos[:, j]; shape (n_views, det_u, det_v)
+        df_dxj = (f_plus - f_minus) / (2.0 * eps)
+        # Chain rule: sum cotangent * df_dxj over the detector pixels per view
+        grads.append(mx.sum(cotangent * df_dxj, axis=(1, 2)))  # (n_views,)
+
+    return mx.stack(grads, axis=-1)  # (n_views, 3)
+
 def _cone_forward_impl(volume, src_pos, det_center, det_u_vec, det_v_vec,
                        det_u, det_v, du, dv, voxel_spacing=1.0):
     """Raw cone beam forward projection."""
@@ -795,6 +863,54 @@ def _cone_backward_impl(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
     # Permute WHD → DHW
     vol = mx.transpose(outputs[0], axes=(2, 1, 0))
     return mx.array(vol)
+
+
+def _cone_geometry_grad_impl(
+    volume, cotangent, src_pos, det_center, det_u_vec, det_v_vec,
+    det_u, det_v, du, dv, voxel_spacing=1.0
+):
+    """Analytical VJP of cone_forward w.r.t. src_pos, det_center, det_u_vec, det_v_vec.
+
+    Returns
+    -------
+    grad_src_pos : ``(n_views, 3)``
+    grad_det_center : ``(n_views, 3)``
+    grad_det_u_vec : ``(n_views, 3)``
+    grad_det_v_vec : ``(n_views, 3)``
+    """
+    volume = _as_mx_float_array(volume)
+    cotangent = _as_mx_float_array(cotangent)
+    src_pos = _as_mx_float_array(src_pos)
+    det_center = _as_mx_float_array(det_center)
+    det_u_vec = _as_mx_float_array(det_u_vec)
+    det_v_vec = _as_mx_float_array(det_v_vec)
+
+    D, H, W = volume.shape
+    n_views = src_pos.shape[0]
+    n_u, n_v = int(det_u), int(det_v)
+
+    # Same WHD permutation as the forward kernel
+    volume_perm = mx.array(mx.transpose(volume, axes=(2, 1, 0)))
+    Nx, Ny, Nz = W, H, D
+
+    params, fparams = _projector_params_3d(
+        n_views, n_u, n_v, Nx, Ny, Nz,
+        float(du), float(dv),
+        float(Nx * 0.5), float(Ny * 0.5), float(Nz * 0.5),
+        float(voxel_spacing),
+    )
+
+    grid, tg = _grid_3d(n_views, n_u, n_v)
+
+    outputs = cone_3d_geometry_grad_kernel(
+        inputs=[volume_perm, cotangent, src_pos, det_center, det_u_vec, det_v_vec, params, fparams],
+        output_shapes=[(n_views, 3), (n_views, 3), (n_views, 3), (n_views, 3)],
+        output_dtypes=[_MX_DTYPE, _MX_DTYPE, _MX_DTYPE, _MX_DTYPE],
+        grid=grid,
+        threadgroup=tg,
+        init_value=0,
+    )
+    return outputs[0], outputs[1], outputs[2], outputs[3]
 
 
 def _cone_forward_footprint_impl(volume, src_pos, det_center, det_u_vec, det_v_vec,
@@ -926,6 +1042,8 @@ def cone_forward(volume, src_pos, det_center, det_u_vec, det_v_vec,
 @cone_forward.vjp
 def cone_forward_vjp(primals, cotangent, _):
     volume, src_pos, det_center, det_u_vec, det_v_vec = primals[:5]
+    det_u_int = int(primals[5]) if len(primals) > 5 else 128
+    det_v_int = int(primals[6]) if len(primals) > 6 else 128
     du = primals[7] if len(primals) > 7 else 1.0
     dv = primals[8] if len(primals) > 8 else 1.0
     voxel_spacing = primals[9] if len(primals) > 9 else 1.0
@@ -935,9 +1053,26 @@ def cone_forward_vjp(primals, cotangent, _):
         cotangent, src_pos, det_center, det_u_vec, det_v_vec,
         D, H, W, du, dv, voxel_spacing
     )
+
+    if _GEOMETRY_VJP_ENABLED:
+        grad_src_pos, grad_det_center, grad_det_u_vec, grad_det_v_vec = \
+            _cone_geometry_grad_impl(
+                volume, cotangent, src_pos, det_center, det_u_vec, det_v_vec,
+                det_u_int, det_v_int, du, dv, voxel_spacing,
+            )
+    else:
+        grad_src_pos = _src_pos_grad_fd(
+            volume, src_pos, det_center, det_u_vec, det_v_vec,
+            det_u_int, det_v_int, du, dv, voxel_spacing,
+            cotangent,
+        )
+        grad_det_center = mx.zeros_like(det_center)
+        grad_det_u_vec = mx.zeros_like(det_u_vec)
+        grad_det_v_vec = mx.zeros_like(det_v_vec)
+
     return (grad_volume,
-            mx.zeros_like(src_pos), mx.zeros_like(det_center),
-            mx.zeros_like(det_u_vec), mx.zeros_like(det_v_vec),
+            grad_src_pos, grad_det_center,
+            grad_det_u_vec, grad_det_v_vec,
             None, None, None, None, None)
 
 
@@ -1014,6 +1149,8 @@ def cone_forward_footprint(volume, src_pos, det_center, det_u_vec, det_v_vec,
 @cone_forward_footprint.vjp
 def cone_forward_footprint_vjp(primals, cotangent, _):
     volume, src_pos, det_center, det_u_vec, det_v_vec = primals[:5]
+    det_u_int = int(primals[5]) if len(primals) > 5 else 128
+    det_v_int = int(primals[6]) if len(primals) > 6 else 128
     du = primals[7] if len(primals) > 7 else 1.0
     dv = primals[8] if len(primals) > 8 else 1.0
     voxel_spacing = primals[9] if len(primals) > 9 else 1.0
@@ -1032,8 +1169,13 @@ def cone_forward_footprint_vjp(primals, cotangent, _):
         dv,
         voxel_spacing,
     )
+    grad_src_pos = _src_pos_grad_fd(
+        volume, src_pos, det_center, det_u_vec, det_v_vec,
+        det_u_int, det_v_int, du, dv, voxel_spacing,
+        cotangent,
+    )
     return (grad_volume,
-            mx.zeros_like(src_pos), mx.zeros_like(det_center),
+            grad_src_pos, mx.zeros_like(det_center),
             mx.zeros_like(det_u_vec), mx.zeros_like(det_v_vec),
             None, None, None, None, None)
 

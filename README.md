@@ -1,7 +1,7 @@
 # diffct_mlx: Differentiable CT for Apple Silicon
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
-[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.14999333-blue.svg?style=flat-square)](https://doi.org/10.5281/zenodo.14999333)
+[![DOI](https://img.shields.io/badge/DOI-10.20944%2Fpreprints202605.1446.v1-blue.svg?style=flat-square)](https://doi.org/10.20944/preprints202605.1446.v1)
 
 A high-performance, differentiable computed tomography (CT) reconstruction library built with [MLX](https://github.com/ml-explore/mlx) and custom Metal kernels, optimized for Apple Silicon (M-series) chips.
 
@@ -263,10 +263,15 @@ diffct_mlx/
 If you use this library in your research, please cite:
 
 ```bibtex
-@software{diffct2026,
-  author       = {Yipeng Sun, Linda-Sophie Schneider},
-  title        = {diffct_mlx: Differentiable CT for Apple Silicon},
-  year         = 2026,
+@article{202605.1446,
+  doi = {10.20944/preprints202605.1446.v1},
+  url = {https://doi.org/10.20944/preprints202605.1446.v1},
+  year = 2026,
+  month = {May},
+  publisher = {Preprints},
+  author = {Yipeng Sun and Linda-Sophie Schneider and Chengze ye and Andreas Maier},
+  title = {diffct: Differentiable CT Operators from Circular Orbits to Arbitrary Trajectories},
+  journal = {Preprints}
 }
 ```
 

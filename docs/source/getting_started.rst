@@ -56,4 +56,17 @@ Project Layout
 Citation
 --------
 
-If you use this library in research, use the citation from ``README.md``.
+If you use this library in your research, please cite:
+
+.. code-block:: bibtex
+
+   @article{202605.1446,
+     doi = {10.20944/preprints202605.1446.v1},
+     url = {https://doi.org/10.20944/preprints202605.1446.v1},
+     year = 2026,
+     month = {May},
+     publisher = {Preprints},
+     author = {Yipeng Sun and Linda-Sophie Schneider and Chengze ye and Andreas Maier},
+     title = {diffct: Differentiable CT Operators from Circular Orbits to Arbitrary Trajectories},
+     journal = {Preprints}
+   }
