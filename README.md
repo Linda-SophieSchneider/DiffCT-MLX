@@ -13,6 +13,7 @@ This is the Apple Silicon port of [diffct](https://github.com/sypsyp97/diffct), 
 - **Differentiable:** End-to-end gradient propagation using `mx.custom_function` with custom VJPs
 - **Siddon Ray-Tracing:** Bilinear (2D) and trilinear (3D) interpolation for accurate projection
 - **Atomic Backprojection:** Thread-safe gradient accumulation using Metal atomic operations
+- **Sparse Cone Backprojection:** Sample-only cone-beam footprint backprojection via `indices=...`
 
 ## Supported Geometries
 
@@ -161,6 +162,56 @@ reco = diffct_mlx.cone_backward(
 )
 ```
 
+### Sparse Cone-Backprojection Sampling
+
+`cone_backward_footprint` supports sample-only evaluation for cone-beam filtered
+backprojection. This is useful when you need values at a subset of voxels
+instead of the full volume, for example for sparse slice probing or cache
+construction workflows.
+
+```python
+import numpy as np
+import mlx.core as mx
+import diffct_mlx
+from diffct_mlx.reconstruction_algorithms._analytic import ramp_filter_3d
+
+volume = mx.ones((32, 32, 32), dtype=mx.float32)
+src, det_c, det_u, det_v = diffct_mlx.circular_trajectory_3d(
+    n_views=60, sid=120.0, sdd=200.0
+)
+
+sino = diffct_mlx.cone_forward_footprint(
+    volume, src, det_c, det_u, det_v,
+    det_u=48, det_v=48, du=1.0, dv=1.0, voxel_spacing=1.0,
+)
+sino_filt = ramp_filter_3d(sino)
+
+mid = volume.shape[0] // 2
+yy, xx = np.meshgrid(
+    np.arange(volume.shape[1]),
+    np.arange(volume.shape[2]),
+    indexing="ij",
+)
+indices = (
+    mid * volume.shape[1] * volume.shape[2]
+    + yy.reshape(-1) * volume.shape[2]
+    + xx.reshape(-1)
+)
+
+slice_samples = diffct_mlx.cone_backward_footprint(
+    sino_filt, src, det_c, det_u, det_v,
+    D=32, H=32, W=32, du=1.0, dv=1.0, voxel_spacing=1.0,
+    indices=indices,
+)
+
+# Returns a 1D vector in the same order as `indices`.
+centre_slice = slice_samples.reshape(32, 32)
+```
+
+Sparse mode preserves the dense footprint backprojector's values exactly at the
+requested locations. Indices must be unique flat indices into the row-major
+`(D, H, W)` volume layout.
+
 ## API Reference
 
 ### Projectors
@@ -173,6 +224,8 @@ reco = diffct_mlx.cone_backward(
 | `fan_backward(sinogram, src_pos, det_center, det_u_vec, ...)` | 2D fan beam backprojection |
 | `cone_forward(volume, src_pos, det_center, det_u_vec, det_v_vec, ...)` | 3D cone beam forward projection |
 | `cone_backward(sinogram, src_pos, det_center, det_u_vec, det_v_vec, ...)` | 3D cone beam backprojection |
+| `cone_forward_footprint(volume, src_pos, det_center, det_u_vec, det_v_vec, ...)` | 3D matched-footprint cone forward projection |
+| `cone_backward_footprint(sinogram, src_pos, det_center, det_u_vec, det_v_vec, ..., indices=None)` | 3D matched-footprint cone backprojection, optionally sparse |
 
 ### Iterative Reconstruction Algorithms
 

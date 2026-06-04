@@ -26,6 +26,7 @@ from .kernels import (
     cone_3d_backward_kernel,
     cone_3d_footprint_forward_kernel,
     cone_3d_footprint_backward_kernel,
+    cone_3d_footprint_backward_sparse_kernel,
     cone_3d_geometry_grad_kernel,
 )
 
@@ -37,6 +38,38 @@ _GEOMETRY_VJP_ENABLED: bool = os.getenv("DIFFCT_GEOMETRY_VJP", "0") == "1"
 def _as_mx_float_array(value):
     """Accept NumPy or MLX arrays and return an MLX float array."""
     return mx.array(value, dtype=_MX_DTYPE)
+
+
+def _normalize_sparse_indices(indices, D, H, W):
+    """Validate sparse backprojection indices and return an ``int32`` vector."""
+    if indices is None:
+        return None
+
+    indices = np.asarray(indices)
+    if indices.ndim != 1:
+        raise ValueError("indices must be a 1D array of flat voxel indices.")
+    if not np.issubdtype(indices.dtype, np.integer):
+        raise TypeError("indices must contain integer values.")
+
+    total_voxels = int(D) * int(H) * int(W)
+    if total_voxels > np.iinfo(np.int32).max:
+        raise ValueError("Sparse backprojection currently supports at most int32-addressable volumes.")
+
+    if np.any(indices < 0):
+        raise ValueError("indices contains negative values.")
+    if np.any(indices >= total_voxels):
+        raise ValueError("indices contains out of bounds values.")
+    if np.unique(indices).size != indices.size:
+        raise ValueError("indices contains duplicate values.")
+
+    return indices.astype(np.int32, copy=False)
+
+
+def _scatter_sparse_cotangent(cotangent, indices, D, H, W):
+    """Expand a sparse cotangent vector into the dense ``(D, H, W)`` volume layout."""
+    dense = np.zeros(int(D) * int(H) * int(W), dtype=np.float32)
+    dense[indices] = np.asarray(cotangent, dtype=np.float32).reshape(-1)
+    return mx.array(dense.reshape(int(D), int(H), int(W)), dtype=_MX_DTYPE)
 
 
 @lru_cache(maxsize=32)
@@ -962,7 +995,7 @@ def _cone_forward_footprint_impl(volume, src_pos, det_center, det_u_vec, det_v_v
 
 
 def _cone_backward_footprint_impl(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
-                                  D, H, W, du, dv, voxel_spacing=1.0):
+                                  D, H, W, du, dv, voxel_spacing=1.0, indices=None):
     """Adjoint of the approximate separable-footprint cone-beam forward projector."""
     sinogram = _as_mx_float_array(sinogram)
     src_pos = _as_mx_float_array(src_pos)
@@ -972,6 +1005,7 @@ def _cone_backward_footprint_impl(sinogram, src_pos, det_center, det_u_vec, det_
 
     n_views, n_u, n_v = sinogram.shape
     Nx, Ny, Nz = int(W), int(H), int(D)
+    sparse_indices = _normalize_sparse_indices(indices, D, H, W)
 
     cx = float(Nx * 0.5)
     cy = float(Ny * 0.5)
@@ -991,6 +1025,33 @@ def _cone_backward_footprint_impl(sinogram, src_pos, det_center, det_u_vec, det_
         cz,
         float(voxel_spacing),
     )
+
+    if sparse_indices is not None:
+        if sparse_indices.size == 0:
+            return mx.zeros((0,), dtype=sinogram.dtype)
+
+        sparse_indices_mx = mx.array(sparse_indices, dtype=mx.int32)
+        sparse_params = mx.array([int(sparse_indices.size)], dtype=mx.int32)
+        grid, tg = _grid_3d(int(sparse_indices.size), 1, 1)
+
+        outputs = cone_3d_footprint_backward_sparse_kernel(
+            inputs=[
+                sinogram,
+                src_pos,
+                det_center,
+                det_u_vec,
+                det_v_vec,
+                sparse_indices_mx,
+                sparse_params,
+                params,
+                fparams,
+            ],
+            output_shapes=[(int(sparse_indices.size),)],
+            output_dtypes=[_MX_DTYPE],
+            grid=grid,
+            threadgroup=tg,
+        )
+        return outputs[0]
 
     grid, tg = _grid_3d(Nx, Ny, Nz)
 
@@ -1182,8 +1243,14 @@ def cone_forward_footprint_vjp(primals, cotangent, _):
 
 @mx.custom_function
 def cone_backward_footprint(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
-                            D=128, H=128, W=128, du=1.0, dv=1.0, voxel_spacing=1.0):
-    """Adjoint of the matched voxel-footprint cone-beam forward projector."""
+                            D=128, H=128, W=128, du=1.0, dv=1.0, voxel_spacing=1.0,
+                            indices=None):
+    """Adjoint of the matched voxel-footprint cone-beam forward projector.
+
+    When ``indices`` is provided, the operator evaluates only those flattened
+    ``(D, H, W)`` voxel locations and returns a 1D vector in the caller's
+    requested order instead of the full dense volume.
+    """
     return _cone_backward_footprint_impl(
         sinogram,
         src_pos,
@@ -1196,20 +1263,35 @@ def cone_backward_footprint(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
         du,
         dv,
         voxel_spacing,
+        indices,
     )
 
 
 @cone_backward_footprint.vjp
 def cone_backward_footprint_vjp(primals, cotangent, _):
     sinogram, src_pos, det_center, det_u_vec, det_v_vec = primals[:5]
+    D = int(primals[5]) if len(primals) > 5 else 128
+    H = int(primals[6]) if len(primals) > 6 else 128
+    W = int(primals[7]) if len(primals) > 7 else 128
     det_u = int(sinogram.shape[1])
     det_v = int(sinogram.shape[2])
     du = primals[8] if len(primals) > 8 else 1.0
     dv = primals[9] if len(primals) > 9 else 1.0
     voxel_spacing = primals[10] if len(primals) > 10 else 1.0
+    indices = primals[11] if len(primals) > 11 else None
+
+    dense_cotangent = cotangent
+    if indices is not None:
+        dense_cotangent = _scatter_sparse_cotangent(
+            cotangent,
+            _normalize_sparse_indices(indices, D, H, W),
+            D,
+            H,
+            W,
+        )
 
     grad_sinogram = _cone_forward_footprint_impl(
-        cotangent,
+        dense_cotangent,
         src_pos,
         det_center,
         det_u_vec,
@@ -1223,4 +1305,4 @@ def cone_backward_footprint_vjp(primals, cotangent, _):
     return (grad_sinogram,
             mx.zeros_like(src_pos), mx.zeros_like(det_center),
             mx.zeros_like(det_u_vec), mx.zeros_like(det_v_vec),
-            None, None, None, None, None, None)
+            None, None, None, None, None, None, None)

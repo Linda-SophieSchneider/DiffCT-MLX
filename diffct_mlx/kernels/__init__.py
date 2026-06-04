@@ -21,6 +21,7 @@ from .cone_beam import (
     cone_3d_backward_kernel,
     cone_3d_footprint_forward_kernel,
     cone_3d_footprint_backward_kernel,
+    cone_3d_footprint_backward_sparse_kernel,
     cone_3d_geometry_grad_kernel,
 )
 
@@ -37,5 +38,6 @@ __all__ = [
     'cone_3d_backward_kernel',
     'cone_3d_footprint_forward_kernel',
     'cone_3d_footprint_backward_kernel',
+    'cone_3d_footprint_backward_sparse_kernel',
     'cone_3d_geometry_grad_kernel',
 ]

@@ -707,6 +707,169 @@ cone_3d_footprint_backward_kernel = mx.fast.metal_kernel(
     source=_CONE_3D_FOOTPRINT_BACKWARD_SOURCE,
 )
 
+_CONE_3D_FOOTPRINT_BACKWARD_SPARSE_SOURCE = """
+    uint isample = thread_position_in_grid.x;
+
+    int n_samples = sparse_params[0];
+    int n_views = params[0];
+    int n_u     = params[1];
+    int n_v     = params[2];
+    int Nx      = params[3];
+    int Ny      = params[4];
+    int Nz      = params[5];
+
+    float du            = fparams[0];
+    float dv            = fparams[1];
+    float cx            = fparams[2];
+    float cy            = fparams[3];
+    float cz            = fparams[4];
+    float voxel_spacing = fparams[5];
+
+    if ((int)isample >= n_samples) return;
+
+    int flat_idx = indices[(int)isample];
+    int ix = flat_idx % Nx;
+    int iy = (flat_idx / Nx) % Ny;
+    int iz = flat_idx / (Nx * Ny);
+
+    float eps = """ + _EPSILON_STR + """;
+    float center_u = ((float)n_u - 1.0f) * 0.5f;
+    float center_v = ((float)n_v - 1.0f) * 0.5f;
+
+    float px = (((float)ix + 0.5f) - cx) * voxel_spacing;
+    float py = (((float)iy + 0.5f) - cy) * voxel_spacing;
+    float pz = (((float)iz + 0.5f) - cz) * voxel_spacing;
+
+    float accum = 0.0f;
+
+    for (int iview = 0; iview < n_views; ++iview) {
+        float src_x = src_pos[iview * 3 + 0];
+        float src_y = src_pos[iview * 3 + 1];
+        float src_z = src_pos[iview * 3 + 2];
+
+        float det_cx = det_center_arr[iview * 3 + 0];
+        float det_cy = det_center_arr[iview * 3 + 1];
+        float det_cz = det_center_arr[iview * 3 + 2];
+
+        float u_vec_x = det_u_vec_arr[iview * 3 + 0];
+        float u_vec_y = det_u_vec_arr[iview * 3 + 1];
+        float u_vec_z = det_u_vec_arr[iview * 3 + 2];
+
+        float v_vec_x = det_v_vec_arr[iview * 3 + 0];
+        float v_vec_y = det_v_vec_arr[iview * 3 + 1];
+        float v_vec_z = det_v_vec_arr[iview * 3 + 2];
+
+        float n_x = u_vec_y * v_vec_z - u_vec_z * v_vec_y;
+        float n_y = u_vec_z * v_vec_x - u_vec_x * v_vec_z;
+        float n_z = u_vec_x * v_vec_y - u_vec_y * v_vec_x;
+
+        float plane_dx = det_cx - src_x;
+        float plane_dy = det_cy - src_y;
+        float plane_dz = det_cz - src_z;
+        float plane_dist = plane_dx * n_x + plane_dy * n_y + plane_dz * n_z;
+        if (metal::abs(plane_dist) <= eps) continue;
+
+        float rx = px - src_x;
+        float ry = py - src_y;
+        float rz = pz - src_z;
+        float denom = rx * n_x + ry * n_y + rz * n_z;
+        if (metal::abs(denom) <= eps) continue;
+
+        float t = plane_dist / denom;
+        if (t <= 0.0f) continue;
+
+        float qx = src_x + t * rx;
+        float qy = src_y + t * ry;
+        float qz = src_z + t * rz;
+
+        float rel_x = qx - det_cx;
+        float rel_y = qy - det_cy;
+        float rel_z = qz - det_cz;
+        float u0 = rel_x * u_vec_x + rel_y * u_vec_y + rel_z * u_vec_z;
+        float v0 = rel_x * v_vec_x + rel_y * v_vec_y + rel_z * v_vec_z;
+
+        float ru = rx * u_vec_x + ry * u_vec_y + rz * u_vec_z;
+        float rv = rx * v_vec_x + ry * v_vec_y + rz * v_vec_z;
+        float inv_denom = 1.0f / denom;
+
+        float grad_ux = t * u_vec_x - t * ru * inv_denom * n_x;
+        float grad_uy = t * u_vec_y - t * ru * inv_denom * n_y;
+        float grad_uz = t * u_vec_z - t * ru * inv_denom * n_z;
+
+        float grad_vx = t * v_vec_x - t * rv * inv_denom * n_x;
+        float grad_vy = t * v_vec_y - t * rv * inv_denom * n_y;
+        float grad_vz = t * v_vec_z - t * rv * inv_denom * n_z;
+
+        float half_u = 0.5f * voxel_spacing * (
+            metal::abs(grad_ux) + metal::abs(grad_uy) + metal::abs(grad_uz)
+        );
+        float half_v = 0.5f * voxel_spacing * (
+            metal::abs(grad_vx) + metal::abs(grad_vy) + metal::abs(grad_vz)
+        );
+        half_u = metal::max(half_u, 0.5f * du);
+        half_v = metal::max(half_v, 0.5f * dv);
+
+        float width_u = metal::max(2.0f * half_u, du);
+        float width_v = metal::max(2.0f * half_v, dv);
+
+        float support_u = half_u + 0.5f * du;
+        float support_v = half_v + 0.5f * dv;
+
+        int iu_min = (int)metal::floor((u0 - support_u) / du + center_u);
+        int iu_max = (int)metal::ceil((u0 + support_u) / du + center_u);
+        int iv_min = (int)metal::floor((v0 - support_v) / dv + center_v);
+        int iv_max = (int)metal::ceil((v0 + support_v) / dv + center_v);
+
+        iu_min = metal::max(0, iu_min);
+        iv_min = metal::max(0, iv_min);
+        iu_max = metal::min(n_u - 1, iu_max);
+        iv_max = metal::min(n_v - 1, iv_max);
+
+        float fp_u_lo = u0 - half_u;
+        float fp_u_hi = u0 + half_u;
+        float fp_v_lo = v0 - half_v;
+        float fp_v_hi = v0 + half_v;
+
+        for (int iu = iu_min; iu <= iu_max; ++iu) {
+            float pixel_u = ((float)iu - center_u) * du;
+            float pixel_u_lo = pixel_u - 0.5f * du;
+            float pixel_u_hi = pixel_u + 0.5f * du;
+            float overlap_u = metal::min(pixel_u_hi, fp_u_hi) - metal::max(pixel_u_lo, fp_u_lo);
+            if (overlap_u <= eps) continue;
+            float wu = overlap_u / width_u;
+
+            for (int iv = iv_min; iv <= iv_max; ++iv) {
+                float pixel_v = ((float)iv - center_v) * dv;
+                float pixel_v_lo = pixel_v - 0.5f * dv;
+                float pixel_v_hi = pixel_v + 0.5f * dv;
+                float overlap_v = metal::min(pixel_v_hi, fp_v_hi) - metal::max(pixel_v_lo, fp_v_lo);
+                if (overlap_v <= eps) continue;
+                float wv = overlap_v / width_v;
+                accum += sino[iview * n_u * n_v + iu * n_v + iv] * wu * wv * voxel_spacing;
+            }
+        }
+    }
+
+    grad_sparse[(int)isample] = accum;
+"""
+
+cone_3d_footprint_backward_sparse_kernel = mx.fast.metal_kernel(
+    name="cone_3d_footprint_backward_sparse",
+    input_names=[
+        "sino",
+        "src_pos",
+        "det_center_arr",
+        "det_u_vec_arr",
+        "det_v_vec_arr",
+        "indices",
+        "sparse_params",
+        "params",
+        "fparams",
+    ],
+    output_names=["grad_sparse"],
+    source=_CONE_3D_FOOTPRINT_BACKWARD_SPARSE_SOURCE,
+)
+
 # ============================================================================
 # 3D Cone Beam Analytical Geometry Gradient Kernel
 #
