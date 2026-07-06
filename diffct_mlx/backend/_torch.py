@@ -28,6 +28,7 @@ from diffct.footprint import (
     FanFootprintBackprojectorFunction,
     ConeFootprintProjectorFunction,
     ConeFootprintBackprojectorFunction,
+    ConeFootprintBackprojectorSparseFunction,
 )
 
 NAME = "torch"
@@ -270,8 +271,12 @@ def cone_forward_footprint(volume, src_pos, det_center, det_u_vec, det_v_vec,
 def cone_backward_footprint(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
                             D=128, H=128, W=128, du=1.0, dv=1.0, voxel_spacing=1.0,
                             indices=None):
-    # `indices` (sparse-voxel backprojection) is part of the MLX signature; the
-    # dense CUDA kernel ignores it. Accepted so the API stays call-compatible.
+    # With `indices` (flat C-order (D,H,W) voxel positions), evaluate only those
+    # voxels and return a 1D vector; otherwise return the dense (D,H,W) volume.
+    if indices is not None:
+        return ConeFootprintBackprojectorSparseFunction.apply(
+            sinogram, indices, src_pos, det_center, det_u_vec, det_v_vec,
+            D, H, W, du, dv, voxel_spacing)
     return ConeFootprintBackprojectorFunction.apply(
         sinogram, src_pos, det_center, det_u_vec, det_v_vec,
         D, H, W, du, dv, voxel_spacing)

@@ -26,6 +26,7 @@ from .kernels.fan_footprint import (
 from .kernels.cone_footprint import (
     _cone_3d_footprint_forward_kernel,
     _cone_3d_footprint_backward_kernel,
+    _cone_3d_footprint_backward_sparse_kernel,
 )
 
 
@@ -422,3 +423,70 @@ class ConeFootprintBackprojectorFunction(torch.autograd.Function):
             cx, cy, cz, _DTYPE(voxel_spacing)
         )
         return grad_sino, None, None, None, None, None, None, None, None, None, None
+
+
+class ConeFootprintBackprojectorSparseFunction(torch.autograd.Function):
+    """Sparse cone-beam footprint backprojection.
+
+    Evaluates the footprint adjoint only at the flattened (D, H, W) C-order voxel
+    ``indices`` and returns a 1D vector (one value per requested voxel, in the
+    given order). The gradient scatters the cotangent back to a dense volume and
+    forward-projects it, matching the dense operator's adjoint.
+    """
+
+    @staticmethod
+    def forward(ctx, sinogram, indices, src_pos, det_center, det_u_vec, det_v_vec,
+                D, H, W, du, dv, voxel_spacing=1.0):
+        device = DeviceManager.get_device(sinogram)
+        sinogram = _to_f32_contig(DeviceManager.ensure_device(sinogram, device))
+        src_pos = _to_f32_contig(DeviceManager.ensure_device(src_pos, device))
+        det_center = _to_f32_contig(DeviceManager.ensure_device(det_center, device))
+        det_u_vec = _to_f32_contig(DeviceManager.ensure_device(det_u_vec, device))
+        det_v_vec = _to_f32_contig(DeviceManager.ensure_device(det_v_vec, device))
+        indices = DeviceManager.ensure_device(indices, device).to(torch.int32).contiguous()
+
+        n_views, n_u, n_v = sinogram.shape
+        n_samples = int(indices.shape[0])
+        out = torch.zeros((n_samples,), dtype=sinogram.dtype, device=device)
+
+        d_sino = TorchCUDABridge.tensor_to_cuda_array(sinogram)
+        d_out = TorchCUDABridge.tensor_to_cuda_array(out)
+        d_idx = TorchCUDABridge.tensor_to_cuda_array(indices)
+        d_src = TorchCUDABridge.tensor_to_cuda_array(src_pos)
+        d_dc = TorchCUDABridge.tensor_to_cuda_array(det_center)
+        d_du = TorchCUDABridge.tensor_to_cuda_array(det_u_vec)
+        d_dv = TorchCUDABridge.tensor_to_cuda_array(det_v_vec)
+
+        tpb = 128
+        blocks = (n_samples + tpb - 1) // tpb
+        cx, cy, cz = _DTYPE(W * 0.5), _DTYPE(H * 0.5), _DTYPE(D * 0.5)
+        numba_stream = _get_numba_external_stream_for(torch.cuda.current_stream())
+        _cone_3d_footprint_backward_sparse_kernel[blocks, tpb, numba_stream](
+            d_sino, n_views, n_u, n_v, d_out, n_samples, d_idx, W, H, D,
+            _DTYPE(du), _DTYPE(dv), d_src, d_dc, d_du, d_dv,
+            cx, cy, cz, _DTYPE(voxel_spacing)
+        )
+
+        ctx.save_for_backward(indices, src_pos, det_center, det_u_vec, det_v_vec)
+        ctx.intermediate = (D, H, W, n_u, n_v, du, dv, voxel_spacing)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        indices, src_pos, det_center, det_u_vec, det_v_vec = ctx.saved_tensors
+        D, H, W, n_u, n_v, du, dv, voxel_spacing = ctx.intermediate
+        device = DeviceManager.get_device(grad_out)
+        grad_out = _to_f32_contig(DeviceManager.ensure_device(grad_out, device))
+
+        # Scatter the sparse cotangent back to a dense (D, H, W) volume, then
+        # forward-project it to obtain the sinogram gradient.
+        dense_flat = torch.zeros(D * H * W, dtype=grad_out.dtype, device=device)
+        dense_flat.index_add_(0, indices.to(torch.long), grad_out)
+        dense = dense_flat.view(D, H, W)
+
+        grad_sino = ConeFootprintProjectorFunction.apply(
+            dense, src_pos, det_center, det_u_vec, det_v_vec,
+            n_u, n_v, du, dv, voxel_spacing
+        )
+        return (grad_sino, None, None, None, None, None,
+                None, None, None, None, None, None)
