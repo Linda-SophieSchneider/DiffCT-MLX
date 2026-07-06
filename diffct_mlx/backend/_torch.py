@@ -21,6 +21,10 @@ from diffct import (
     ConeBackprojectorFunction,
 )
 from diffct import geometry, analytical  # noqa: F401  (re-exported)
+from diffct.footprint import (
+    ParallelFootprintProjectorFunction,
+    ParallelFootprintBackprojectorFunction,
+)
 
 NAME = "torch"
 
@@ -219,7 +223,20 @@ def cone_backward(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
         D, H, W, du, dv, voxel_spacing)
 
 
-# Footprint projectors are not (yet) available in the CUDA backend. They are
-# intentionally left undefined here; ``diffct_mlx.projectors`` provides a
-# documented line-based fallback so user code that calls the *_footprint API
-# keeps running across backends.
+# --- Separable-footprint projectors ----------------------------------------
+# Native CUDA footprint kernels. Parallel-beam is implemented; fan/cone are not
+# yet defined here, so diffct_mlx.projectors falls those back to the line-based
+# projector (with a one-time warning) until their kernels land.
+
+def parallel_forward_footprint(image, ray_dir, det_origin, det_u_vec,
+                               num_detectors=128, detector_spacing=1.0, voxel_spacing=1.0):
+    return ParallelFootprintProjectorFunction.apply(
+        image, ray_dir, det_origin, det_u_vec,
+        num_detectors, detector_spacing, voxel_spacing)
+
+
+def parallel_backward_footprint(sinogram, ray_dir, det_origin, det_u_vec,
+                                detector_spacing=1.0, H=128, W=128, voxel_spacing=1.0):
+    return ParallelFootprintBackprojectorFunction.apply(
+        sinogram, ray_dir, det_origin, det_u_vec,
+        detector_spacing, H, W, voxel_spacing)

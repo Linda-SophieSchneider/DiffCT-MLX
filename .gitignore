@@ -185,3 +185,6 @@ cython_debug/
 projectBrief.md
 .kiro
 .claude
+
+# local reference clone (LLNL LEAP), not part of this package
+LEAP/
