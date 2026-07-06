@@ -24,6 +24,8 @@ from diffct import geometry, analytical  # noqa: F401  (re-exported)
 from diffct.footprint import (
     ParallelFootprintProjectorFunction,
     ParallelFootprintBackprojectorFunction,
+    FanFootprintProjectorFunction,
+    FanFootprintBackprojectorFunction,
 )
 
 NAME = "torch"
@@ -239,4 +241,18 @@ def parallel_backward_footprint(sinogram, ray_dir, det_origin, det_u_vec,
                                 detector_spacing=1.0, H=128, W=128, voxel_spacing=1.0):
     return ParallelFootprintBackprojectorFunction.apply(
         sinogram, ray_dir, det_origin, det_u_vec,
+        detector_spacing, H, W, voxel_spacing)
+
+
+def fan_forward_footprint(image, src_pos, det_center, det_u_vec,
+                          num_detectors=128, detector_spacing=1.0, voxel_spacing=1.0):
+    return FanFootprintProjectorFunction.apply(
+        image, src_pos, det_center, det_u_vec,
+        num_detectors, detector_spacing, voxel_spacing)
+
+
+def fan_backward_footprint(sinogram, src_pos, det_center, det_u_vec,
+                           detector_spacing=1.0, H=128, W=128, voxel_spacing=1.0):
+    return FanFootprintBackprojectorFunction.apply(
+        sinogram, src_pos, det_center, det_u_vec,
         detector_spacing, H, W, voxel_spacing)
