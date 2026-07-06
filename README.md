@@ -55,12 +55,40 @@ reco = dct.reconstruct_fbp(
 
 **Parity & status.** FBP/FDK, SART/SIRT, TV-/ASD-/AwTV-POCS, DART, phantoms,
 trajectory generators and the measured-data helpers are all available and were
-verified on NVIDIA GPUs. Two caveats on the Torch/CUDA backend:
+verified on NVIDIA GPUs. One caveat: the **MLX backend** wiring on this branch is
+still in progress — on Apple Silicon use the `main` branch today (same
+`import diffct_mlx`, same API).
 
-- **Footprint projectors** (`*_footprint`) currently fall back to the line-based
-  projectors (with a one-time warning); native CUDA footprint kernels are planned.
-- The **MLX backend** wiring on this branch is still in progress — on Apple
-  Silicon use the `main` branch today (same `import diffct_mlx`, same API).
+### Projectors: Siddon vs. separable footprint
+
+Two forward/adjoint projector families are available on every geometry
+(parallel, fan, cone), both with native CUDA kernels and full autograd:
+
+| Projector | Model | Best for |
+|---|---|---|
+| **Siddon** (`parallel_forward`, `fan_forward`, `cone_forward`, …) | line integral (thin ray) | **analytic** reconstruction (FBP/FDK) |
+| **Footprint** (`*_forward_footprint`, `*_backward_footprint`) | separable footprint — the finite pixel/voxel area projected onto the detector, with a matched adjoint | **iterative / optimization** (SART, SIRT, POCS, DART) and real measured data |
+
+**Why the split:** analytic FBP/FDK *invert the X-ray transform* (line
+integrals), so a thin-ray Siddon model is the consistent, most accurate choice
+there. Iterative methods instead minimise `‖A x − y‖`, where a more faithful,
+area-integrated forward model with an exact adjoint (footprint) improves
+convergence and image quality — and better matches real finite-width detector
+pixels. Using footprint for analytic FBP is *slightly worse* (a forward-model
+mismatch), and Siddon for iterative on real data is *slightly worse*; hence the
+defaults below.
+
+**Defaults.** The `build_*_case` helpers follow this policy automatically: the
+synthetic sinogram is a Siddon line-integral "measurement", `back_project_all`
+(used by `reconstruct_fbp` / `reconstruct_fdk`) is **Siddon**, and
+`forward_single` / `back_single` (used by the iterative algorithms) are
+**footprint**. To override, build operators yourself with
+`make_*_operators(..., projector_mode="siddon" | "footprint")`.
+
+On the Torch/CUDA backend the footprint cone backprojector also supports **sparse
+evaluation**: `cone_backward_footprint(..., indices=idx)` computes only the given
+flattened `(D, H, W)` voxels and returns a 1-D vector (useful for masked / DART
+subproblems).
 
 ## 🔀 Branches
 

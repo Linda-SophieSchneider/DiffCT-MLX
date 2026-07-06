@@ -526,7 +526,10 @@ def build_parallel_2d_case(
     ny, nx = image_shape
     reference = xp.array(shepp_logan_2d((ny, nx)))
     ray_dir, det_origin, det_u_vec = circular_trajectory_2d_parallel(num_views)
-    sinogram = parallel_forward_footprint(
+    # Measurements are modeled as line integrals (Siddon). Analytic FBP inverts
+    # them with a matched Siddon backprojector; iterative reconstruction uses the
+    # more accurate separable-footprint projector pair.
+    sinogram = parallel_forward(
         reference,
         ray_dir,
         det_origin,
@@ -536,15 +539,17 @@ def build_parallel_2d_case(
         voxel_spacing=voxel_spacing,
     )
 
-    forward_single, back_single, back_project_all = make_parallel_2d_operators(
-        ray_dir,
-        det_origin,
-        det_u_vec,
-        image_shape=(ny, nx),
-        num_detectors=num_detectors,
-        detector_spacing=detector_spacing,
-        voxel_spacing=voxel_spacing,
+    forward_single, back_single, _ = make_parallel_2d_operators(
+        ray_dir, det_origin, det_u_vec,
+        image_shape=(ny, nx), num_detectors=num_detectors,
+        detector_spacing=detector_spacing, voxel_spacing=voxel_spacing,
         projector_mode="footprint",
+    )
+    _, _, back_project_all = make_parallel_2d_operators(
+        ray_dir, det_origin, det_u_vec,
+        image_shape=(ny, nx), num_detectors=num_detectors,
+        detector_spacing=detector_spacing, voxel_spacing=voxel_spacing,
+        projector_mode="siddon",
     )
 
     return ReconstructionCase(
@@ -576,7 +581,9 @@ def build_fan_2d_case(
     ny, nx = image_shape
     reference = xp.array(shepp_logan_2d((ny, nx)))
     src_pos, det_center, det_u_vec = circular_trajectory_2d_fan(num_views, sid, sdd)
-    sinogram = fan_forward_footprint(
+    # Line-integral (Siddon) measurements; analytic FBP uses a matched Siddon
+    # backprojector, iterative uses the footprint projector pair.
+    sinogram = fan_forward(
         reference,
         src_pos,
         det_center,
@@ -589,15 +596,17 @@ def build_fan_2d_case(
     detector_coords = (xp.arange(num_detectors) - (num_detectors - 1) / 2) * detector_spacing
     cosine_weights = xp.cos(xp.arctan(detector_coords / sdd)).reshape(1, -1)
 
-    forward_single, back_single, back_project_all = make_fan_2d_operators(
-        src_pos,
-        det_center,
-        det_u_vec,
-        image_shape=(ny, nx),
-        num_detectors=num_detectors,
-        detector_spacing=detector_spacing,
-        voxel_spacing=voxel_spacing,
+    forward_single, back_single, _ = make_fan_2d_operators(
+        src_pos, det_center, det_u_vec,
+        image_shape=(ny, nx), num_detectors=num_detectors,
+        detector_spacing=detector_spacing, voxel_spacing=voxel_spacing,
         projector_mode="footprint",
+    )
+    _, _, back_project_all = make_fan_2d_operators(
+        src_pos, det_center, det_u_vec,
+        image_shape=(ny, nx), num_detectors=num_detectors,
+        detector_spacing=detector_spacing, voxel_spacing=voxel_spacing,
+        projector_mode="siddon",
     )
 
     return ReconstructionCase(
@@ -632,7 +641,9 @@ def build_cone_3d_case(
     det_u_count, det_v_count = detector_shape
     reference = xp.array(shepp_logan_3d((nz, ny, nx)))
     src_pos, det_center, det_u_vec, det_v_vec = circular_trajectory_3d(num_views, sid, sdd)
-    sinogram = cone_forward_footprint(
+    # Line-integral (Siddon) measurements; analytic FDK uses a matched Siddon
+    # backprojector, iterative uses the footprint projector pair.
+    sinogram = cone_forward(
         reference,
         src_pos,
         det_center,
@@ -652,17 +663,17 @@ def build_cone_3d_case(
     )
     cone_weight = lambda raw: raw * fdk_weights
 
-    forward_single, back_single, back_project_all = make_cone_3d_operators(
-        src_pos,
-        det_center,
-        det_u_vec,
-        det_v_vec,
-        volume_shape=(nz, ny, nx),
-        detector_shape=(det_u_count, det_v_count),
-        du=du,
-        dv=dv,
-        voxel_spacing=voxel_spacing,
+    forward_single, back_single, _ = make_cone_3d_operators(
+        src_pos, det_center, det_u_vec, det_v_vec,
+        volume_shape=(nz, ny, nx), detector_shape=(det_u_count, det_v_count),
+        du=du, dv=dv, voxel_spacing=voxel_spacing,
         projector_mode="footprint",
+    )
+    _, _, back_project_all = make_cone_3d_operators(
+        src_pos, det_center, det_u_vec, det_v_vec,
+        volume_shape=(nz, ny, nx), detector_shape=(det_u_count, det_v_count),
+        du=du, dv=dv, voxel_spacing=voxel_spacing,
+        projector_mode="siddon",
     )
 
     normalization = (math.pi * sid) / (2.0 * sdd * num_views)
