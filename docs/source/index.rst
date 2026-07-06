@@ -7,6 +7,7 @@ A high-performance, CUDA-accelerated library for circular orbit CT reconstructio
 ----------------
 - **High Performance:** CUDA-accelerated projection and backprojection operations with optimized memory management
 - **Fully Differentiable:** End-to-end gradient propagation through all CT operations for seamless deep learning integration
+- **Modular API:** Clear separation of projector operators, geometry builders, and utility helpers
 - **Multiple Geometries:** Support for 2D parallel-beam, 2D fan-beam, and 3D cone-beam geometries
 - **PyTorch Integration:** Native PyTorch autograd support with custom CUDA kernels
 - **Research Ready:** Optimized for both analytical reconstruction (FBP/FDK) and iterative methods
@@ -44,15 +45,10 @@ User Guide
    api
    examples
 
-Technical Report
-----------------
-
-The technical report is available as a `Preprints manuscript <https://www.preprints.org/manuscript/202605.1446/v1>`_ and by `DOI <https://doi.org/10.20944/preprints202605.1446.v1>`_.
-
 Citation
 --------
 
-If you use this library in your research, please cite the software and the technical report:
+If you use this library in your research, please cite:
 
 .. code-block:: bibtex
 
@@ -64,17 +60,6 @@ If you use this library in your research, please cite the software and the techn
      publisher    = {Zenodo},
      doi          = {10.5281/zenodo.14999333},
      url          = {https://doi.org/10.5281/zenodo.14999333}
-   }
-
-   @article{202605.1446,
-     doi       = {10.20944/preprints202605.1446.v1},
-     url       = {https://doi.org/10.20944/preprints202605.1446.v1},
-     year      = 2026,
-     month     = {May},
-     publisher = {Preprints},
-     author    = {Yipeng Sun and Linda-Sophie Schneider and Chengze ye and Andreas Maier},
-     title     = {diffct: Differentiable CT Operators from Circular Orbits to Arbitrary Trajectories},
-     journal   = {Preprints}
    }
 
 License
