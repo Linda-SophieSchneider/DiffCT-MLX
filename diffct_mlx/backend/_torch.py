@@ -2,10 +2,14 @@
 
 Thin adapter over the upstream ``diffct`` (dev-line) package: it re-exports the
 numba-CUDA autograd projectors as plain functional operators with the unified
-signatures, and exposes the array namespace (``xp``) plus the ``geometry`` and
-``analytical`` submodules used by the higher-level reconstruction layer.
+signatures, exposes the ``geometry`` and ``analytical`` submodules, and provides
+:data:`xp` — an MLX-``core``-shaped array namespace implemented on top of torch
+so the higher-level reconstruction layer is written once for both backends.
 """
 
+from types import SimpleNamespace
+
+import numpy as _np
 import torch
 
 from diffct import (
@@ -20,18 +24,39 @@ from diffct import geometry, analytical  # noqa: F401  (re-exported)
 
 NAME = "torch"
 
-#: Array namespace. For now this is the ``torch`` module itself; the high-level
-#: layer only relies on the subset of the array API that maps cleanly onto both
-#: torch and mlx.core. It is centralised here so the abstraction can grow.
-xp = torch
+float32 = torch.float32
 
+#: Default device for newly-created arrays (mirrors MLX unified memory, which has
+#: no explicit device). Torch needs one; volumes/masks default here so the
+#: reconstruction layer never has to thread a device through.
+_DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def set_default_device(device):
+    """Set the device used for arrays created via ``xp``/:func:`as_array`."""
+    global _DEFAULT_DEVICE
+    _DEFAULT_DEVICE = torch.device(device)
+
+
+def get_default_device():
+    return _DEFAULT_DEVICE
+
+
+# --- Conversions ------------------------------------------------------------
 
 def as_array(data, dtype=None, device=None):
-    """Create a backend array from array-like ``data``."""
+    """Create a backend array from array-like ``data``.
+
+    Existing tensors keep their device; array-likes land on ``device`` (or the
+    default device). float64 is narrowed to float32 to match MLX defaults.
+    """
     if isinstance(data, torch.Tensor):
         t = data
     else:
-        t = torch.as_tensor(data)
+        t = torch.as_tensor(_np.asarray(data))
+        if t.dtype == torch.float64:
+            t = t.float()
+        t = t.to(_DEFAULT_DEVICE if device is None else device)
     if dtype is not None:
         t = t.to(dtype)
     if device is not None:
@@ -43,11 +68,7 @@ def to_numpy(x):
     """Return a host numpy copy of a backend array."""
     if isinstance(x, torch.Tensor):
         return x.detach().cpu().numpy()
-    import numpy as np
-    return np.asarray(x)
-
-
-float32 = torch.float32
+    return _np.asarray(x)
 
 
 def device_of(x):
@@ -58,6 +79,73 @@ def device_of(x):
 def clamp_min(x, value):
     """Elementwise ``max(x, value)``."""
     return torch.clamp(x, min=float(value))
+
+
+# --- xp: MLX-core-shaped array namespace over torch -------------------------
+
+def _xp_array(value, dtype=None):
+    return as_array(value, dtype=dtype)
+
+
+def _xp_zeros(shape, dtype=None):
+    return torch.zeros(tuple(shape), dtype=dtype or torch.float32, device=_DEFAULT_DEVICE)
+
+
+def _xp_ones(shape, dtype=None):
+    return torch.ones(tuple(shape), dtype=dtype or torch.float32, device=_DEFAULT_DEVICE)
+
+
+def _xp_zeros_like(x):
+    return torch.zeros_like(x)
+
+
+def _xp_maximum(a, b):
+    if not isinstance(b, torch.Tensor):
+        return torch.clamp(a, min=float(b))
+    if not isinstance(a, torch.Tensor):
+        return torch.clamp(b, min=float(a))
+    return torch.maximum(a, b)
+
+
+def _xp_minimum(a, b):
+    if not isinstance(b, torch.Tensor):
+        return torch.clamp(a, max=float(b))
+    if not isinstance(a, torch.Tensor):
+        return torch.clamp(b, max=float(a))
+    return torch.minimum(a, b)
+
+
+def _operand(v, ref):
+    if isinstance(v, torch.Tensor):
+        return v
+    return torch.as_tensor(v, dtype=torch.float32, device=ref.device)
+
+
+def _xp_where(cond, a, b):
+    return torch.where(cond, _operand(a, cond), _operand(b, cond))
+
+
+def _xp_eval(*_args):
+    # Torch is eager; nothing to force. Present for MLX API parity.
+    return None
+
+
+def _xp_norm(x):
+    return float(torch.linalg.norm(x))
+
+
+xp = SimpleNamespace(
+    array=_xp_array,
+    zeros=_xp_zeros,
+    ones=_xp_ones,
+    zeros_like=_xp_zeros_like,
+    maximum=_xp_maximum,
+    minimum=_xp_minimum,
+    where=_xp_where,
+    eval=_xp_eval,
+    norm=_xp_norm,
+    float32=torch.float32,
+)
 
 
 # --- Functional line-based projectors (unified signatures) ------------------

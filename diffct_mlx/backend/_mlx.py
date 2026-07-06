@@ -14,8 +14,23 @@ NAME = "mlx"
 
 try:  # pragma: no cover - only meaningful on Apple Silicon
     import mlx.core as _mx
-    xp = _mx
+    from types import SimpleNamespace as _NS
+
     float32 = _mx.float32
+
+    #: MLX-core-shaped array namespace (same interface as the torch backend's).
+    xp = _NS(
+        array=lambda value, dtype=None: (_mx.array(value) if dtype is None else _mx.array(value, dtype=dtype)),
+        zeros=lambda shape, dtype=None: _mx.zeros(tuple(shape), dtype=dtype or _mx.float32),
+        ones=lambda shape, dtype=None: _mx.ones(tuple(shape), dtype=dtype or _mx.float32),
+        zeros_like=_mx.zeros_like,
+        maximum=_mx.maximum,
+        minimum=_mx.minimum,
+        where=_mx.where,
+        eval=_mx.eval,
+        norm=lambda x: float(_mx.linalg.norm(x)),
+        float32=_mx.float32,
+    )
 except Exception:  # pragma: no cover
     xp = None
     float32 = None

@@ -42,12 +42,24 @@ from .geometry import __all__ as _geometry_all
 from .geometry import *  # noqa: F401,F403
 
 from .reconstruction_algorithms import (
+    ReconstructionParameters,
+    RegularizationParameters,
+    Reconstruction_Parameter,
+    Regularisation_Parameter,
+    BackProjector,
+    ForwardProjector,
     FBPParameters,
     run_fbp,
     reconstruct_fbp,
     FDKParameters,
     run_fdk,
     reconstruct_fdk,
+    SARTParameters,
+    run_sart,
+    reconstruct_sart,
+    SIRTParameters,
+    run_sirt,
+    reconstruct_sirt,
 )
 
 __version__ = "0.1.0.dev0"
@@ -69,6 +81,13 @@ __all__ = [
     "cone_forward_footprint",
     "cone_backward_footprint",
     *_geometry_all,
+    # Reconstruction core
+    "ReconstructionParameters",
+    "RegularizationParameters",
+    "Reconstruction_Parameter",
+    "Regularisation_Parameter",
+    "BackProjector",
+    "ForwardProjector",
     # Analytic reconstruction
     "FBPParameters",
     "run_fbp",
@@ -76,4 +95,11 @@ __all__ = [
     "FDKParameters",
     "run_fdk",
     "reconstruct_fdk",
+    # Iterative reconstruction
+    "SARTParameters",
+    "run_sart",
+    "reconstruct_sart",
+    "SIRTParameters",
+    "run_sirt",
+    "reconstruct_sirt",
 ]
