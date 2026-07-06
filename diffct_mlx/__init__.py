@@ -41,6 +41,15 @@ from .geometry import __all__ as _geometry_all
 # Re-export trajectory generators at top level (mirrors the MLX API).
 from .geometry import *  # noqa: F401,F403
 
+from .reconstruction_algorithms import (
+    FBPParameters,
+    run_fbp,
+    reconstruct_fbp,
+    FDKParameters,
+    run_fdk,
+    reconstruct_fdk,
+)
+
 __version__ = "0.1.0.dev0"
 
 __all__ = [
@@ -60,4 +69,11 @@ __all__ = [
     "cone_forward_footprint",
     "cone_backward_footprint",
     *_geometry_all,
+    # Analytic reconstruction
+    "FBPParameters",
+    "run_fbp",
+    "reconstruct_fbp",
+    "FDKParameters",
+    "run_fdk",
+    "reconstruct_fdk",
 ]

@@ -47,6 +47,19 @@ def to_numpy(x):
     return np.asarray(x)
 
 
+float32 = torch.float32
+
+
+def device_of(x):
+    """Return the device of a backend array (or ``None``)."""
+    return x.device if isinstance(x, torch.Tensor) else None
+
+
+def clamp_min(x, value):
+    """Elementwise ``max(x, value)``."""
+    return torch.clamp(x, min=float(value))
+
+
 # --- Functional line-based projectors (unified signatures) ------------------
 
 def parallel_forward(image, ray_dir, det_origin, det_u_vec,

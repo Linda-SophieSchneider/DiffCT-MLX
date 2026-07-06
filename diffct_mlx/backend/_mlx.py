@@ -15,8 +15,30 @@ NAME = "mlx"
 try:  # pragma: no cover - only meaningful on Apple Silicon
     import mlx.core as _mx
     xp = _mx
+    float32 = _mx.float32
 except Exception:  # pragma: no cover
     xp = None
+    float32 = None
+
+
+def as_array(data, dtype=None, device=None):  # pragma: no cover - Apple only
+    a = data if xp is not None and isinstance(data, xp.array) else xp.array(data)
+    if dtype is not None:
+        a = a.astype(dtype)
+    return a
+
+
+def to_numpy(x):  # pragma: no cover - Apple only
+    import numpy as np
+    return np.array(x)
+
+
+def device_of(x):  # pragma: no cover - Apple only (unified memory)
+    return None
+
+
+def clamp_min(x, value):  # pragma: no cover - Apple only
+    return xp.maximum(x, float(value))
 
 
 def _pending(*_args, **_kwargs):
