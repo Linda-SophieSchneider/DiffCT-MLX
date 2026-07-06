@@ -1,8 +1,7 @@
 """Reconstruction algorithms built on the unified projector API.
 
-Ported incrementally from the MLX implementation to run on any backend.
-Currently: analytic (FBP / FDK) and iterative (SART / SIRT). Regularized POCS
-variants and DART follow in later phases.
+Ported from the MLX implementation to run on any backend: analytic (FBP / FDK),
+iterative (SART / SIRT), regularized POCS variants (TV / ASD / AwTV) and DART.
 """
 
 from ._analytic import (
@@ -22,6 +21,10 @@ from .fbp import FBPParameters, reconstruct_fbp, run_fbp
 from .fdk import FDKParameters, reconstruct_fdk, run_fdk
 from .sart import SARTParameters, reconstruct_sart, run_sart
 from .sirt import SIRTParameters, reconstruct_sirt, run_sirt
+from .tv_pocs import TVPOCSParameters, TV_POCS_Parameter, reconstruct_tv_pocs, run_tv_pocs
+from .asd_pocs import ASDPOCSParameters, ASD_POCS_Parameter, reconstruct_asd_pocs, run_asd_pocs
+from .awtv_pocs import AwTVPOCSParameters, AwTV_POCS_Parameter, reconstruct_awtv_pocs, run_awtv_pocs
+from .dart import DARTParameters, reconstruct_dart, run_dart
 
 
 # Backwards-compatible aliases (mirrors the MLX package).
@@ -55,4 +58,21 @@ __all__ = [
     "SIRTParameters",
     "run_sirt",
     "reconstruct_sirt",
+    # regularized POCS
+    "TVPOCSParameters",
+    "TV_POCS_Parameter",
+    "run_tv_pocs",
+    "reconstruct_tv_pocs",
+    "ASDPOCSParameters",
+    "ASD_POCS_Parameter",
+    "run_asd_pocs",
+    "reconstruct_asd_pocs",
+    "AwTVPOCSParameters",
+    "AwTV_POCS_Parameter",
+    "run_awtv_pocs",
+    "reconstruct_awtv_pocs",
+    # discrete
+    "DARTParameters",
+    "run_dart",
+    "reconstruct_dart",
 ]

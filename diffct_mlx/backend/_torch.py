@@ -134,6 +134,19 @@ def _xp_norm(x):
     return float(torch.linalg.norm(x))
 
 
+def _xp_grad(fn):
+    """Return a function computing the gradient of scalar ``fn`` w.r.t. its arg.
+
+    Mirrors ``mlx.core.grad`` using torch autograd.
+    """
+    def _g(x):
+        x = x.detach().clone().requires_grad_(True)
+        y = fn(x)
+        (grad,) = torch.autograd.grad(y, x, allow_unused=True)
+        return grad if grad is not None else torch.zeros_like(x)
+    return _g
+
+
 xp = SimpleNamespace(
     array=_xp_array,
     zeros=_xp_zeros,
@@ -144,6 +157,13 @@ xp = SimpleNamespace(
     where=_xp_where,
     eval=_xp_eval,
     norm=_xp_norm,
+    grad=_xp_grad,
+    mean=torch.mean,
+    sqrt=torch.sqrt,
+    exp=torch.exp,
+    square=torch.square,
+    max=torch.max,
+    abs=torch.abs,
     float32=torch.float32,
 )
 

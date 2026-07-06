@@ -29,6 +29,13 @@ try:  # pragma: no cover - only meaningful on Apple Silicon
         where=_mx.where,
         eval=_mx.eval,
         norm=lambda x: float(_mx.linalg.norm(x)),
+        grad=_mx.grad,
+        mean=_mx.mean,
+        sqrt=_mx.sqrt,
+        exp=_mx.exp,
+        square=_mx.square,
+        max=_mx.max,
+        abs=_mx.abs,
         float32=_mx.float32,
     )
 except Exception:  # pragma: no cover
