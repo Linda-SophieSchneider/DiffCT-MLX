@@ -23,6 +23,45 @@ custom). Built for optimization and deep-learning integration.
 [Linda-Sophie Schneider](https://github.com/Linda-SophieSchneider) at
 [Linda-SophieSchneider/DiffCT-MLX](https://github.com/Linda-SophieSchneider/DiffCT-MLX).
 
+## 🧭 Using this branch — the unified `diffct_mlx` API
+
+This `cuda` branch adds **`diffct_mlx`**, a single API that auto-selects its
+compute backend at import — **Torch / numba-CUDA** on NVIDIA GPUs, **Apple MLX**
+on Apple Silicon — so the *same* script runs unchanged on both. It mirrors the
+public API of the [DiffCT-MLX `main`](https://github.com/Linda-SophieSchneider/DiffCT-MLX)
+(Apple) package name-for-name.
+
+```bash
+pip install "diffct-mlx[cuda]"   # NVIDIA GPUs (Torch + numba-CUDA)
+pip install "diffct-mlx[mlx]"    # Apple Silicon (MLX)
+```
+
+```python
+import diffct_mlx as dct
+print(dct.backend)               # 'torch' on CUDA, 'mlx' on Apple
+# force a backend with the DIFFCT_BACKEND env var ('torch' / 'mlx')
+
+# projectors, geometry and reconstruction — identical calls on either backend
+src, det_c, det_u, det_v = dct.circular_trajectory_3d(360, sid=600, sdd=900)
+sino = dct.cone_forward(volume, src, det_c, det_u, det_v, 256, 256, 1., 1., 1.)
+
+case = dct.build_parallel_2d_case(image_shape=(256, 256), num_views=180)
+reco = dct.reconstruct_fbp(
+    case.sinogram, case.back_project_all,
+    dct.FBPParameters(normalization_scale=case.fbp_normalization_scale),
+    weight_projections=case.fbp_weight,
+)
+```
+
+**Parity & status.** FBP/FDK, SART/SIRT, TV-/ASD-/AwTV-POCS, DART, phantoms,
+trajectory generators and the measured-data helpers are all available and were
+verified on NVIDIA GPUs. Two caveats on the Torch/CUDA backend:
+
+- **Footprint projectors** (`*_footprint`) currently fall back to the line-based
+  projectors (with a one-time warning); native CUDA footprint kernels are planned.
+- The **MLX backend** wiring on this branch is still in progress — on Apple
+  Silicon use the `main` branch today (same `import diffct_mlx`, same API).
+
 ## 🔀 Branches
 
 ### `main` Branch (Stable, PyPI)

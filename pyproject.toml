@@ -3,14 +3,18 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "diffct"
-version = "1.3.3.dev0"
-description = "A CUDA-based library for computed tomography (CT) projection and reconstruction with differentiable operators"
+name = "diffct-mlx"
+version = "2.0.0.dev0"
+description = "Differentiable computed tomography with an auto-selecting backend (Torch/CUDA or Apple MLX)"
 readme = "README.md"
+requires-python = ">=3.9"
 authors = [
-    {name = "Yipeng Sun", email = "yipeng.sun@fau.de"},
+    {name = "Linda-Sophie Schneider", email = "linda-sophie.schneider@fau.de"},
 ]
-license = {text = "Apache 2.0"}
+maintainers = [
+    {name = "Linda-Sophie Schneider", email = "linda-sophie.schneider@fau.de"},
+]
+license = {text = "Apache-2.0"}
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
@@ -18,22 +22,23 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 
+# Core dependency only. Install a backend extra for your platform:
+#   pip install "diffct-mlx[cuda]"   (NVIDIA GPUs: Torch + numba-CUDA)
+#   pip install "diffct-mlx[mlx]"    (Apple Silicon: MLX)
 dependencies = [
     "numpy",
-    "numba",
-    "torch",
 ]
 
+[project.optional-dependencies]
+cuda = ["torch", "numba-cuda"]
+mlx = ["mlx"]
+
 [project.urls]
-Homepage = "https://github.com/sypsyp97/diffct"
+Homepage = "https://github.com/Linda-SophieSchneider/DiffCT-MLX"
+Upstream = "https://github.com/sypsyp97/diffct"
 
-[tool.setuptools]
-package-dir = {"" = "."}
-
-[tool.setuptools.packages.find]
-where = ["."]
-
-[tool.hatch.envs.default]
-python = "python"
-
-[tool.hatch.envs.default.env-vars]
+# This branch ships two importable packages:
+#   * diffct       — the Torch/numba-CUDA engine (adapted from the upstream diffct dev line)
+#   * diffct_mlx   — the unified, auto-backend API (dispatches to Torch/CUDA or MLX)
+[tool.hatch.build.targets.wheel]
+packages = ["diffct", "diffct_mlx"]
