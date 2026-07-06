@@ -3,59 +3,37 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "diffct_mlx"
-dynamic = ["version"]
-description = "Differentiable CT reconstruction for Apple Silicon using MLX and custom Metal kernels"
+name = "diffct"
+version = "1.3.4"
+description = "A CUDA-based library for computed tomography (CT) projection and reconstruction with differentiable operators"
 readme = "README.md"
 authors = [
-    {name = "Linda-Sophie Schneider"},
     {name = "Yipeng Sun", email = "yipeng.sun@fau.de"},
 ]
-license = "Apache-2.0"
-requires-python = ">=3.10"
-keywords = ["ct", "computed tomography", "mlx", "apple silicon", "metal", "reconstruction"]
+license = {text = "Apache 2.0"}
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: Apache Software License",
-    "Operating System :: MacOS",
-    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 
 dependencies = [
-    "mlx>=0.20.0",
     "numpy",
-]
-
-[project.optional-dependencies]
-dev = [
-    "build",
-    "matplotlib",
-    "pytest",
-    "twine",
+    "numba",
+    "torch",
 ]
 
 [project.urls]
-Homepage = "https://github.com/Linda-SophieSchneider/diffct_arbit"
-Repository = "https://github.com/Linda-SophieSchneider/diffct_arbit"
-Issues = "https://github.com/Linda-SophieSchneider/diffct_arbit/issues"
+Homepage = "https://github.com/sypsyp97/diffct"
 
-[tool.hatch.version]
-path = "diffct_mlx/__about__.py"
+[tool.setuptools]
+package-dir = {"" = "."}
 
-[tool.hatch.build.targets.wheel]
-packages = ["diffct_mlx"]
-
-[tool.hatch.build.targets.sdist]
-include = [
-    "/diffct_mlx",
-    "/README.md",
-    "/LICENSE",
-    "/pyproject.toml",
-]
+[tool.setuptools.packages.find]
+where = ["."]
 
 [tool.hatch.envs.default]
 python = "python"
+
+[tool.hatch.envs.default.env-vars]

@@ -3,22 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Data
-*.csv
-*.tif
-*.rek
-*.npy
-*.npz
-
-# macOS Finder metadata
-.DS_Store
-**/.DS_Store
-
 # C extensions
 *.so
-
-# Notes
-notes/
 
 # Distribution / packaging
 .Python
@@ -84,7 +70,6 @@ instance/
 
 # Sphinx documentation
 docs/_build/
-docs/build/
 
 # PyBuilder
 .pybuilder/
@@ -200,4 +185,3 @@ cython_debug/
 projectBrief.md
 .kiro
 .claude
-examples/non_circular_trajectory/sample_data/reko/sim_obj_1_diffct.npy

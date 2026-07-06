@@ -1,25 +1,35 @@
+# Configuration file for the Sphinx documentation builder.
+#
+# For the full list of built-in configuration values, see the documentation:
+# https://www.sphinx-doc.org/en/master/usage/configuration.html
+
+# -- Project information -----------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
+
+project = 'diffct'
+copyright = '2025, Yipeng Sun'
+author = 'Yipeng Sun'
+
+# -- General configuration ---------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
+
 import os
 import sys
-
-sys.path.insert(0, os.path.abspath("../.."))
-
-project = "diffct_mlx"
-copyright = "2026, Yipeng Sun, Linda-Sophie Schneider"
-author = "Yipeng Sun, Linda-Sophie Schneider"
+sys.path.insert(0, os.path.abspath('../..'))
 
 extensions = [
-    "sphinx.ext.autodoc",
-    "sphinx.ext.napoleon",
-    "sphinx.ext.viewcode",
+    'sphinx.ext.autodoc',
+    'sphinx.ext.viewcode',
+    'sphinx.ext.napoleon',
 ]
 
-templates_path = ["_templates"]
+templates_path = ['_templates']
 exclude_patterns = []
 
-html_theme = "sphinx_rtd_theme"
-html_static_path = ["_static"]
 
-autodoc_mock_imports = ["mlx", "mlx.core", "mlx.optimizers"]
-autodoc_member_order = "bysource"
-napoleon_google_docstring = True
-napoleon_numpy_docstring = True
+
+# -- Options for HTML output -------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
+
+html_theme = 'sphinx_rtd_theme'
+html_static_path = ['_static']
