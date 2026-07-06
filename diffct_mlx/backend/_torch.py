@@ -134,6 +134,10 @@ def _xp_norm(x):
     return float(torch.linalg.norm(x))
 
 
+def _xp_arange(n, dtype=None):
+    return torch.arange(int(n), dtype=dtype or torch.float32, device=_DEFAULT_DEVICE)
+
+
 def _xp_grad(fn):
     """Return a function computing the gradient of scalar ``fn`` w.r.t. its arg.
 
@@ -164,6 +168,9 @@ xp = SimpleNamespace(
     square=torch.square,
     max=torch.max,
     abs=torch.abs,
+    arange=_xp_arange,
+    cos=torch.cos,
+    arctan=torch.arctan,
     float32=torch.float32,
 )
 

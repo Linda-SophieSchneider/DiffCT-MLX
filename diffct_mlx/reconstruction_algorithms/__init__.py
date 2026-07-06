@@ -17,6 +17,19 @@ from ._core import (
     ReconstructionParameters,
     RegularizationParameters,
 )
+from .cases import (
+    MeasuredConeDataConfig,
+    NpyProjectionsConfig,
+    ReconstructionCase,
+    build_cone_3d_case,
+    build_fan_2d_case,
+    build_measured_cone_3d_case,
+    build_npy_cone_3d_case,
+    build_parallel_2d_case,
+    make_cone_3d_operators,
+    make_fan_2d_operators,
+    make_parallel_2d_operators,
+)
 from .fbp import FBPParameters, reconstruct_fbp, run_fbp
 from .fdk import FDKParameters, reconstruct_fdk, run_fdk
 from .sart import SARTParameters, reconstruct_sart, run_sart
@@ -51,6 +64,18 @@ __all__ = [
     "RegularizationParameters",
     "Reconstruction_Parameter",
     "Regularisation_Parameter",
+    # cases / operator builders
+    "MeasuredConeDataConfig",
+    "NpyProjectionsConfig",
+    "ReconstructionCase",
+    "build_parallel_2d_case",
+    "build_fan_2d_case",
+    "build_cone_3d_case",
+    "build_measured_cone_3d_case",
+    "build_npy_cone_3d_case",
+    "make_parallel_2d_operators",
+    "make_fan_2d_operators",
+    "make_cone_3d_operators",
     # iterative
     "SARTParameters",
     "run_sart",

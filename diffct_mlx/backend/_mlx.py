@@ -36,6 +36,9 @@ try:  # pragma: no cover - only meaningful on Apple Silicon
         square=_mx.square,
         max=_mx.max,
         abs=_mx.abs,
+        arange=_mx.arange,
+        cos=_mx.cos,
+        arctan=_mx.arctan,
         float32=_mx.float32,
     )
 except Exception:  # pragma: no cover
