@@ -160,26 +160,108 @@ def _xp_grad(fn):
     return _g
 
 
+# --- Extra ops used by the operator / functional / solver layers ------------
+
+def _xp_ones_like(x):
+    return torch.ones_like(x)
+
+
+def _xp_sum(x, axis=None):
+    return torch.sum(x) if axis is None else torch.sum(x, dim=axis)
+
+
+def _xp_min(x, axis=None):
+    return torch.min(x) if axis is None else torch.min(x, dim=axis).values
+
+
+def _xp_clip(x, lo=None, hi=None):
+    return torch.clamp(
+        x,
+        min=None if lo is None else float(lo),
+        max=None if hi is None else float(hi),
+    )
+
+
+def _xp_reshape(x, shape):
+    return torch.reshape(x, tuple(int(s) for s in shape))
+
+
+def _xp_concatenate(arrays, axis=0):
+    return torch.cat([a for a in arrays], dim=axis)
+
+
+def _xp_stack(arrays, axis=0):
+    return torch.stack([a for a in arrays], dim=axis)
+
+
+def _xp_real(x):
+    return torch.real(x)
+
+
+def _xp_sort(x, axis=-1):
+    return torch.sort(x, dim=axis).values
+
+
+def _xp_floor(x):
+    return torch.floor(x)
+
+
+def _xp_take(a, indices):
+    """Gather from a flattened ``a`` at (float or int) ``indices`` (returns their shape)."""
+    return torch.take(a, indices.to(torch.long))
+
+
+def _fftfreq_torch(n):
+    n = int(n)
+    k = torch.arange(n, dtype=torch.float32, device=_DEFAULT_DEVICE)
+    n_half = (n + 1) // 2
+    return torch.where(k < n_half, k, k - n) / float(n)
+
+
+#: On-device FFT sub-namespace (mirrors ``numpy.fft`` / ``mlx.core.fft``).
+_fft_ns = SimpleNamespace(
+    fft=lambda x, axis=-1: torch.fft.fft(x, dim=axis),
+    ifft=lambda x, axis=-1: torch.fft.ifft(x, dim=axis),
+    fftfreq=_fftfreq_torch,
+)
+
+
 xp = SimpleNamespace(
     array=_xp_array,
     zeros=_xp_zeros,
     ones=_xp_ones,
     zeros_like=_xp_zeros_like,
+    ones_like=_xp_ones_like,
     maximum=_xp_maximum,
     minimum=_xp_minimum,
     where=_xp_where,
     eval=_xp_eval,
     norm=_xp_norm,
     grad=_xp_grad,
+    sum=_xp_sum,
     mean=torch.mean,
+    min=_xp_min,
     sqrt=torch.sqrt,
     exp=torch.exp,
+    log=torch.log,
+    log1p=torch.log1p,
+    sign=torch.sign,
+    clip=_xp_clip,
+    reshape=_xp_reshape,
+    concatenate=_xp_concatenate,
+    stack=_xp_stack,
+    sort=_xp_sort,
+    floor=_xp_floor,
+    take=_xp_take,
+    real=_xp_real,
     square=torch.square,
     max=torch.max,
     abs=torch.abs,
     arange=_xp_arange,
     cos=torch.cos,
+    sin=torch.sin,
     arctan=torch.arctan,
+    fft=_fft_ns,
     float32=torch.float32,
 )
 
