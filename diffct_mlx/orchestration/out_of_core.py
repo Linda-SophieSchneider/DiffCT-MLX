@@ -189,6 +189,100 @@ def _alloc_out(out, shape):
 
 
 # --------------------------------------------------------------------------- #
+# Automatic RAM-vs-disk decision. Arrays that fit a host-RAM budget stay in RAM;
+# larger ones are transparently backed by a disk memmap (path to TB-scale). Set
+# the storage location once with set_out_of_core_dir("/mnt/bigdisk").
+# --------------------------------------------------------------------------- #
+
+_OOC_DIR = None
+_OOC_COUNTER = 0
+
+
+def set_out_of_core_dir(path):
+    """Set the directory where auto out-of-core arrays are written (e.g. a big HDD)."""
+    global _OOC_DIR
+    _OOC_DIR = path
+
+
+def get_out_of_core_dir():
+    return _OOC_DIR
+
+
+def _available_ram():
+    try:
+        import psutil
+        return int(psutil.virtual_memory().available)
+    except Exception:
+        try:
+            with open("/proc/meminfo") as fh:
+                for line in fh:
+                    if line.startswith("MemAvailable:"):
+                        return int(line.split()[1]) * 1024
+        except Exception:
+            pass
+    return 8 * (1024 ** 3)
+
+
+def _ooc_path(tag, work_dir):
+    global _OOC_COUNTER
+    import os
+    import warnings
+    d = work_dir or _OOC_DIR
+    if d is None:
+        import tempfile
+        d = tempfile.gettempdir()
+        warnings.warn(
+            f"diffct out-of-core: array too large for the RAM budget but no "
+            f"out-of-core dir set — using {d!r}. Call "
+            f"set_out_of_core_dir('/path/on/big/disk') to control this.",
+            RuntimeWarning, stacklevel=3)
+    os.makedirs(d, exist_ok=True)
+    _OOC_COUNTER += 1
+    return os.path.join(d, f"diffct_ooc_{os.getpid()}_{_OOC_COUNTER}_{tag}.npy")
+
+
+def _resolve_output(out, shape, tag, work_dir=None, ram_budget=None):
+    """Pick storage for an output array: explicit ``out``, else RAM if it fits the
+    budget, else a disk memmap. Returns the array. This is how the disk-backed
+    path is chosen *automatically*."""
+    if out is not None:
+        return _alloc_out(out, shape)
+    nbytes = int(np.prod(shape)) * 4
+    budget = int(ram_budget) if ram_budget is not None else int(0.5 * _available_ram())
+    if work_dir is None and nbytes <= budget:
+        return np.zeros(shape, dtype=np.float32)
+    return open_memmap(_ooc_path(tag, work_dir), shape, mode="w+")
+
+
+def ramp_filter_memmap(sinogram, out=None, filter_axis=1, fdk_weights=None,
+                       view_chunk=64, work_dir=None, ram_budget=None):
+    """Ramp-filter a (possibly >RAM) sinogram, streaming over views.
+
+    The ramp acts along the detector-u axis and is independent per view, so views
+    are processed in chunks — a disk-memmap sinogram is filtered into another
+    (auto disk-backed) array without ever loading the whole thing. ``fdk_weights``
+    (broadcast over views) are applied before the ramp. Returns the filtered array.
+    """
+    sino = _np32(sinogram)
+    n_views = sino.shape[0]
+    out = _resolve_output(out, sino.shape, "filtered", work_dir, ram_budget)
+    n = sino.shape[filter_axis]
+    ramp = (2.0 * np.abs(np.fft.fftfreq(n))).astype(np.float32)
+    shape = [1] * sino.ndim
+    shape[filter_axis] = n
+    ramp = ramp.reshape(shape)
+    w = _np32(fdk_weights) if fdk_weights is not None else None
+    for a, b in _chunks(n_views, view_chunk):
+        band = np.asarray(sino[a:b], dtype=np.float32)
+        if w is not None:
+            band = band * w
+        out[a:b] = np.real(
+            np.fft.ifft(np.fft.fft(band, axis=filter_axis) * ramp, axis=filter_axis)
+        ).astype(np.float32)
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # Chunk-size budgeting
 # --------------------------------------------------------------------------- #
 
@@ -241,23 +335,23 @@ def _run_on_gpus(tasks, gpus):
 def chunked_cone_backward(sinogram, geom: ConeGeom, D, H, W,
                           du=1.0, dv=1.0, voxel_spacing=1.0,
                           projector="footprint", gpus=None, max_slices=None,
-                          out=None, post_fn=None):
+                          out=None, post_fn=None, work_dir=None, ram_budget=None):
     """Out-of-core + multi-GPU cone backprojection → volume (D,H,W).
 
     ``sinogram`` is host-resident (numpy / CPU tensor / disk memmap), shape
     (n_views, n_u, n_v). The output volume is split into z-slabs; each slab pulls
-    only its shadow rows. Pass ``out=`` (a preallocated array or disk memmap, see
-    :func:`open_memmap`) to stream the result to disk so the full volume never
-    needs to fit RAM. ``post_fn(slab)`` is applied to each slab before writing
-    (e.g. positivity + FDK scale) to keep the pipeline streaming.
-    ``projector``: ``"footprint"`` (matched, atomic-free) or ``"siddon"``
-    (line-integral adjoint; highest-fidelity FDK backprojector).
+    only its shadow rows. The output storage is chosen automatically: RAM if it
+    fits the budget, otherwise a disk memmap (pass ``out=`` to force a specific
+    array, or ``work_dir``/``ram_budget`` to steer the auto decision).
+    ``post_fn(slab)`` is applied to each slab before writing (e.g. positivity +
+    FDK scale) to keep the pipeline streaming. ``projector``: ``"footprint"``
+    (matched, atomic-free) or ``"siddon"`` (line-integral adjoint).
     """
     gpus = _resolve_gpus(gpus)
     backward_fn = _BACKWARD_FUNCS[projector]
     sino_np = _np32(sinogram)
     n_views, n_u, n_v = sino_np.shape
-    out = _alloc_out(out, (D, H, W))
+    out = _resolve_output(out, (D, H, W), "backward_vol", work_dir, ram_budget)
     step = _auto_max_slices(D, H, W, n_views, n_u, n_v, gpus, max_slices)
 
     def make_task(z0, z1):
@@ -289,19 +383,21 @@ def chunked_cone_backward(sinogram, geom: ConeGeom, D, H, W,
 
 def chunked_cone_forward(volume, geom: ConeGeom, det_u, det_v,
                          du=1.0, dv=1.0, voxel_spacing=1.0,
-                         gpus=None, max_rows=None, out=None):
+                         gpus=None, max_rows=None, out=None,
+                         work_dir=None, ram_budget=None):
     """Out-of-core + multi-GPU cone footprint forward projection → (n_views, det_u, det_v).
 
     ``volume`` is host-resident (numpy / CPU tensor / disk memmap), shape
     (D, H, W). The output projections are split into detector-row (v) bands; each
-    band pulls only the z-slab of the volume in its shadow. Pass ``out=`` (array
-    or disk memmap) to stream the sinogram to disk.
+    band pulls only the z-slab of the volume in its shadow. Output storage is
+    chosen automatically (RAM if it fits the budget, else a disk memmap); pass
+    ``out=`` to force it, or ``work_dir``/``ram_budget`` to steer the decision.
     """
     gpus = _resolve_gpus(gpus)
     vol_np = _np32(volume)
     D, H, W = vol_np.shape
     n_views = geom.n_views
-    out = _alloc_out(out, (n_views, det_u, det_v))
+    out = _resolve_output(out, (n_views, det_u, det_v), "forward_sino", work_dir, ram_budget)
     if max_rows is None:
         max_rows = max(8, _auto_max_slices(D, H, W, n_views, det_u, det_v, gpus, None))
 
@@ -358,7 +454,8 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
                      du=1.0, dv=1.0, voxel_spacing=1.0,
                      fdk_weights=None, normalization_scale=None,
                      enforce_positivity=True, filter_axis=1,
-                     backprojector="siddon", gpus=None, max_slices=None, out=None):
+                     backprojector="siddon", gpus=None, max_slices=None, out=None,
+                     work_dir=None, ram_budget=None):
     """Out-of-core + multi-GPU FDK reconstruction → volume (D, H, W).
 
     Applies optional per-detector FDK weighting and a ramp filter along the
@@ -379,16 +476,11 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
     ``reconstruct_fdk``), ``"footprint"`` (matched atomic-free), or ``"gather"``
     (distance-weighted voxel-driven FDK kernel; applies ``sdd/(2*pi*sid)``).
     """
-    sino = _np32(sinogram)
-    if fdk_weights is not None:
-        sino = sino * _np32(fdk_weights)
-    n = sino.shape[filter_axis]
-    ramp = (2.0 * np.abs(np.fft.fftfreq(n))).astype(np.float32)
-    shape = [1] * sino.ndim
-    shape[filter_axis] = n
-    filtered = np.real(
-        np.fft.ifft(np.fft.fft(sino, axis=filter_axis) * ramp.reshape(shape), axis=filter_axis)
-    ).astype(np.float32)
+    # Ramp-filter the sinogram, streaming over views (auto RAM/disk) so a
+    # sinogram larger than RAM can be filtered without a full-array load.
+    filtered = ramp_filter_memmap(sinogram, filter_axis=filter_axis,
+                                  fdk_weights=fdk_weights,
+                                  work_dir=work_dir, ram_budget=ram_budget)
 
     ns = float(normalization_scale) if normalization_scale is not None else 1.0
 
@@ -400,7 +492,7 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
         return chunked_cone_backward(
             filtered, geom, D, H, W, du, dv, voxel_spacing,
             projector=backprojector, gpus=gpus, max_slices=max_slices,
-            out=out, post_fn=_post)
+            out=out, post_fn=_post, work_dir=work_dir, ram_budget=ram_budget)
     elif backprojector == "gather":
         gpus_ = _resolve_gpus(gpus)
         n_views, n_u, n_v = filtered.shape
@@ -409,7 +501,7 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
             torch.as_tensor(geom.src_pos), torch.as_tensor(geom.det_center),
             torch.as_tensor(geom.det_u_vec), torch.as_tensor(geom.det_v_vec))
         fdk_scale = sd / (2.0 * np.pi * st)
-        out = _alloc_out(out, (D, H, W))
+        out = _resolve_output(out, (D, H, W), "fdk_vol", work_dir, ram_budget)
 
         def make_task(z0, z1):
             def task(dev):
@@ -436,7 +528,7 @@ def chunked_sirt(measured, geom: ConeGeom, D, H, W, det_u, det_v,
                  du=1.0, dv=1.0, voxel_spacing=1.0,
                  n_iter=20, relaxation=1.0, projector="footprint",
                  enforce_positivity=True, gpus=None, max_slices=None,
-                 work_dir=None, out=None, eps=1e-6):
+                 work_dir=None, out=None, eps=1e-6, ram_budget=None):
     """Out-of-core + multi-GPU SIRT — works for volumes larger than RAM.
 
     Every large array (volume iterate, sinograms, row/column sums) is a disk
@@ -457,9 +549,7 @@ def chunked_sirt(measured, geom: ConeGeom, D, H, W, det_u, det_v,
     vol_shape = (D, H, W)
 
     def alloc(shape, name):
-        if work_dir is None:
-            return np.zeros(shape, dtype=np.float32)
-        return open_memmap(os.path.join(work_dir, name + ".npy"), shape, mode="w+")
+        return _resolve_output(None, shape, "sirt_" + name, work_dir, ram_budget)
 
     fwd = lambda vol, o: chunked_cone_forward(vol, geom, det_u, det_v, du, dv,
                                               voxel_spacing, gpus=gpus, out=o)
@@ -475,6 +565,7 @@ def chunked_sirt(measured, geom: ConeGeom, D, H, W, det_u, det_v,
     x[:] = 0.0
     ax = alloc(sino_shape, "ax")
     resid = alloc(sino_shape, "resid")
+    bp = alloc(vol_shape, "bp")                               # reused each iteration
 
     vstep = max(1, min(n_views, 64))   # host-side elementwise chunking
     zstep = max(1, min(D, 64))
@@ -484,7 +575,7 @@ def chunked_sirt(measured, geom: ConeGeom, D, H, W, det_u, det_v,
         for a, b in _chunks(n_views, vstep):                  # resid = R (m - ax)
             rs = rowsum[a:b]
             resid[a:b] = np.where(rs > eps, (m[a:b] - ax[a:b]) / np.where(rs > eps, rs, 1.0), 0.0)
-        bp = bwd(resid, alloc(vol_shape, "bp"))               # bp = Aᵀ resid
+        bwd(resid, bp)                                        # bp = Aᵀ resid
         for z0, z1 in _chunks(D, zstep):                      # x += relax C bp
             cs = colsum[z0:z1]
             upd = np.where(cs > eps, bp[z0:z1] / np.where(cs > eps, cs, 1.0), 0.0)
