@@ -114,14 +114,18 @@ class TorchCUDABridge:
 # Stream Management (cached external Numba stream)
 # ============================================================================
 
-_cached_stream_ptr = None
-_cached_numba_stream = None
+# Cache keyed by (device_index, stream_ptr). A single global slot would be
+# unsafe across GPUs: a numba external_stream is created under whatever device
+# is current, so reusing one cached stream on a different device is wrong. The
+# multi-GPU out-of-core layer relies on this being per-device.
+_numba_stream_cache = {}
 
 
 def _get_numba_external_stream_for(pt_stream=None):
-    """Return a cached numba.cuda.external_stream for the current PyTorch CUDA stream.
+    """Return a cached numba.cuda.external_stream for a PyTorch CUDA stream.
 
-    Caches by the underlying CUDA stream pointer to avoid repeated construction.
+    Cached per (device index, stream pointer) so that multi-GPU dispatch gets a
+    stream bound to the correct device.
 
     Parameters
     ----------
@@ -131,18 +135,19 @@ def _get_numba_external_stream_for(pt_stream=None):
     Returns
     -------
     numba.cuda.cudadrv.driver.Stream
-        Numba external stream wrapper around PyTorch CUDA stream.
+        Numba external stream wrapper around the PyTorch CUDA stream.
     """
-    global _cached_stream_ptr, _cached_numba_stream
     if pt_stream is None:
         pt_stream = torch.cuda.current_stream()
-    # Torch exposes an underlying CUDA stream handle via .cuda_stream
+    dev = getattr(pt_stream, "device", None)
+    dev_index = dev.index if dev is not None else torch.cuda.current_device()
     ptr = int(pt_stream.cuda_stream)
-    if _cached_stream_ptr == ptr and _cached_numba_stream is not None:
-        return _cached_numba_stream
+    key = (dev_index, ptr)
+    cached = _numba_stream_cache.get(key)
+    if cached is not None:
+        return cached
     numba_stream = cuda.external_stream(pt_stream.cuda_stream)
-    _cached_stream_ptr = ptr
-    _cached_numba_stream = numba_stream
+    _numba_stream_cache[key] = numba_stream
     return numba_stream
 
 
