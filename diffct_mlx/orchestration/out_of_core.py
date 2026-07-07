@@ -21,7 +21,9 @@ from ``det_center``.
 
 from __future__ import annotations
 
+import queue
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
@@ -55,6 +57,21 @@ _SHADOW_PAD = 4
 def _np32(x):
     if isinstance(x, torch.Tensor):
         return x.detach().cpu().numpy().astype(np.float32, copy=False)
+    return np.asarray(x, dtype=np.float32)
+
+
+def _lazy_input(x):
+    """Return an array that supports lazy slicing without materializing it.
+
+    memmap and zarr arrays are passed through (only touched blocks load on
+    slicing); torch tensors and plain array-likes are converted eagerly.
+    """
+    if isinstance(x, torch.Tensor):
+        return x.detach().cpu().numpy()
+    if isinstance(x, np.memmap):
+        return x
+    if type(x).__module__.split(".")[0] == "zarr":
+        return x
     return np.asarray(x, dtype=np.float32)
 
 
@@ -328,6 +345,88 @@ def _run_on_gpus(tasks, gpus):
         list(ex.map(worker, enumerate(tasks)))
 
 
+def _pin_to_dev(arr, dev):
+    """Host array → device via a pinned staging buffer + async copy."""
+    t = torch.from_numpy(np.ascontiguousarray(arr, dtype=np.float32))
+    try:
+        t = t.pin_memory()
+    except Exception:
+        pass
+    return t.to(torch.device("cuda", dev), non_blocking=True)
+
+
+def _conveyor_run(chunk_ids, read_fn, compute_fn, write_fn, gpus, prefetch=None, timings=None):
+    """Asynchronous read→compute→write conveyor (TomocuPy-style overlap).
+
+    One reader thread streams chunk inputs from disk (sequential — HDD-friendly),
+    ``len(gpus)`` GPU workers compute (each pinned to its device), one writer
+    thread persists results — coupled by bounded queues so disk read, GPU compute
+    and disk write overlap *across* chunks while peak RAM stays ~prefetch chunks.
+    ``read_fn(cid)->inp``, ``compute_fn(cid, inp, dev)->out``, ``write_fn(cid, out)``.
+    If ``timings`` (dict) is given, per-stage active seconds are recorded.
+    """
+    ids = list(chunk_ids)
+    if not ids:
+        return
+    if len(gpus) == 0:
+        gpus = [torch.cuda.current_device()]
+    prefetch = prefetch if prefetch is not None else max(2, 2 * len(gpus))
+    read_q = queue.Queue(maxsize=prefetch)
+    write_q = queue.Queue(maxsize=prefetch)
+    tt = {"read": 0.0, "compute": 0.0, "write": 0.0, "wall": 0.0}
+    lock = threading.Lock()
+
+    def acc(k, dt):
+        with lock:
+            tt[k] += dt
+
+    def reader():
+        for cid in ids:
+            t = time.perf_counter()
+            inp = read_fn(cid)
+            acc("read", time.perf_counter() - t)
+            read_q.put((cid, inp))
+        for _ in gpus:
+            read_q.put(None)
+
+    def gpu_worker(dev):
+        torch.cuda.set_device(dev)
+        from numba import cuda as _cuda
+        _cuda.select_device(dev)
+        while True:
+            item = read_q.get()
+            if item is None:
+                write_q.put(None)
+                return
+            cid, inp = item
+            t = time.perf_counter()
+            out = compute_fn(cid, inp, dev)
+            acc("compute", time.perf_counter() - t)
+            write_q.put((cid, out))
+
+    def writer():
+        done = 0
+        while done < len(gpus):
+            item = write_q.get()
+            if item is None:
+                done += 1
+                continue
+            cid, out = item
+            t = time.perf_counter()
+            write_fn(cid, out)
+            acc("write", time.perf_counter() - t)
+
+    t0 = time.perf_counter()
+    rt = threading.Thread(target=reader)
+    gws = [threading.Thread(target=gpu_worker, args=(g,)) for g in gpus]
+    wt = threading.Thread(target=writer)
+    rt.start(); [g.start() for g in gws]; wt.start()
+    rt.join(); [g.join() for g in gws]; wt.join()
+    tt["wall"] = time.perf_counter() - t0
+    if timings is not None:
+        timings.update(tt)
+
+
 # --------------------------------------------------------------------------- #
 # Public API
 # --------------------------------------------------------------------------- #
@@ -335,7 +434,8 @@ def _run_on_gpus(tasks, gpus):
 def chunked_cone_backward(sinogram, geom: ConeGeom, D, H, W,
                           du=1.0, dv=1.0, voxel_spacing=1.0,
                           projector="footprint", gpus=None, max_slices=None,
-                          out=None, post_fn=None, work_dir=None, ram_budget=None):
+                          out=None, post_fn=None, work_dir=None, ram_budget=None,
+                          timings=None):
     """Out-of-core + multi-GPU cone backprojection → volume (D,H,W).
 
     ``sinogram`` is host-resident (numpy / CPU tensor / disk memmap), shape
@@ -349,42 +449,45 @@ def chunked_cone_backward(sinogram, geom: ConeGeom, D, H, W,
     """
     gpus = _resolve_gpus(gpus)
     backward_fn = _BACKWARD_FUNCS[projector]
-    sino_np = _np32(sinogram)
-    n_views, n_u, n_v = sino_np.shape
+    sino = _lazy_input(sinogram)
+    n_views, n_u, n_v = sino.shape
     out = _resolve_output(out, (D, H, W), "backward_vol", work_dir, ram_budget)
     step = _auto_max_slices(D, H, W, n_views, n_u, n_v, gpus, max_slices)
 
-    def make_task(z0, z1):
-        def task(dev):
-            torch.cuda.set_device(dev)
-            from numba import cuda as _cuda
-            _cuda.select_device(dev)
-            v0, v1 = row_range_for_zslab(z0, z1, geom, D, H, W, dv, n_v, voxel_spacing)
-            slab = np.zeros((z1 - z0, H, W), dtype=np.float32) if post_fn is None else None
-            if v1 > v0:
-                g = _vband_shift(_zslab_shift(geom, z0, z1, D, voxel_spacing),
-                                 v0, v1 - v0, n_v, dv)
-                sub_sino = _to_dev(sino_np[:, :, v0:v1], dev)
-                sub_vol = backward_fn.apply(
-                    sub_sino, _to_dev(g.src_pos, dev), _to_dev(g.det_center, dev),
-                    _to_dev(g.det_u_vec, dev), _to_dev(g.det_v_vec, dev),
-                    z1 - z0, H, W, du, dv, voxel_spacing)
-                slab = sub_vol.detach().cpu().numpy()
-            elif post_fn is not None:
-                slab = np.zeros((z1 - z0, H, W), dtype=np.float32)
-            if post_fn is not None:
-                slab = post_fn(slab)
-            out[z0:z1] = slab
-        return task
+    def read_fn(zz):
+        z0, z1 = zz
+        v0, v1 = row_range_for_zslab(z0, z1, geom, D, H, W, dv, n_v, voxel_spacing)
+        if v1 <= v0:
+            return (v0, v1, None)  # slab projects off the detector
+        return (v0, v1, np.asarray(sino[:, :, v0:v1], dtype=np.float32))
 
-    _run_on_gpus([make_task(z0, z1) for z0, z1 in _chunks(D, step)], gpus)
+    def compute_fn(zz, inp, dev):
+        z0, z1 = zz
+        v0, v1, band = inp
+        if band is None:
+            slab = np.zeros((z1 - z0, H, W), dtype=np.float32)
+        else:
+            g = _vband_shift(_zslab_shift(geom, z0, z1, D, voxel_spacing),
+                             v0, v1 - v0, n_v, dv)
+            sub_vol = backward_fn.apply(
+                _pin_to_dev(band, dev), _to_dev(g.src_pos, dev), _to_dev(g.det_center, dev),
+                _to_dev(g.det_u_vec, dev), _to_dev(g.det_v_vec, dev),
+                z1 - z0, H, W, du, dv, voxel_spacing)
+            slab = sub_vol.detach().cpu().numpy()
+        return post_fn(slab) if post_fn is not None else slab
+
+    def write_fn(zz, slab):
+        z0, z1 = zz
+        out[z0:z1] = slab
+
+    _conveyor_run(_chunks(D, step), read_fn, compute_fn, write_fn, gpus, timings=timings)
     return out
 
 
 def chunked_cone_forward(volume, geom: ConeGeom, det_u, det_v,
                          du=1.0, dv=1.0, voxel_spacing=1.0,
                          gpus=None, max_rows=None, out=None,
-                         work_dir=None, ram_budget=None):
+                         work_dir=None, ram_budget=None, timings=None):
     """Out-of-core + multi-GPU cone footprint forward projection → (n_views, det_u, det_v).
 
     ``volume`` is host-resident (numpy / CPU tensor / disk memmap), shape
@@ -394,32 +497,38 @@ def chunked_cone_forward(volume, geom: ConeGeom, det_u, det_v,
     ``out=`` to force it, or ``work_dir``/``ram_budget`` to steer the decision.
     """
     gpus = _resolve_gpus(gpus)
-    vol_np = _np32(volume)
-    D, H, W = vol_np.shape
+    vol = _lazy_input(volume)
+    D, H, W = vol.shape
     n_views = geom.n_views
     out = _resolve_output(out, (n_views, det_u, det_v), "forward_sino", work_dir, ram_budget)
     if max_rows is None:
         max_rows = max(8, _auto_max_slices(D, H, W, n_views, det_u, det_v, gpus, None))
 
-    def make_task(v0, v1):
-        def task(dev):
-            torch.cuda.set_device(dev)
-            from numba import cuda as _cuda
-            _cuda.select_device(dev)
-            z0, z1 = slice_range_for_vband(v0, v1, geom, D, H, W, dv, det_v, voxel_spacing)
-            if z1 <= z0:
-                return  # no volume slice projects into this band → stays zero
-            g = _vband_shift(_zslab_shift(geom, z0, z1, D, voxel_spacing),
-                             v0, v1 - v0, det_v, dv)
-            sub_vol = _to_dev(vol_np[z0:z1], dev)
-            sub_sino = ConeFootprintProjectorFunction.apply(
-                sub_vol, _to_dev(g.src_pos, dev), _to_dev(g.det_center, dev),
-                _to_dev(g.det_u_vec, dev), _to_dev(g.det_v_vec, dev),
-                det_u, v1 - v0, du, dv, voxel_spacing)
-            out[:, :, v0:v1] = sub_sino.detach().cpu().numpy()
-        return task
+    def read_fn(vv):
+        v0, v1 = vv
+        z0, z1 = slice_range_for_vband(v0, v1, geom, D, H, W, dv, det_v, voxel_spacing)
+        if z1 <= z0:
+            return (z0, z1, None)  # no volume slice projects into this band
+        return (z0, z1, np.asarray(vol[z0:z1], dtype=np.float32))
 
-    _run_on_gpus([make_task(v0, v1) for v0, v1 in _chunks(det_v, max_rows)], gpus)
+    def compute_fn(vv, inp, dev):
+        v0, v1 = vv
+        z0, z1, slab = inp
+        if slab is None:
+            return np.zeros((n_views, det_u, v1 - v0), dtype=np.float32)
+        g = _vband_shift(_zslab_shift(geom, z0, z1, D, voxel_spacing),
+                         v0, v1 - v0, det_v, dv)
+        sub_sino = ConeFootprintProjectorFunction.apply(
+            _pin_to_dev(slab, dev), _to_dev(g.src_pos, dev), _to_dev(g.det_center, dev),
+            _to_dev(g.det_u_vec, dev), _to_dev(g.det_v_vec, dev),
+            det_u, v1 - v0, du, dv, voxel_spacing)
+        return sub_sino.detach().cpu().numpy()
+
+    def write_fn(vv, band):
+        v0, v1 = vv
+        out[:, :, v0:v1] = band
+
+    _conveyor_run(_chunks(det_v, max_rows), read_fn, compute_fn, write_fn, gpus, timings=timings)
     return out
 
 
