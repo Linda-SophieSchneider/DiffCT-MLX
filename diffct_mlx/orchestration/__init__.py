@@ -11,6 +11,9 @@ from .out_of_core import (
     chunked_cone_forward,
     chunked_cone_backward,
     chunked_cone_fdk,
+    mgpu_cone_forward,
+    mgpu_cone_backproject,
+    mgpu_sirt,
     row_range_for_zslab,
     slice_range_for_vband,
 )
@@ -20,6 +23,9 @@ __all__ = [
     "chunked_cone_forward",
     "chunked_cone_backward",
     "chunked_cone_fdk",
+    "mgpu_cone_forward",
+    "mgpu_cone_backproject",
+    "mgpu_sirt",
     "row_range_for_zslab",
     "slice_range_for_vband",
 ]

@@ -32,6 +32,19 @@ from diffct.footprint import (
     ConeFootprintProjectorFunction,
     ConeFootprintBackprojectorFunction,
 )
+from diffct.projectors import ConeBackprojectorFunction
+
+# Backward autograd Functions selectable for chunked backprojection. Both share
+# the (sino, src, dc, u, v, D, H, W, du, dv, vs) -> (D,H,W) signature and the
+# same volume centering (cz=D/2), so the z-slab / v-band sub-geometry is shared.
+_BACKWARD_FUNCS = {
+    "footprint": ConeFootprintBackprojectorFunction,
+    "siddon": ConeBackprojectorFunction,
+}
+from diffct.kernels import _cone_3d_fdk_backproject_kernel
+from diffct.utils import _grid_3d, TorchCUDABridge, _get_numba_external_stream_for
+from diffct.constants import _DTYPE
+from diffct.analytical import _cone_mean_sid_sdd
 
 _EPS = 1e-8
 #: Extra detector rows / volume slices added to every shadow range so the finite
@@ -203,13 +216,17 @@ def _run_on_gpus(tasks, gpus):
 
 def chunked_cone_backward(sinogram, geom: ConeGeom, D, H, W,
                           du=1.0, dv=1.0, voxel_spacing=1.0,
-                          gpus=None, max_slices=None):
-    """Out-of-core + multi-GPU cone footprint backprojection → volume (D,H,W).
+                          projector="footprint", gpus=None, max_slices=None):
+    """Out-of-core + multi-GPU cone backprojection → volume (D,H,W).
 
     ``sinogram`` is host-resident (numpy or CPU tensor), shape (n_views, n_u, n_v).
     The output volume is split into z-slabs; each slab pulls only its shadow rows.
+    ``projector`` selects the backward operator: ``"footprint"`` (matched,
+    atomic-free adjoint) or ``"siddon"`` (line-integral adjoint; the highest-
+    fidelity FDK backprojector).
     """
     gpus = _resolve_gpus(gpus)
+    backward_fn = _BACKWARD_FUNCS[projector]
     sino_np = _np32(sinogram)
     n_views, n_u, n_v = sino_np.shape
     out = np.zeros((D, H, W), dtype=np.float32)
@@ -226,7 +243,7 @@ def chunked_cone_backward(sinogram, geom: ConeGeom, D, H, W,
             g = _vband_shift(_zslab_shift(geom, z0, z1, D, voxel_spacing),
                              v0, v1 - v0, n_v, dv)
             sub_sino = _to_dev(sino_np[:, :, v0:v1], dev)
-            sub_vol = ConeFootprintBackprojectorFunction.apply(
+            sub_vol = backward_fn.apply(
                 sub_sino, _to_dev(g.src_pos, dev), _to_dev(g.det_center, dev),
                 _to_dev(g.det_u_vec, dev), _to_dev(g.det_v_vec, dev),
                 z1 - z0, H, W, du, dv, voxel_spacing)
@@ -276,18 +293,53 @@ def chunked_cone_forward(volume, geom: ConeGeom, det_u, det_v,
     return out
 
 
+def _fdk_gather_slab(filtered_dev, geom_tensors, D, z0, z1, H, W, du, dv, vs):
+    """Run the distance-weighted FDK gather kernel for one z-slab on the current GPU.
+
+    Uses ``cz = D/2 - z0`` (no geometry shift) so sub-voxels land at their true
+    world-z; distance weighting and scale therefore stay consistent across slabs.
+    ``geom_tensors`` = (src, det_center, det_u_vec, det_v_vec) torch tensors on
+    this device (kept alive by the caller). Returns an *unscaled* (z1-z0, H, W).
+    """
+    src_t, dc_t, du_t, dv_t = geom_tensors
+    n_views, n_u, n_v = filtered_dev.shape
+    Nx, Ny, Nz = W, H, z1 - z0
+    reco_perm = torch.zeros((Nx, Ny, Nz), dtype=torch.float32, device=filtered_dev.device)
+    grid, tpb = _grid_3d(Nz, Ny, Nx)
+    stream = _get_numba_external_stream_for(torch.cuda.current_stream())
+    _cone_3d_fdk_backproject_kernel[grid, tpb, stream](
+        TorchCUDABridge.tensor_to_cuda_array(filtered_dev), n_views, n_u, n_v,
+        TorchCUDABridge.tensor_to_cuda_array(reco_perm), Nx, Ny, Nz,
+        _DTYPE(du), _DTYPE(dv),
+        TorchCUDABridge.tensor_to_cuda_array(src_t),
+        TorchCUDABridge.tensor_to_cuda_array(dc_t),
+        TorchCUDABridge.tensor_to_cuda_array(du_t),
+        TorchCUDABridge.tensor_to_cuda_array(dv_t),
+        _DTYPE(W * 0.5), _DTYPE(H * 0.5), _DTYPE(D * 0.5 - z0), _DTYPE(vs),
+    )
+    return reco_perm.permute(2, 1, 0).contiguous()
+
+
 def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
                      du=1.0, dv=1.0, voxel_spacing=1.0,
                      fdk_weights=None, normalization_scale=None,
                      enforce_positivity=True, filter_axis=1,
-                     gpus=None, max_slices=None):
+                     backprojector="siddon", gpus=None, max_slices=None):
     """Out-of-core + multi-GPU FDK reconstruction → volume (D, H, W).
 
     Applies optional per-detector FDK weighting and a ramp filter along the
-    detector-u axis (numpy FFT, same ``2|f|`` convention as
-    :mod:`diffct_mlx.reconstruction_algorithms._analytic`), then backprojects
-    with the chunked multi-GPU footprint backprojector and applies positivity +
-    normalization. ``fdk_weights`` broadcasts over views, shape (1, n_u, n_v).
+    detector-u axis (numpy FFT, ``2|f|`` convention), then backprojects across
+    z-slabs / GPUs and applies positivity + normalization. ``fdk_weights``
+    broadcasts over views, shape (1, n_u, n_v). Provide ``normalization_scale``
+    (e.g. ``pi*sid/(2*sdd*num_views)``) for a calibrated amplitude with the
+    ``siddon`` / ``footprint`` backprojectors.
+
+    ``backprojector``:
+      * ``"siddon"`` (default) — the line-integral adjoint P^T; the highest-
+        analytic-fidelity FDK backprojector (matches ``reconstruct_fdk``).
+      * ``"footprint"`` — the matched footprint adjoint P^T (atomic-free).
+      * ``"gather"`` — the dedicated distance-weighted voxel-driven FDK gather
+        kernel; applies ``sdd_mean/(2*pi*sid_mean)`` automatically.
     """
     sino = _np32(sinogram)
     if fdk_weights is not None:
@@ -299,10 +351,159 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
     filtered = np.real(
         np.fft.ifft(np.fft.fft(sino, axis=filter_axis) * ramp.reshape(shape), axis=filter_axis)
     ).astype(np.float32)
-    vol = chunked_cone_backward(filtered, geom, D, H, W, du, dv, voxel_spacing,
-                                gpus=gpus, max_slices=max_slices)
+
+    if backprojector in ("siddon", "footprint"):
+        vol = chunked_cone_backward(filtered, geom, D, H, W, du, dv, voxel_spacing,
+                                    projector=backprojector, gpus=gpus, max_slices=max_slices)
+    elif backprojector == "gather":
+        gpus_ = _resolve_gpus(gpus)
+        n_views, n_u, n_v = filtered.shape
+        step = _auto_max_slices(D, H, W, n_views, n_u, n_v, gpus_, max_slices)
+        # analytic FDK scale from the original (unshifted) geometry — consistent
+        # across slabs because the gather uses cz-adjust, not a geometry shift.
+        st, sd = _cone_mean_sid_sdd(
+            torch.as_tensor(geom.src_pos), torch.as_tensor(geom.det_center),
+            torch.as_tensor(geom.det_u_vec), torch.as_tensor(geom.det_v_vec))
+        fdk_scale = sd / (2.0 * np.pi * st)
+        vol = np.zeros((D, H, W), dtype=np.float32)
+
+        out_arr = vol
+
+        def make_task(z0, z1):
+            def task(dev):
+                torch.cuda.set_device(dev)
+                from numba import cuda as _cuda
+                _cuda.select_device(dev)
+                filt_dev = _to_dev(filtered, dev)
+                geom_tensors = (
+                    _to_dev(geom.src_pos, dev), _to_dev(geom.det_center, dev),
+                    _to_dev(geom.det_u_vec, dev), _to_dev(geom.det_v_vec, dev))
+                slab = _fdk_gather_slab(filt_dev, geom_tensors, D, z0, z1, H, W,
+                                        du, dv, voxel_spacing)
+                out_arr[z0:z1] = slab.detach().cpu().numpy()
+            return task
+
+        _run_on_gpus([make_task(z0, z1) for z0, z1 in _chunks(D, step)], gpus_)
+        vol = vol * float(fdk_scale)
+    else:
+        raise ValueError(
+            f"backprojector must be 'siddon', 'footprint' or 'gather', got {backprojector!r}")
+
     if enforce_positivity:
         vol = np.maximum(vol, 0.0)
     if normalization_scale is not None:
         vol = vol * float(normalization_scale)
     return vol
+
+
+# --------------------------------------------------------------------------- #
+# View-parallel multi-GPU (for iterative reconstruction). Splitting by views
+# needs NO shadow geometry — the per-view arrays are simply sliced — so this is
+# the natural multi-GPU path when the volume fits one GPU (throughput scaling).
+# --------------------------------------------------------------------------- #
+
+def _view_chunks(n_views, gpus, per_gpu=2):
+    n_bands = max(len(gpus), min(n_views, len(gpus) * per_gpu))
+    step = (n_views + n_bands - 1) // n_bands
+    return _chunks(n_views, step)
+
+
+def _slice_geom(geom: ConeGeom, a, b) -> ConeGeom:
+    return ConeGeom(geom.src_pos[a:b], geom.det_center[a:b],
+                    geom.det_u_vec[a:b], geom.det_v_vec[a:b])
+
+
+def mgpu_cone_forward(volume, geom: ConeGeom, det_u, det_v,
+                      du=1.0, dv=1.0, voxel_spacing=1.0, gpus=None):
+    """View-parallel multi-GPU cone footprint forward → (n_views, det_u, det_v).
+
+    The volume is replicated to each GPU; views are split across GPUs. Use when
+    the volume fits a single GPU (throughput scaling); use ``chunked_cone_*`` for
+    volumes larger than VRAM.
+    """
+    gpus = _resolve_gpus(gpus)
+    vol = _np32(volume)
+    nv = geom.n_views
+    out = np.zeros((nv, det_u, det_v), dtype=np.float32)
+
+    def make(a, b):
+        def task(dev):
+            torch.cuda.set_device(dev)
+            from numba import cuda as _cuda
+            _cuda.select_device(dev)
+            g = _slice_geom(geom, a, b)
+            s = ConeFootprintProjectorFunction.apply(
+                _to_dev(vol, dev), _to_dev(g.src_pos, dev), _to_dev(g.det_center, dev),
+                _to_dev(g.det_u_vec, dev), _to_dev(g.det_v_vec, dev),
+                det_u, det_v, du, dv, voxel_spacing)
+            out[a:b] = s.detach().cpu().numpy()
+        return task
+
+    _run_on_gpus([make(a, b) for a, b in _view_chunks(nv, gpus)], gpus)
+    return out
+
+
+def mgpu_cone_backproject(sinogram, geom: ConeGeom, D, H, W,
+                          du=1.0, dv=1.0, voxel_spacing=1.0,
+                          projector="footprint", gpus=None):
+    """View-parallel multi-GPU cone backprojection → volume (D, H, W).
+
+    Backprojection is a sum over views, so each GPU backprojects its view band
+    into a full-volume partial and the partials are summed on the host.
+    """
+    gpus = _resolve_gpus(gpus)
+    backward_fn = _BACKWARD_FUNCS[projector]
+    s = _np32(sinogram)
+    nv = geom.n_views
+    out = np.zeros((D, H, W), dtype=np.float32)
+    lock = threading.Lock()
+
+    def make(a, b):
+        def task(dev):
+            torch.cuda.set_device(dev)
+            from numba import cuda as _cuda
+            _cuda.select_device(dev)
+            g = _slice_geom(geom, a, b)
+            vol = backward_fn.apply(
+                _to_dev(s[a:b], dev), _to_dev(g.src_pos, dev), _to_dev(g.det_center, dev),
+                _to_dev(g.det_u_vec, dev), _to_dev(g.det_v_vec, dev),
+                D, H, W, du, dv, voxel_spacing)
+            part = vol.detach().cpu().numpy()
+            with lock:
+                out[:] += part
+        return task
+
+    _run_on_gpus([make(a, b) for a, b in _view_chunks(nv, gpus)], gpus)
+    return out
+
+
+def mgpu_sirt(measured, geom: ConeGeom, D, H, W, det_u, det_v,
+              du=1.0, dv=1.0, voxel_spacing=1.0,
+              n_iter=20, relaxation=1.0, projector="footprint",
+              enforce_positivity=True, gpus=None, eps=1e-6):
+    """View-parallel multi-GPU SIRT cone-beam reconstruction → volume (D, H, W).
+
+    Standard SIRT: ``x <- x + relax * C Aᵀ R (measured - A x)`` with
+    ``R = 1/(A·1)`` (row sums) and ``C = 1/(Aᵀ·1)`` (column sums). Every forward
+    / backprojection fans out across GPUs by views. Uses the matched footprint
+    pair by default.
+    """
+    gpus = _resolve_gpus(gpus)
+    m = _np32(measured)
+    fwd = lambda vol: mgpu_cone_forward(vol, geom, det_u, det_v, du, dv, voxel_spacing, gpus=gpus)
+    bwd = lambda sino: mgpu_cone_backproject(sino, geom, D, H, W, du, dv, voxel_spacing,
+                                             projector=projector, gpus=gpus)
+    rowsum = fwd(np.ones((D, H, W), dtype=np.float32))    # A·1
+    colsum = bwd(np.ones_like(m))                         # Aᵀ·1
+    row_ok, col_ok = rowsum > eps, colsum > eps
+    rowsafe = np.where(row_ok, rowsum, 1.0)
+    colsafe = np.where(col_ok, colsum, 1.0)
+
+    x = np.zeros((D, H, W), dtype=np.float32)
+    for _ in range(int(n_iter)):
+        residual = np.where(row_ok, (m - fwd(x)) / rowsafe, 0.0).astype(np.float32)
+        update = np.where(col_ok, bwd(residual) / colsafe, 0.0).astype(np.float32)
+        x = x + float(relaxation) * update
+        if enforce_positivity:
+            x = np.maximum(x, 0.0)
+    return x
