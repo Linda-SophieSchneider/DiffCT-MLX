@@ -574,28 +574,116 @@ def mgpu_cone_backproject(sinogram, geom: ConeGeom, D, H, W,
     return out
 
 
+def _bands_for(n_views, gpus):
+    return [(a, b, gpus[i % len(gpus)]) for i, (a, b) in enumerate(_view_chunks(n_views, gpus))]
+
+
+def _geom_band_dev(geom, a, b, dev):
+    d = torch.device("cuda", dev)
+    return (torch.as_tensor(geom.src_pos[a:b], device=d),
+            torch.as_tensor(geom.det_center[a:b], device=d),
+            torch.as_tensor(geom.det_u_vec[a:b], device=d),
+            torch.as_tensor(geom.det_v_vec[a:b], device=d))
+
+
+def _forward_resident(x_d0, geom, det_u, det_v, du, dv, vs, bands, d0):
+    """A x with x resident on GPU d0; view bands fan out, result gathered on d0."""
+    dev0 = torch.device("cuda", d0)
+    res = {}
+
+    def task(item):
+        i, (a, b, dev) = item
+        torch.cuda.set_device(dev)
+        from numba import cuda as _cuda
+        _cuda.select_device(dev)
+        xg = x_d0 if dev == d0 else x_d0.to(torch.device("cuda", dev))
+        s = ConeFootprintProjectorFunction.apply(xg, *_geom_band_dev(geom, a, b, dev),
+                                                 det_u, det_v, du, dv, vs)
+        res[i] = (a, b, s)
+
+    with ThreadPoolExecutor(max_workers=len(set(d for _, _, d in bands))) as ex:
+        list(ex.map(task, enumerate(bands)))
+    ax = torch.empty((geom.n_views, det_u, det_v), dtype=torch.float32, device=dev0)
+    for i in sorted(res):
+        a, b, s = res[i]
+        ax[a:b] = s.to(dev0)
+    return ax
+
+
+def _backproject_resident(sino_d0, geom, D, H, W, du, dv, vs, projector, bands, d0):
+    """Aᵀ sino with sino resident on GPU d0; view bands fan out, summed on d0."""
+    dev0 = torch.device("cuda", d0)
+    backward_fn = _BACKWARD_FUNCS[projector]
+    res = {}
+
+    def task(item):
+        i, (a, b, dev) = item
+        torch.cuda.set_device(dev)
+        from numba import cuda as _cuda
+        _cuda.select_device(dev)
+        sg = sino_d0[a:b] if dev == d0 else sino_d0[a:b].to(torch.device("cuda", dev))
+        vol = backward_fn.apply(sg, *_geom_band_dev(geom, a, b, dev),
+                                D, H, W, du, dv, vs)
+        res[i] = vol
+
+    with ThreadPoolExecutor(max_workers=len(set(d for _, _, d in bands))) as ex:
+        list(ex.map(task, enumerate(bands)))
+    acc = torch.zeros((D, H, W), dtype=torch.float32, device=dev0)
+    for i in sorted(res):
+        acc += res[i].to(dev0)
+    return acc
+
+
 def mgpu_sirt(measured, geom: ConeGeom, D, H, W, det_u, det_v,
               du=1.0, dv=1.0, voxel_spacing=1.0,
               n_iter=20, relaxation=1.0, projector="footprint",
-              enforce_positivity=True, gpus=None, eps=1e-6):
+              enforce_positivity=True, gpus=None, eps=1e-6, resident=True):
     """View-parallel multi-GPU SIRT cone-beam reconstruction → volume (D, H, W).
 
     Standard SIRT: ``x <- x + relax * C Aᵀ R (measured - A x)`` with
-    ``R = 1/(A·1)`` (row sums) and ``C = 1/(Aᵀ·1)`` (column sums). Every forward
-    / backprojection fans out across GPUs by views. Uses the matched footprint
-    pair by default.
+    ``R = 1/(A·1)``, ``C = 1/(Aᵀ·1)``. Every forward/backprojection fans out
+    across GPUs by views (matched footprint pair by default).
+
+    ``resident=True`` (default) keeps the iterate and sinogram intermediates on
+    GPU0 as torch tensors and reduces partials device-to-device, avoiding the
+    per-iteration host round-trips — better throughput scaling for volumes that
+    fit one GPU. ``resident=False`` uses host-resident numpy intermediates (works
+    the same, simpler; kept for reference). For volumes larger than VRAM/RAM use
+    :func:`chunked_sirt` instead.
     """
     gpus = _resolve_gpus(gpus)
     m = _np32(measured)
+
+    if resident:
+        d0 = gpus[0]
+        dev0 = torch.device("cuda", d0)
+        bands = _bands_for(geom.n_views, gpus)
+        torch.cuda.set_device(d0)
+        m_t = torch.as_tensor(m, device=dev0)
+        fwd = lambda x: _forward_resident(x, geom, det_u, det_v, du, dv, voxel_spacing, bands, d0)
+        bwd = lambda s: _backproject_resident(s, geom, D, H, W, du, dv, voxel_spacing, projector, bands, d0)
+        rowsum = fwd(torch.ones((D, H, W), dtype=torch.float32, device=dev0))
+        colsum = bwd(torch.ones_like(m_t))
+        row_ok, col_ok = rowsum > eps, colsum > eps
+        rowsafe = torch.where(row_ok, rowsum, torch.ones_like(rowsum))
+        colsafe = torch.where(col_ok, colsum, torch.ones_like(colsum))
+        x = torch.zeros((D, H, W), dtype=torch.float32, device=dev0)
+        for _ in range(int(n_iter)):
+            residual = torch.where(row_ok, (m_t - fwd(x)) / rowsafe, torch.zeros_like(m_t))
+            update = torch.where(col_ok, bwd(residual) / colsafe, torch.zeros_like(colsum))
+            x = x + float(relaxation) * update
+            if enforce_positivity:
+                x = torch.clamp(x, min=0.0)
+        return x.detach().cpu().numpy()
+
     fwd = lambda vol: mgpu_cone_forward(vol, geom, det_u, det_v, du, dv, voxel_spacing, gpus=gpus)
     bwd = lambda sino: mgpu_cone_backproject(sino, geom, D, H, W, du, dv, voxel_spacing,
                                              projector=projector, gpus=gpus)
-    rowsum = fwd(np.ones((D, H, W), dtype=np.float32))    # A·1
-    colsum = bwd(np.ones_like(m))                         # Aᵀ·1
+    rowsum = fwd(np.ones((D, H, W), dtype=np.float32))
+    colsum = bwd(np.ones_like(m))
     row_ok, col_ok = rowsum > eps, colsum > eps
     rowsafe = np.where(row_ok, rowsum, 1.0)
     colsafe = np.where(col_ok, colsum, 1.0)
-
     x = np.zeros((D, H, W), dtype=np.float32)
     for _ in range(int(n_iter)):
         residual = np.where(row_ok, (m - fwd(x)) / rowsafe, 0.0).astype(np.float32)
