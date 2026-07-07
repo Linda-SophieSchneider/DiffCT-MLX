@@ -43,3 +43,5 @@ Upstream = "https://github.com/sypsyp97/diffct"
 #   * diffct_mlx   — the unified, auto-backend API (dispatches to Torch/CUDA or MLX)
 [tool.hatch.build.targets.wheel]
 packages = ["diffct", "diffct_mlx"]
+# Ship the embedded, offline-generated spectrum/attenuation library (binary data).
+artifacts = ["diffct_mlx/physics/data/*.npz"]
