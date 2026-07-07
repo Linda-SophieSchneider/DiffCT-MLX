@@ -322,16 +322,25 @@ def threshold_small_raylengths(
     raylength_projection,
     quantile: float,
 ):
-    """Drop the smallest positive raylength values to improve SART stability."""
+    """Drop the smallest positive raylength values to improve SART stability.
+
+    On-device (nearest-rank) quantile of the positive raylengths — no host
+    round-trip — so this stays on the GPU inside the iterative sweeps.
+    """
     if quantile <= 0.0:
         return raylength_projection
-    raylength_np = _b.to_numpy(raylength_projection)
-    positive_values = raylength_np[raylength_np > 0.0]
-    if positive_values.size == 0:
-        return raylength_projection
-    threshold = float(np.quantile(positive_values, quantile))
-    mask = (raylength_projection > 0.0) & (raylength_projection <= threshold)
-    return xp.where(mask, 0.0, raylength_projection)
+    r = raylength_projection
+    flat = xp.reshape(r, (-1,))
+    total = int(flat.shape[0])
+    n_pos = int(xp.sum(xp.where(flat > 0.0, xp.ones_like(flat), xp.zeros_like(flat))))
+    if n_pos == 0:
+        return r
+    ordered = xp.sort(flat)                       # ascending; positives are the top n_pos
+    rank = (total - n_pos) + int(float(quantile) * (n_pos - 1))
+    rank = min(max(rank, 0), total - 1)
+    threshold = ordered[rank]                      # scalar backend value
+    mask = (r > 0.0) & (r <= threshold)
+    return xp.where(mask, 0.0, r)
 
 
 def prepare_raylength_projection(
@@ -595,6 +604,71 @@ def resolve_projection_weights(
     return tuple(float(value) for value in params.projection_weights)
 
 
+#: Default cap for caching per-view sensitivity volumes across iterations. The
+#: raylength/sensitivity maps are geometry-only (independent of the iterate), so
+#: caching them avoids recomputing n_views projections every outer iteration.
+_SENSITIVITY_CACHE_BUDGET_BYTES = 8 * 1024 ** 3
+
+
+def _volume_byte_size(shape) -> int:
+    total = 1
+    for dim in shape:
+        total *= int(dim)
+    return total * 4
+
+
+def get_cached_raylengths(sweep_cache, ones_volume, forward_project, params, projection_count):
+    """Raylength projections, computed once and reused across outer iterations."""
+    if sweep_cache is not None and "raylengths" in sweep_cache:
+        return sweep_cache["raylengths"]
+    raylengths = precompute_raylength_projections(ones_volume, forward_project, params, projection_count)
+    if sweep_cache is not None:
+        sweep_cache["raylengths"] = raylengths
+    return raylengths
+
+
+def get_cached_sensitivities(sweep_cache, raylength_projections, back_project, params, projection_count):
+    """Per-view sensitivity volumes, cached across iterations (memory-gated).
+
+    Returns a ``{view: volume}`` dict, or ``None`` when sensitivity normalization
+    is off or the full set would exceed the cache budget (then callers compute
+    each per-view sensitivity on the fly, as before).
+    """
+    if not params.voxel_sensitivity_normalization:
+        return None
+    if sweep_cache is not None and "sensitivities" in sweep_cache:
+        return sweep_cache["sensitivities"]
+    need = projection_count * _volume_byte_size(params.volume_shape)
+    sensitivities = None
+    if need <= _SENSITIVITY_CACHE_BUDGET_BYTES:
+        sensitivities = precompute_sensitivity_volumes(raylength_projections, back_project, params, projection_count)
+    if sweep_cache is not None:
+        sweep_cache["sensitivities"] = sensitivities
+    return sensitivities
+
+
+def get_cached_ns_backprojections(sweep_cache, raylength_projections, back_project, params, projection_count):
+    """Per-view detector-mask backprojections for normalized SART (geometry-only).
+
+    Cached across iterations, memory-gated. Returns ``{view: volume}`` or ``None``
+    (then callers backproject the detector mask on the fly).
+    """
+    if sweep_cache is not None and "ns_sensitivity" in sweep_cache:
+        return sweep_cache["ns_sensitivity"]
+    need = projection_count * _volume_byte_size(params.volume_shape)
+    result = None
+    if need <= _SENSITIVITY_CACHE_BUDGET_BYTES:
+        result = {}
+        for projection_index in range(projection_count):
+            detector_mask = compute_detector_update_mask(raylength_projections[int(projection_index)], params)
+            backprojected = back_project(detector_mask, int(projection_index))
+            xp.eval(backprojected)
+            result[int(projection_index)] = backprojected
+    if sweep_cache is not None:
+        sweep_cache["ns_sensitivity"] = result
+    return result
+
+
 def run_sart_sweeps(
     volume,
     measured_projections: Sequence,
@@ -605,15 +679,18 @@ def run_sart_sweeps(
     *,
     beta: float = 1.0,
     outer_iteration_index: int = 0,
+    sweep_cache: dict | None = None,
 ):
     """Run the configured number of SART sweeps over all provided projections."""
     scale = resolve_backprojection_scale(params)
     order = projection_order(params, len(measured_projections))
-    raylength_projections = precompute_raylength_projections(
-        ones_volume,
-        forward_project,
-        params,
-        len(measured_projections),
+    raylength_projections = get_cached_raylengths(
+        sweep_cache, ones_volume, forward_project, params, len(measured_projections)
+    )
+    # Per-view sensitivity is geometry-only: hoist it out of the sweep loop and
+    # reuse across outer iterations (memory-gated; None => compute on the fly).
+    sensitivities = get_cached_sensitivities(
+        sweep_cache, raylength_projections, back_project, params, len(measured_projections)
     )
     for sweep_index in range(params.sart_iteration_count):
         for step_index, projection_index in enumerate(order):
@@ -628,12 +705,15 @@ def run_sart_sweeps(
             )
             backprojection_volume = back_project(correction_image, projection_index)
             if params.voxel_sensitivity_normalization:
-                sensitivity_volume = compute_voxel_sensitivity_volume(
-                    raylength_projection,
-                    back_project,
-                    int(projection_index),
-                    params,
-                )
+                if sensitivities is not None:
+                    sensitivity_volume = sensitivities[int(projection_index)]
+                else:
+                    sensitivity_volume = compute_voxel_sensitivity_volume(
+                        raylength_projection,
+                        back_project,
+                        int(projection_index),
+                        params,
+                    )
                 backprojection_volume = normalize_backprojection_by_sensitivity(
                     backprojection_volume,
                     sensitivity_volume,
@@ -674,30 +754,34 @@ def run_sirt_sweeps(
     *,
     beta: float = 1.0,
     outer_iteration_index: int = 0,
+    sweep_cache: dict | None = None,
 ):
     """Run the configured number of SIRT sweeps over all provided projections."""
     scale = resolve_backprojection_scale(params)
     order = projection_order(params, len(measured_projections))
-    raylength_projections = precompute_raylength_projections(
-        ones_volume,
-        forward_project,
-        params,
-        len(measured_projections),
+    raylength_projections = get_cached_raylengths(
+        sweep_cache, ones_volume, forward_project, params, len(measured_projections)
     )
     projection_count = float(len(order))
-    # Aggregate sensitivity volume is geometry-only; compute once before sweeps.
+    # Aggregate sensitivity volume is geometry-only; compute once and reuse across
+    # outer iterations via the sweep cache.
     sirt_sensitivity = None
     if params.voxel_sensitivity_normalization:
-        sirt_sensitivity = xp.zeros(params.volume_shape, dtype=params.dtype)
-        for projection_index in range(len(measured_projections)):
-            sv = compute_voxel_sensitivity_volume(
-                raylength_projections[int(projection_index)],
-                back_project,
-                projection_index,
-                params,
-            )
-            sirt_sensitivity = sirt_sensitivity + sv
-        xp.eval(sirt_sensitivity)
+        if sweep_cache is not None and "sirt_sensitivity" in sweep_cache:
+            sirt_sensitivity = sweep_cache["sirt_sensitivity"]
+        else:
+            sirt_sensitivity = xp.zeros(params.volume_shape, dtype=params.dtype)
+            for projection_index in range(len(measured_projections)):
+                sv = compute_voxel_sensitivity_volume(
+                    raylength_projections[int(projection_index)],
+                    back_project,
+                    projection_index,
+                    params,
+                )
+                sirt_sensitivity = sirt_sensitivity + sv
+            xp.eval(sirt_sensitivity)
+            if sweep_cache is not None:
+                sweep_cache["sirt_sensitivity"] = sirt_sensitivity
     for sweep_index in range(params.sart_iteration_count):
         reference_volume = volume
         accumulated_backprojection = xp.zeros_like(volume)
@@ -755,17 +839,19 @@ def run_normalized_sart_sweeps(
     *,
     beta: float = 1.0,
     outer_iteration_index: int = 0,
+    sweep_cache: dict | None = None,
 ):
     """Run LEAP-style normalized SART updates over full passes or ordered subsets."""
     scale = resolve_backprojection_scale(params)
     order = projection_order(params, len(measured_projections))
     projection_weights = resolve_projection_weights(measured_projections, params)
     subsets = projection_subsets(order, params.projection_subset_count)
-    raylength_projections = precompute_raylength_projections(
-        ones_volume,
-        forward_project,
-        params,
-        len(measured_projections),
+    raylength_projections = get_cached_raylengths(
+        sweep_cache, ones_volume, forward_project, params, len(measured_projections)
+    )
+    # Per-view detector-mask backprojections are geometry-only; cache across iters.
+    ns_sensitivity = get_cached_ns_backprojections(
+        sweep_cache, raylength_projections, back_project, params, len(measured_projections)
     )
     epsilon = float(params.raylength_epsilon)
 
@@ -798,9 +884,13 @@ def run_normalized_sart_sweeps(
                 )
                 backprojection_volume = back_project(correction_image, projection_index)
                 accumulated_backprojection = accumulated_backprojection + (projection_weight * backprojection_volume)
-                detector_mask = compute_detector_update_mask(raylength_projection, params)
+                if ns_sensitivity is not None:
+                    sensitivity_backprojection = ns_sensitivity[int(projection_index)]
+                else:
+                    detector_mask = compute_detector_update_mask(raylength_projection, params)
+                    sensitivity_backprojection = back_project(detector_mask, projection_index)
                 accumulated_sensitivity = accumulated_sensitivity + (
-                    projection_weight * back_project(detector_mask, projection_index)
+                    projection_weight * sensitivity_backprojection
                 )
                 if params.sart_debug_callback is not None:
                     debug_stats = {
@@ -844,6 +934,7 @@ def run_iterative_sweeps(
     *,
     beta: float = 1.0,
     outer_iteration_index: int = 0,
+    sweep_cache: dict | None = None,
 ):
     """Dispatch to the configured iterative sweep method."""
     if params.iterative_update_method == "normalized_sart":
@@ -856,6 +947,7 @@ def run_iterative_sweeps(
             params=params,
             beta=beta,
             outer_iteration_index=outer_iteration_index,
+            sweep_cache=sweep_cache,
         )
     if params.iterative_update_method == "sirt":
         return run_sirt_sweeps(
@@ -867,6 +959,7 @@ def run_iterative_sweeps(
             params=params,
             beta=beta,
             outer_iteration_index=outer_iteration_index,
+            sweep_cache=sweep_cache,
         )
     return run_sart_sweeps(
         volume=volume,
@@ -877,4 +970,5 @@ def run_iterative_sweeps(
         params=params,
         beta=beta,
         outer_iteration_index=outer_iteration_index,
+        sweep_cache=sweep_cache,
     )

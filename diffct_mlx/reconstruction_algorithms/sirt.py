@@ -42,6 +42,8 @@ def reconstruct_sirt(
     measured = normalize_measured_projections(measured_projections, params.dtype)
     volume, ones_volume, _ = initialize_volume(params)
 
+    # Reuse geometry-only raylength/sensitivity maps across outer iterations.
+    sweep_cache: dict = {}
     for iteration in range(params.iteration_count):
         skip_first_sirt = iteration == 0 and params.initial_volume is not None
         if not skip_first_sirt:
@@ -53,6 +55,7 @@ def reconstruct_sirt(
                 back_project=back_project,
                 params=params,
                 outer_iteration_index=iteration,
+                sweep_cache=sweep_cache,
             )
         volume = clamp_reconstruction_volume(volume, params, stage="iteration")
         xp.eval(volume)
