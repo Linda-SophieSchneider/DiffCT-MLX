@@ -32,6 +32,7 @@ dependencies = [
 [project.optional-dependencies]
 cuda = ["torch", "numba-cuda"]
 mlx = ["mlx"]
+zarr = ["zarr>=3"]         # optional chunked+compressed out-of-core store
 
 [project.urls]
 Homepage = "https://github.com/Linda-SophieSchneider/DiffCT-MLX"

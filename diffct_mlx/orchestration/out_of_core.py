@@ -213,6 +213,7 @@ def _alloc_out(out, shape):
 
 _OOC_DIR = None
 _OOC_COUNTER = 0
+_OOC_BACKEND = "memmap"   # "memmap" (raw .npy) or "zarr" (chunked + compressed)
 
 
 def set_out_of_core_dir(path):
@@ -223,6 +224,28 @@ def set_out_of_core_dir(path):
 
 def get_out_of_core_dir():
     return _OOC_DIR
+
+
+def set_out_of_core_backend(name):
+    """Choose the disk backend for auto out-of-core arrays: 'memmap' or 'zarr'.
+
+    'zarr' stores chunked + compressed arrays — less HDD traffic for TB-scale
+    volumes (at some CPU cost); 'memmap' is a raw flat .npy. Both are read/written
+    with numpy-style slicing, so the reconstruction code is identical.
+    """
+    global _OOC_BACKEND
+    if name not in ("memmap", "zarr"):
+        raise ValueError("backend must be 'memmap' or 'zarr'")
+    _OOC_BACKEND = name
+
+
+def open_zarr(path, shape, dtype=np.float32, chunks=None, mode="w"):
+    """Create/open a chunked, compressed zarr array (numpy-style slicing)."""
+    import zarr
+    if chunks is None:
+        chunks = (min(64, int(shape[0])),) + tuple(int(s) for s in shape[1:])
+    return zarr.open_array(store=str(path), mode=mode, shape=tuple(int(s) for s in shape),
+                           chunks=chunks, dtype=np.dtype(dtype))
 
 
 def _available_ram():
@@ -255,20 +278,24 @@ def _ooc_path(tag, work_dir):
             RuntimeWarning, stacklevel=3)
     os.makedirs(d, exist_ok=True)
     _OOC_COUNTER += 1
-    return os.path.join(d, f"diffct_ooc_{os.getpid()}_{_OOC_COUNTER}_{tag}.npy")
+    ext = ".zarr" if _OOC_BACKEND == "zarr" else ".npy"
+    return os.path.join(d, f"diffct_ooc_{os.getpid()}_{_OOC_COUNTER}_{tag}{ext}")
 
 
 def _resolve_output(out, shape, tag, work_dir=None, ram_budget=None):
     """Pick storage for an output array: explicit ``out``, else RAM if it fits the
-    budget, else a disk memmap. Returns the array. This is how the disk-backed
-    path is chosen *automatically*."""
+    budget, else a disk array (memmap or zarr per set_out_of_core_backend). This
+    is how the disk-backed path is chosen *automatically*."""
     if out is not None:
         return _alloc_out(out, shape)
     nbytes = int(np.prod(shape)) * 4
     budget = int(ram_budget) if ram_budget is not None else int(0.5 * _available_ram())
     if work_dir is None and nbytes <= budget:
         return np.zeros(shape, dtype=np.float32)
-    return open_memmap(_ooc_path(tag, work_dir), shape, mode="w+")
+    path = _ooc_path(tag, work_dir)
+    if _OOC_BACKEND == "zarr":
+        return open_zarr(path, shape)
+    return open_memmap(path, shape, mode="w+")
 
 
 def ramp_filter_memmap(sinogram, out=None, filter_axis=1, fdk_weights=None,
