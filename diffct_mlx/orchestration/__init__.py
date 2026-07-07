@@ -8,9 +8,11 @@ chunk boundaries). See :mod:`diffct_mlx.orchestration.out_of_core`.
 
 from .out_of_core import (
     ConeGeom,
+    open_memmap,
     chunked_cone_forward,
     chunked_cone_backward,
     chunked_cone_fdk,
+    chunked_sirt,
     mgpu_cone_forward,
     mgpu_cone_backproject,
     mgpu_sirt,
@@ -20,9 +22,11 @@ from .out_of_core import (
 
 __all__ = [
     "ConeGeom",
+    "open_memmap",
     "chunked_cone_forward",
     "chunked_cone_backward",
     "chunked_cone_fdk",
+    "chunked_sirt",
     "mgpu_cone_forward",
     "mgpu_cone_backproject",
     "mgpu_sirt",

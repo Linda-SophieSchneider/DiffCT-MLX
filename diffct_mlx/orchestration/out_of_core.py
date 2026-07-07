@@ -161,7 +161,31 @@ def _vband_shift(geom: ConeGeom, v0, band, n_v, dv) -> ConeGeom:
 
 
 def _to_dev(arr, dev):
-    return torch.as_tensor(arr, dtype=torch.float32, device=dev)
+    return torch.as_tensor(np.ascontiguousarray(arr), dtype=torch.float32, device=dev)
+
+
+def open_memmap(path, shape, dtype=np.float32, mode="w+"):
+    """Create/open a disk-backed float32 .npy array (numpy memmap).
+
+    Use for volumes/sinograms too large for host RAM (e.g. TB-scale
+    reconstructions): the chunked/streaming routines read and write only the
+    slabs/bands they touch, so peak RAM stays bounded by the chunk size, not the
+    full array. ``mode='w+'`` creates, ``'r+'`` opens existing read/write,
+    ``'r'`` read-only.
+    """
+    from numpy.lib.format import open_memmap as _om
+    if mode == "w+":
+        return _om(path, mode="w+", dtype=np.dtype(dtype), shape=tuple(shape))
+    return _om(path, mode=mode)
+
+
+def _alloc_out(out, shape):
+    """Return the caller's output array (disk memmap or in-RAM) or a fresh RAM array."""
+    if out is None:
+        return np.zeros(shape, dtype=np.float32)
+    if tuple(out.shape) != tuple(shape):
+        raise ValueError(f"out has shape {tuple(out.shape)!r}, expected {tuple(shape)!r}")
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -216,20 +240,24 @@ def _run_on_gpus(tasks, gpus):
 
 def chunked_cone_backward(sinogram, geom: ConeGeom, D, H, W,
                           du=1.0, dv=1.0, voxel_spacing=1.0,
-                          projector="footprint", gpus=None, max_slices=None):
+                          projector="footprint", gpus=None, max_slices=None,
+                          out=None, post_fn=None):
     """Out-of-core + multi-GPU cone backprojection → volume (D,H,W).
 
-    ``sinogram`` is host-resident (numpy or CPU tensor), shape (n_views, n_u, n_v).
-    The output volume is split into z-slabs; each slab pulls only its shadow rows.
-    ``projector`` selects the backward operator: ``"footprint"`` (matched,
-    atomic-free adjoint) or ``"siddon"`` (line-integral adjoint; the highest-
-    fidelity FDK backprojector).
+    ``sinogram`` is host-resident (numpy / CPU tensor / disk memmap), shape
+    (n_views, n_u, n_v). The output volume is split into z-slabs; each slab pulls
+    only its shadow rows. Pass ``out=`` (a preallocated array or disk memmap, see
+    :func:`open_memmap`) to stream the result to disk so the full volume never
+    needs to fit RAM. ``post_fn(slab)`` is applied to each slab before writing
+    (e.g. positivity + FDK scale) to keep the pipeline streaming.
+    ``projector``: ``"footprint"`` (matched, atomic-free) or ``"siddon"``
+    (line-integral adjoint; highest-fidelity FDK backprojector).
     """
     gpus = _resolve_gpus(gpus)
     backward_fn = _BACKWARD_FUNCS[projector]
     sino_np = _np32(sinogram)
     n_views, n_u, n_v = sino_np.shape
-    out = np.zeros((D, H, W), dtype=np.float32)
+    out = _alloc_out(out, (D, H, W))
     step = _auto_max_slices(D, H, W, n_views, n_u, n_v, gpus, max_slices)
 
     def make_task(z0, z1):
@@ -238,16 +266,21 @@ def chunked_cone_backward(sinogram, geom: ConeGeom, D, H, W,
             from numba import cuda as _cuda
             _cuda.select_device(dev)
             v0, v1 = row_range_for_zslab(z0, z1, geom, D, H, W, dv, n_v, voxel_spacing)
-            if v1 <= v0:
-                return  # slab projects outside the detector → stays zero
-            g = _vband_shift(_zslab_shift(geom, z0, z1, D, voxel_spacing),
-                             v0, v1 - v0, n_v, dv)
-            sub_sino = _to_dev(sino_np[:, :, v0:v1], dev)
-            sub_vol = backward_fn.apply(
-                sub_sino, _to_dev(g.src_pos, dev), _to_dev(g.det_center, dev),
-                _to_dev(g.det_u_vec, dev), _to_dev(g.det_v_vec, dev),
-                z1 - z0, H, W, du, dv, voxel_spacing)
-            out[z0:z1] = sub_vol.detach().cpu().numpy()
+            slab = np.zeros((z1 - z0, H, W), dtype=np.float32) if post_fn is None else None
+            if v1 > v0:
+                g = _vband_shift(_zslab_shift(geom, z0, z1, D, voxel_spacing),
+                                 v0, v1 - v0, n_v, dv)
+                sub_sino = _to_dev(sino_np[:, :, v0:v1], dev)
+                sub_vol = backward_fn.apply(
+                    sub_sino, _to_dev(g.src_pos, dev), _to_dev(g.det_center, dev),
+                    _to_dev(g.det_u_vec, dev), _to_dev(g.det_v_vec, dev),
+                    z1 - z0, H, W, du, dv, voxel_spacing)
+                slab = sub_vol.detach().cpu().numpy()
+            elif post_fn is not None:
+                slab = np.zeros((z1 - z0, H, W), dtype=np.float32)
+            if post_fn is not None:
+                slab = post_fn(slab)
+            out[z0:z1] = slab
         return task
 
     _run_on_gpus([make_task(z0, z1) for z0, z1 in _chunks(D, step)], gpus)
@@ -256,18 +289,19 @@ def chunked_cone_backward(sinogram, geom: ConeGeom, D, H, W,
 
 def chunked_cone_forward(volume, geom: ConeGeom, det_u, det_v,
                          du=1.0, dv=1.0, voxel_spacing=1.0,
-                         gpus=None, max_rows=None):
+                         gpus=None, max_rows=None, out=None):
     """Out-of-core + multi-GPU cone footprint forward projection → (n_views, det_u, det_v).
 
-    ``volume`` is host-resident (numpy or CPU tensor), shape (D, H, W). The output
-    projections are split into detector-row (v) bands; each band pulls only the
-    z-slab of the volume in its shadow.
+    ``volume`` is host-resident (numpy / CPU tensor / disk memmap), shape
+    (D, H, W). The output projections are split into detector-row (v) bands; each
+    band pulls only the z-slab of the volume in its shadow. Pass ``out=`` (array
+    or disk memmap) to stream the sinogram to disk.
     """
     gpus = _resolve_gpus(gpus)
     vol_np = _np32(volume)
     D, H, W = vol_np.shape
     n_views = geom.n_views
-    out = np.zeros((n_views, det_u, det_v), dtype=np.float32)
+    out = _alloc_out(out, (n_views, det_u, det_v))
     if max_rows is None:
         max_rows = max(8, _auto_max_slices(D, H, W, n_views, det_u, det_v, gpus, None))
 
@@ -324,7 +358,7 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
                      du=1.0, dv=1.0, voxel_spacing=1.0,
                      fdk_weights=None, normalization_scale=None,
                      enforce_positivity=True, filter_axis=1,
-                     backprojector="siddon", gpus=None, max_slices=None):
+                     backprojector="siddon", gpus=None, max_slices=None, out=None):
     """Out-of-core + multi-GPU FDK reconstruction → volume (D, H, W).
 
     Applies optional per-detector FDK weighting and a ramp filter along the
@@ -334,12 +368,16 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
     (e.g. ``pi*sid/(2*sdd*num_views)``) for a calibrated amplitude with the
     ``siddon`` / ``footprint`` backprojectors.
 
-    ``backprojector``:
-      * ``"siddon"`` (default) — the line-integral adjoint P^T; the highest-
-        analytic-fidelity FDK backprojector (matches ``reconstruct_fdk``).
-      * ``"footprint"`` — the matched footprint adjoint P^T (atomic-free).
-      * ``"gather"`` — the dedicated distance-weighted voxel-driven FDK gather
-        kernel; applies ``sdd_mean/(2*pi*sid_mean)`` automatically.
+    Pass ``out=`` (a disk memmap, see :func:`open_memmap`) to stream the output
+    volume to disk — positivity/scale are applied per slab so the full volume
+    never materializes in RAM (TB-scale reconstructions). Note: the sinogram is
+    ramp-filtered in RAM here; for a sinogram too large for RAM, pre-filter it
+    into a memmap and pass it as ``sinogram`` with ``fdk_weights=None`` and a
+    pre-multiplied ramp (see docs / follow-up).
+
+    ``backprojector``: ``"siddon"`` (default, highest fidelity, matches
+    ``reconstruct_fdk``), ``"footprint"`` (matched atomic-free), or ``"gather"``
+    (distance-weighted voxel-driven FDK kernel; applies ``sdd/(2*pi*sid)``).
     """
     sino = _np32(sinogram)
     if fdk_weights is not None:
@@ -352,22 +390,26 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
         np.fft.ifft(np.fft.fft(sino, axis=filter_axis) * ramp.reshape(shape), axis=filter_axis)
     ).astype(np.float32)
 
+    ns = float(normalization_scale) if normalization_scale is not None else 1.0
+
+    def _post(slab, extra=1.0):
+        s = slab * (float(extra) * ns) if (extra != 1.0 or ns != 1.0) else slab
+        return np.maximum(s, 0.0) if enforce_positivity else s
+
     if backprojector in ("siddon", "footprint"):
-        vol = chunked_cone_backward(filtered, geom, D, H, W, du, dv, voxel_spacing,
-                                    projector=backprojector, gpus=gpus, max_slices=max_slices)
+        return chunked_cone_backward(
+            filtered, geom, D, H, W, du, dv, voxel_spacing,
+            projector=backprojector, gpus=gpus, max_slices=max_slices,
+            out=out, post_fn=_post)
     elif backprojector == "gather":
         gpus_ = _resolve_gpus(gpus)
         n_views, n_u, n_v = filtered.shape
         step = _auto_max_slices(D, H, W, n_views, n_u, n_v, gpus_, max_slices)
-        # analytic FDK scale from the original (unshifted) geometry — consistent
-        # across slabs because the gather uses cz-adjust, not a geometry shift.
         st, sd = _cone_mean_sid_sdd(
             torch.as_tensor(geom.src_pos), torch.as_tensor(geom.det_center),
             torch.as_tensor(geom.det_u_vec), torch.as_tensor(geom.det_v_vec))
         fdk_scale = sd / (2.0 * np.pi * st)
-        vol = np.zeros((D, H, W), dtype=np.float32)
-
-        out_arr = vol
+        out = _alloc_out(out, (D, H, W))
 
         def make_task(z0, z1):
             def task(dev):
@@ -380,20 +422,75 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
                     _to_dev(geom.det_u_vec, dev), _to_dev(geom.det_v_vec, dev))
                 slab = _fdk_gather_slab(filt_dev, geom_tensors, D, z0, z1, H, W,
                                         du, dv, voxel_spacing)
-                out_arr[z0:z1] = slab.detach().cpu().numpy()
+                out[z0:z1] = _post(slab.detach().cpu().numpy(), extra=fdk_scale)
             return task
 
         _run_on_gpus([make_task(z0, z1) for z0, z1 in _chunks(D, step)], gpus_)
-        vol = vol * float(fdk_scale)
+        return out
     else:
         raise ValueError(
             f"backprojector must be 'siddon', 'footprint' or 'gather', got {backprojector!r}")
 
-    if enforce_positivity:
-        vol = np.maximum(vol, 0.0)
-    if normalization_scale is not None:
-        vol = vol * float(normalization_scale)
-    return vol
+
+def chunked_sirt(measured, geom: ConeGeom, D, H, W, det_u, det_v,
+                 du=1.0, dv=1.0, voxel_spacing=1.0,
+                 n_iter=20, relaxation=1.0, projector="footprint",
+                 enforce_positivity=True, gpus=None, max_slices=None,
+                 work_dir=None, out=None, eps=1e-6):
+    """Out-of-core + multi-GPU SIRT — works for volumes larger than RAM.
+
+    Every large array (volume iterate, sinograms, row/column sums) is a disk
+    memmap when ``work_dir`` is given; all projections stream slab/band-wise
+    through the GPUs and every elementwise step is chunked, so peak RAM stays
+    bounded by the chunk size rather than the full volume/sinogram. This is the
+    path intended for TB-scale reconstruction (correct + feasible; disk-bound).
+
+    Set ``work_dir`` to a directory on fast storage for TB-scale runs; leave it
+    ``None`` to keep the scratch arrays in RAM (small problems). ``out`` may be a
+    preallocated memmap for the result volume.
+    """
+    import os
+    gpus = _resolve_gpus(gpus)
+    m = _np32(measured)
+    n_views = geom.n_views
+    sino_shape = (n_views, det_u, det_v)
+    vol_shape = (D, H, W)
+
+    def alloc(shape, name):
+        if work_dir is None:
+            return np.zeros(shape, dtype=np.float32)
+        return open_memmap(os.path.join(work_dir, name + ".npy"), shape, mode="w+")
+
+    fwd = lambda vol, o: chunked_cone_forward(vol, geom, det_u, det_v, du, dv,
+                                              voxel_spacing, gpus=gpus, out=o)
+    bwd = lambda sino, o: chunked_cone_backward(sino, geom, D, H, W, du, dv,
+                                                voxel_spacing, projector=projector,
+                                                gpus=gpus, max_slices=max_slices, out=o)
+
+    ones_vol = alloc(vol_shape, "ones_vol"); ones_vol[:] = 1.0
+    ones_sino = alloc(sino_shape, "ones_sino"); ones_sino[:] = 1.0
+    rowsum = fwd(ones_vol, alloc(sino_shape, "rowsum"))      # A·1
+    colsum = bwd(ones_sino, alloc(vol_shape, "colsum"))      # Aᵀ·1
+    x = _alloc_out(out, vol_shape) if out is not None else alloc(vol_shape, "x")
+    x[:] = 0.0
+    ax = alloc(sino_shape, "ax")
+    resid = alloc(sino_shape, "resid")
+
+    vstep = max(1, min(n_views, 64))   # host-side elementwise chunking
+    zstep = max(1, min(D, 64))
+
+    for _ in range(int(n_iter)):
+        fwd(x, ax)                                            # ax = A x
+        for a, b in _chunks(n_views, vstep):                  # resid = R (m - ax)
+            rs = rowsum[a:b]
+            resid[a:b] = np.where(rs > eps, (m[a:b] - ax[a:b]) / np.where(rs > eps, rs, 1.0), 0.0)
+        bp = bwd(resid, alloc(vol_shape, "bp"))               # bp = Aᵀ resid
+        for z0, z1 in _chunks(D, zstep):                      # x += relax C bp
+            cs = colsum[z0:z1]
+            upd = np.where(cs > eps, bp[z0:z1] / np.where(cs > eps, cs, 1.0), 0.0)
+            xs = x[z0:z1] + float(relaxation) * upd
+            x[z0:z1] = np.maximum(xs, 0.0) if enforce_positivity else xs
+    return x
 
 
 # --------------------------------------------------------------------------- #
