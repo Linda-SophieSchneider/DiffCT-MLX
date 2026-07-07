@@ -693,6 +693,67 @@ def chunked_sirt(measured, geom: ConeGeom, D, H, W, det_u, det_v,
     return x
 
 
+def _subset_geom(geom: ConeGeom, idx) -> ConeGeom:
+    return ConeGeom(geom.src_pos[idx], geom.det_center[idx],
+                    geom.det_u_vec[idx], geom.det_v_vec[idx])
+
+
+def chunked_os_sart(measured, geom: ConeGeom, D, H, W, det_u, det_v,
+                    du=1.0, dv=1.0, voxel_spacing=1.0,
+                    n_iter=10, n_subsets=8, relaxation=1.0, projector="footprint",
+                    enforce_positivity=True, gpus=None, max_slices=None,
+                    work_dir=None, out=None, eps=1e-6, ram_budget=None):
+    """Out-of-core + multi-GPU ordered-subset SART (OS-SART).
+
+    The chunk-friendly SART variant: views are split into ``n_subsets``
+    interleaved subsets and the volume is updated once per subset
+    (``n_subsets=1`` reduces to SIRT). Reuses the conveyor-backed chunked
+    forward/backprojection on the subset geometry, so it works for volumes
+    larger than RAM. Global row/column sums are used as the SIRT-style
+    normalizers. (Classic per-view SART is intentionally not offered out-of-core
+    — its sequential per-view volume update cannot be chunked/parallelized; use
+    ``diffct_mlx.run_sart`` for the in-VRAM case.)
+    """
+    gpus = _resolve_gpus(gpus)
+    m = _lazy_input(measured)
+    nv = geom.n_views
+    vol_shape = (D, H, W)
+    sino_shape = (nv, det_u, det_v)
+
+    def alloc(shape, name):
+        return _resolve_output(None, shape, "ossart_" + name, work_dir, ram_budget)
+
+    ones_vol = alloc(vol_shape, "ones_vol"); ones_vol[:] = 1.0
+    ones_sino = alloc(sino_shape, "ones_sino"); ones_sino[:] = 1.0
+    rowsum = chunked_cone_forward(ones_vol, geom, det_u, det_v, du, dv, voxel_spacing,
+                                  gpus=gpus, out=alloc(sino_shape, "rowsum"))
+    colsum = chunked_cone_backward(ones_sino, geom, D, H, W, du, dv, voxel_spacing,
+                                   projector=projector, gpus=gpus, max_slices=max_slices,
+                                   out=alloc(vol_shape, "colsum"))
+    x = _alloc_out(out, vol_shape) if out is not None else alloc(vol_shape, "x")
+    x[:] = 0.0
+    bp = alloc(vol_shape, "bp")
+    subsets = [np.arange(j, nv, n_subsets) for j in range(int(n_subsets))]
+    zstep = max(1, min(D, 64))
+
+    for _ in range(int(n_iter)):
+        for idx in subsets:
+            gs = _subset_geom(geom, idx)
+            ax_s = np.asarray(chunked_cone_forward(x, gs, det_u, det_v, du, dv,
+                                                   voxel_spacing, gpus=gpus))
+            rs = np.asarray(rowsum[idx], dtype=np.float32)
+            m_s = np.asarray(m[idx], dtype=np.float32)
+            resid = np.where(rs > eps, (m_s - ax_s) / np.where(rs > eps, rs, 1.0), 0.0).astype(np.float32)
+            chunked_cone_backward(resid, gs, D, H, W, du, dv, voxel_spacing,
+                                  projector=projector, gpus=gpus, max_slices=max_slices, out=bp)
+            for z0, z1 in _chunks(D, zstep):
+                cs = np.asarray(colsum[z0:z1])
+                upd = np.where(cs > eps, np.asarray(bp[z0:z1]) / np.where(cs > eps, cs, 1.0), 0.0)
+                xs = np.asarray(x[z0:z1]) + float(relaxation) * upd
+                x[z0:z1] = np.maximum(xs, 0.0) if enforce_positivity else xs
+    return x
+
+
 # --------------------------------------------------------------------------- #
 # View-parallel multi-GPU (for iterative reconstruction). Splitting by views
 # needs NO shadow geometry — the per-view arrays are simply sliced — so this is
