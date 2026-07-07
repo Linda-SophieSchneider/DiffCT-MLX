@@ -255,7 +255,8 @@ def fan_to_parallel(sinogram, *, sid: float, sdd: float, detector_spacing: float
     if out_positions is None:
         s_max = sid * math.sin(math.atan(center * detector_spacing / sdd))
         n_pos = int(num_out_positions or n_det)
-        positions = (xp.arange(n_pos) - (n_pos - 1) / 2.0) * (2.0 * s_max / (n_pos - 1))
+        spacing = (2.0 * s_max / (n_pos - 1)) if n_pos > 1 else 0.0
+        positions = (xp.arange(n_pos) - (n_pos - 1) / 2.0) * spacing
     else:
         positions = xp.array(_b.to_numpy(out_positions).astype(np.float32))
         n_pos = int(positions.shape[0])

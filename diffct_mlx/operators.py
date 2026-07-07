@@ -90,15 +90,15 @@ class LinearOperator:
 
     # -- public API --------------------------------------------------------
     def forward(self, x: Array) -> Array:
-        """Apply the operator (forward map)."""
-        return self._forward(x)
+        """Apply the operator (forward map). Accepts any array-like."""
+        return self._forward(_b.as_array(x, dtype=_b.float32))
 
     def adjoint(self, y: Array) -> Array:
-        """Apply the adjoint (transpose) operator."""
-        return self._adjoint(y)
+        """Apply the adjoint (transpose) operator. Accepts any array-like."""
+        return self._adjoint(_b.as_array(y, dtype=_b.float32))
 
     def __call__(self, x: Array) -> Array:
-        return self._forward(x)
+        return self.forward(x)
 
     @property
     def T(self) -> "LinearOperator":
@@ -114,7 +114,8 @@ class LinearOperator:
     def __matmul__(self, other: Any) -> Any:
         if isinstance(other, LinearOperator):
             return CompositeOperator(self, other)
-        return self._forward(other)
+        # Applying to data: accept any array-like (numpy float64 / int / …).
+        return self._forward(_b.as_array(other, dtype=_b.float32))
 
     def __mul__(self, scalar: float) -> "LinearOperator":
         return ScaledOperator(self, scalar)

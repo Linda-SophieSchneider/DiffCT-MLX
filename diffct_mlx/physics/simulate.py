@@ -267,6 +267,8 @@ def simulate_scan(
     Returns the attenuation sinogram (default) or the raw photon counts
     (``return_counts=True``).
     """
+    if float(I0) <= 0.0:
+        raise ValueError(f"I0 (incident photon count) must be positive, got {I0!r}.")
     x = xp.array(phantom, dtype=_b.float32)
     p = operator @ x                                    # reference-energy line integrals
     if spectrum is not None and material_attenuation is not None:
