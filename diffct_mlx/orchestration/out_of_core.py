@@ -299,29 +299,48 @@ def _resolve_output(out, shape, tag, work_dir=None, ram_budget=None):
 
 
 def ramp_filter_memmap(sinogram, out=None, filter_axis=1, fdk_weights=None,
-                       view_chunk=64, work_dir=None, ram_budget=None):
+                       view_chunk=64, work_dir=None, ram_budget=None, device=None):
     """Ramp-filter a (possibly >RAM) sinogram, streaming over views.
 
     The ramp acts along the detector-u axis and is independent per view, so views
-    are processed in chunks — a disk-memmap sinogram is filtered into another
+    are processed in chunks — a disk-memmap/zarr sinogram is filtered into another
     (auto disk-backed) array without ever loading the whole thing. ``fdk_weights``
-    (broadcast over views) are applied before the ramp. Returns the filtered array.
+    (broadcast over views) are applied before the ramp.
+
+    ``device``: ``"cuda"`` runs the FFT on the GPU (torch.fft — much faster for
+    large detectors), ``"cpu"`` uses numpy FFT; ``None`` picks CUDA when
+    available. Both use the identical ``2|f|`` convention so FDK results match.
+    Returns the filtered array.
     """
-    sino = _np32(sinogram)
+    sino = _lazy_input(sinogram)
     n_views = sino.shape[0]
     out = _resolve_output(out, sino.shape, "filtered", work_dir, ram_budget)
     n = sino.shape[filter_axis]
-    ramp = (2.0 * np.abs(np.fft.fftfreq(n))).astype(np.float32)
+    ramp_np = (2.0 * np.abs(np.fft.fftfreq(n))).astype(np.float32)
     shape = [1] * sino.ndim
     shape[filter_axis] = n
-    ramp = ramp.reshape(shape)
+    ramp_np = ramp_np.reshape(shape)
     w = _np32(fdk_weights) if fdk_weights is not None else None
+
+    use_gpu = torch.cuda.is_available() if device is None else (str(device) != "cpu")
+    if use_gpu:
+        dev = torch.device("cuda" if device in (None, "cuda") else device)
+        ramp_t = torch.as_tensor(ramp_np, device=dev)
+        w_t = torch.as_tensor(w, device=dev) if w is not None else None
+        for a, b in _chunks(n_views, view_chunk):
+            bt = torch.from_numpy(np.ascontiguousarray(sino[a:b], dtype=np.float32)).to(dev)
+            if w_t is not None:
+                bt = bt * w_t
+            filt = torch.fft.ifft(torch.fft.fft(bt, dim=filter_axis) * ramp_t, dim=filter_axis).real
+            out[a:b] = filt.to(torch.float32).cpu().numpy()
+        return out
+
     for a, b in _chunks(n_views, view_chunk):
         band = np.asarray(sino[a:b], dtype=np.float32)
         if w is not None:
             band = band * w
         out[a:b] = np.real(
-            np.fft.ifft(np.fft.fft(band, axis=filter_axis) * ramp, axis=filter_axis)
+            np.fft.ifft(np.fft.fft(band, axis=filter_axis) * ramp_np, axis=filter_axis)
         ).astype(np.float32)
     return out
 
@@ -591,7 +610,7 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
                      fdk_weights=None, normalization_scale=None,
                      enforce_positivity=True, filter_axis=1,
                      backprojector="siddon", gpus=None, max_slices=None, out=None,
-                     work_dir=None, ram_budget=None):
+                     work_dir=None, ram_budget=None, timings=None, ramp_device=None):
     """Out-of-core + multi-GPU FDK reconstruction → volume (D, H, W).
 
     Applies optional per-detector FDK weighting and a ramp filter along the
@@ -616,7 +635,8 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
     # sinogram larger than RAM can be filtered without a full-array load.
     filtered = ramp_filter_memmap(sinogram, filter_axis=filter_axis,
                                   fdk_weights=fdk_weights,
-                                  work_dir=work_dir, ram_budget=ram_budget)
+                                  work_dir=work_dir, ram_budget=ram_budget,
+                                  device=ramp_device)
 
     ns = float(normalization_scale) if normalization_scale is not None else 1.0
 
@@ -628,7 +648,8 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
         return chunked_cone_backward(
             filtered, geom, D, H, W, du, dv, voxel_spacing,
             projector=backprojector, gpus=gpus, max_slices=max_slices,
-            out=out, post_fn=_post, work_dir=work_dir, ram_budget=ram_budget)
+            out=out, post_fn=_post, work_dir=work_dir, ram_budget=ram_budget,
+            timings=timings)
     elif backprojector == "gather":
         gpus_ = _resolve_gpus(gpus)
         n_views, n_u, n_v = filtered.shape
