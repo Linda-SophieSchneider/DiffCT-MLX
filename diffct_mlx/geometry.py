@@ -193,4 +193,34 @@ def load_arbitrary_cone_geometry_from_json(json_path, *, flip_det_u=False,
     )
 
 
-__all__ = [n for n in _NAMES if n in globals()] + ["load_arbitrary_cone_geometry_from_json"]
+def laminography_trajectory_3d(n_views, sid, sdd, tilt_deg=30.0, start_angle=0.0, end_angle=None):
+    """Circular laminography trajectory (rotation axis tilted from the beam).
+
+    The source traces a circle of radius ``sid*cos(tilt)`` at constant height
+    ``sid*sin(tilt)``; ``tilt_deg=0`` reduces to standard circular cone-beam CT,
+    while larger tilts approach planar (laminographic) imaging of flat / slab-like
+    objects. Returns backend arrays ``(src_pos, det_center, det_u_vec, det_v_vec)``
+    in the same convention as the other generators, so forward projection and
+    iterative reconstruction (SART / SIRT / CG / WLS) work on it directly.
+    """
+    if end_angle is None:
+        end_angle = 2.0 * np.pi
+    phi = np.linspace(float(start_angle), float(end_angle), int(n_views), endpoint=False).astype(np.float32)
+    tilt = np.radians(float(tilt_deg))
+    cos_t, sin_t = np.cos(tilt), np.sin(tilt)
+    src_np = (float(sid) * np.stack(
+        [cos_t * np.cos(phi), cos_t * np.sin(phi), sin_t * np.ones_like(phi)], axis=1
+    )).astype(np.float32)
+    det_c_np, det_u_np, det_v_np = _compute_detector_from_source_and_sdd(src_np, sdd)
+    return (
+        _b.as_array(src_np, dtype=_b.float32),
+        _b.as_array(det_c_np, dtype=_b.float32),
+        _b.as_array(det_u_np, dtype=_b.float32),
+        _b.as_array(det_v_np, dtype=_b.float32),
+    )
+
+
+__all__ = [n for n in _NAMES if n in globals()] + [
+    "load_arbitrary_cone_geometry_from_json",
+    "laminography_trajectory_3d",
+]
