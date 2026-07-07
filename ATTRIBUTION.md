@@ -42,6 +42,18 @@ are tracked in this repository's git history.
 - Any third-party data attribution shipped with examples is preserved in the
   corresponding `NOTICE` files.
 
+## Embedded spectrum data (XrayPhysics)
+
+The physically-based example X-ray spectra and material attenuation curves in
+`diffct_mlx/physics/data/spectra.npz` were **generated offline** with the
+LLNL **[XrayPhysics](https://github.com/kylechampley/XrayPhysics)** library
+(Kyle Champley, LLNL; **MIT License**), whose tube-spectrum model is validated
+against TASMICS. XrayPhysics is used **only** as an offline reference to produce
+this static data — it is **not** a runtime dependency and is not imported by the
+package. The generator that reproduces the data is committed at
+[`tools/generate_spectra.py`](tools/generate_spectra.py). If you rely on these
+spectra quantitatively, please also credit XrayPhysics and TASMICS.
+
 ## Citation
 
 Please cite the original work. See the citation section of the

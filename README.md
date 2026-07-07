@@ -90,6 +90,59 @@ evaluation**: `cone_backward_footprint(..., indices=idx)` computes only the give
 flattened `(D, H, W)` voxels and returns a 1-D vector (useful for masked / DART
 subproblems).
 
+### Operators, solvers, regularizers, physics & simulation
+
+The `cuda` branch adds a composable, differentiable toolkit on top of the
+projectors (all GPU-resident, verified on NVIDIA GPUs):
+
+- **Operators** (`diffct_mlx.operators`) — a `LinearOperator` algebra: build a
+  projector as `A = dct.make_cone_3d_operator(...)`, then `A @ x`, `A.T @ y`,
+  `A @ B`, `A + B`, `2*A`, `A.subset(views)`. `A @ x` and `A.T @ y` flow autograd,
+  so analytic/iterative reconstruction and learned pipelines share one object.
+- **Solver registry** — `dct.reconstruct("wls", A, b, ...)`, `dct.list_algorithms()`;
+  register your own with `@dct.register_algorithm("name")`. Built in: `cgls`,
+  `landweber`, `ls` / `wls` / `rls` / `rwls` (CG / FISTA least squares), `pcg`
+  (preconditioned CG), `mlem`, `osem`, `mltr` (transmission Poisson ML), `dls` / `rdls`.
+- **Functionals & regularizers** (`diffct_mlx.functionals`, `diffct_mlx.filters`) —
+  `SquaredL2`, `L1Norm`, `LpNorm`, `Huber`, `TotalVariation`, `AdaptiveWeightedTV`,
+  `NonNegativity`, `Box`, plus edge-preserving denoisers `Bilateral`, `Guided`,
+  `Median`, `HistogramSparsity`, `Azimuthal`, `DictionarySparsity`. Chain them into a
+  `RegularizerSequence` and pass `rwls(A, b, constraint=seq)` for Plug-and-Play.
+- **Physics & preprocessing** (`diffct_mlx.physics`) — a `PreprocessingPipeline` of
+  GPU-native corrections: `FlatField`, `RingRemoval`, `BadPixel`, `BeamHardening`,
+  `Deblur`, `Scatter`, `MetalArtifactReduction`.
+- **Forward simulation** (`dct.simulate_scan`) — phantom → realistic data with a
+  measured or synthetic **spectrum** (beam hardening), Poisson noise, detector blur,
+  scatter and ring effects. A physically-based (TASMICS-validated) spectrum +
+  material-attenuation library is embedded: `physics.spectra.tube_spectrum(kvp, …)`,
+  `physics.spectra.preset(…)`, `physics.spectra.material_attenuation(…)` (40–225 kVp).
+- **Geometry** — `laminography_trajectory_3d`, helical (`spiral_trajectory_3d`), and
+  `diffct_mlx.rebinning`: Parker short-scan / offset / truncation weighting,
+  `fan_to_parallel` and `curved_to_flat` / `flat_to_curved` detector rebinning.
+- **Analytic phantom engine** (`dct.Ellipsoid`, `dct.Phantom`, `dct.shepp_logan_phantom`)
+  — voxelize *and* project analytically (exact line integrals) for ground-truth tests.
+- **Self-calibration** (`dct.calibration`) — `estimate_center_of_rotation`,
+  `refine_center_by_sharpness`, `apply_center_offset`.
+
+End-to-end — simulate a realistic cone scan (measured-quality spectrum + noise) and
+reconstruct it with a TV-regularized least-squares solver:
+
+```python
+import diffct_mlx as dct
+from diffct_mlx.physics import spectra
+
+vol = dct.shepp_logan_3d((128, 128, 128))
+A = dct.make_cone_3d_operator(*dct.circular_trajectory_3d(360, 600, 900),
+        volume_shape=(128, 128, 128), detector_shape=(256, 256), projector_mode="siddon")
+
+spec = spectra.preset("industrial_160kVp_Cu1mm")             # TASMICS-validated spectrum
+mu   = spectra.material_attenuation("bone", spec.energies)
+sino = dct.simulate_scan(vol, A, spectrum=spec, material_attenuation=mu,
+                         I0=3e4, poisson=True)               # beam hardening + Poisson noise
+
+recon = dct.rwls(A, sino, regularizer=dct.TotalVariation(1e-3), iterations=60)
+```
+
 ## 🔀 Branches
 
 ### `main` Branch (Stable, PyPI)

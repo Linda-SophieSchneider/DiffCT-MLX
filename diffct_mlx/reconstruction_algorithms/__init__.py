@@ -38,6 +38,31 @@ from .tv_pocs import TVPOCSParameters, TV_POCS_Parameter, reconstruct_tv_pocs, r
 from .asd_pocs import ASDPOCSParameters, ASD_POCS_Parameter, reconstruct_asd_pocs, run_asd_pocs
 from .awtv_pocs import AwTVPOCSParameters, AwTV_POCS_Parameter, reconstruct_awtv_pocs, run_awtv_pocs
 from .dart import DARTParameters, reconstruct_dart, run_dart
+from ._solver import (
+    IterativeReconstructor,
+    cgls,
+    get_algorithm,
+    init_iterate,
+    inner,
+    landweber,
+    list_algorithms,
+    reconstruct,
+    register_algorithm,
+)
+from .solvers import (
+    dls,
+    ls,
+    make_subsets,
+    mlem,
+    mltr,
+    osem,
+    pcg,
+    power_iteration,
+    rdls,
+    rls,
+    rwls,
+    wls,
+)
 
 
 # Backwards-compatible aliases (mirrors the MLX package).
@@ -100,4 +125,27 @@ __all__ = [
     "DARTParameters",
     "run_dart",
     "reconstruct_dart",
+    # solver framework + registry
+    "register_algorithm",
+    "get_algorithm",
+    "list_algorithms",
+    "reconstruct",
+    "inner",
+    "init_iterate",
+    "IterativeReconstructor",
+    "landweber",
+    "cgls",
+    # statistical / least-squares / CG solvers
+    "pcg",
+    "ls",
+    "wls",
+    "rls",
+    "rwls",
+    "dls",
+    "rdls",
+    "mlem",
+    "osem",
+    "mltr",
+    "power_iteration",
+    "make_subsets",
 ]
