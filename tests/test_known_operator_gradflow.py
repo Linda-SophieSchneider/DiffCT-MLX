@@ -137,14 +137,95 @@ def test_sparse_cone_backprojection_gradient():
 
 
 @pytest.mark.cuda
-def test_geometry_arguments_have_no_torch_gradient():
-    """Torch backend: geometry inputs yield grad None (only the MLX cone
-    projector implements a geometry VJP) — pin the contract."""
+def test_geometry_gradients_exact_contraction():
+    """Torch Siddon projectors provide finite-difference geometry VJPs.
+
+    The autograd result must equal the hand-rolled identical contraction
+    (same eps, same column perturbation) exactly — pins the implementation.
+    """
+    _skip_if_no_cuda()
+    from diffct.projectors import _fd_eps, _FD_REL_EPS_POS
+    src, dc, du_, dv_ = _geo_3d()
+    zz, yy, xx = torch.meshgrid(*[torch.arange(24, device=DEV, dtype=torch.float32)] * 3,
+                                indexing="ij")
+    vol = torch.exp(-(((xx - 12) ** 2 + (yy - 10) ** 2 + (zz - 13) ** 2) / (2 * 4.0 ** 2)))
+
+    def P(s):
+        return dct.cone_forward(vol, s, dc, du_, dv_, 40, 40, 1.0, 1.0, 1.0)
+
+    ref = (P(src) * 0.9).detach()
+    s_t = src.detach().clone().requires_grad_(True)
+    (g,) = torch.autograd.grad((P(s_t) - ref).square().sum(), s_t)
+
+    with torch.no_grad():
+        cot = 2.0 * (P(src) - ref)
+        eps = _fd_eps(src, _FD_REL_EPS_POS)
+        gref = torch.zeros_like(src)
+        for j in range(3):
+            d = torch.zeros_like(src)
+            d[:, j] = eps
+            diff = (P(src + d) - P(src - d)) / (2 * eps)
+            gref[:, j] = (cot * diff).sum(dim=(1, 2))
+    assert float((g - gref).abs().max()) <= 1e-5 * float(gref.abs().max())
+
+    # det_center / det vectors get gradients too (only when required)
+    dc_t = dc.detach().clone().requires_grad_(True)
+    duv_t = du_.detach().clone().requires_grad_(True)
+    gdc, gduv = torch.autograd.grad(
+        (dct.cone_forward(vol, src, dc_t, duv_t, dv_, 40, 40, 1.0, 1.0, 1.0) - ref)
+        .square().sum(), (dc_t, duv_t))
+    assert gdc.abs().max() > 0 and gduv.abs().max() > 0
+
+
+@pytest.mark.cuda
+def test_geometry_gradients_recover_pose():
+    """End-to-end: a shifted source trajectory is recovered by gradient
+    descent on the projection loss (the trainable-geometry use case)."""
+    _skip_if_no_cuda()
+    src, dc, du_, dv_ = _geo_3d()
+    vol = torch.zeros(24, 24, 24, device=DEV)
+    vol[6:18, 6:18, 6:18] = 1.0
+    vol[9:15, 9:15, 9:15] = 2.0
+
+    def P(s):
+        return dct.cone_forward(vol, s, dc, du_, dv_, 48, 48, 1.0, 1.0, 1.0)
+
+    ref = P(src).detach()
+    src_bad = (src + torch.tensor([1.0, -1.5, 0.8], device=DEV)).detach().requires_grad_(True)
+    opt = torch.optim.Adam([src_bad], lr=0.25)
+    l0 = None
+    for _ in range(50):
+        opt.zero_grad()
+        loss = (P(src_bad) - ref).square().mean()
+        loss.backward()
+        opt.step()
+        if l0 is None:
+            l0 = float(loss)
+    assert float(loss) < 0.1 * l0
+    assert float((src_bad - src).norm(dim=1).mean()) < 0.5
+
+    # 2D families expose geometry gradients as well
+    rayP, doP, duP, srcF, dcF, duF = _geo_2d()
+    img = torch.zeros(N, N, device=DEV)
+    img[8:24, 8:24] = 1.0
+    sF = srcF.detach().clone().requires_grad_(True)
+    (dct.fan_forward(img, sF, dcF, duF, 48, 1.0, 1.0) - 1.0).square().sum().backward()
+    rP = rayP.detach().clone().requires_grad_(True)
+    (dct.parallel_forward(img, rP, doP, duP, 48, 1.0, 1.0) - 1.0).square().sum().backward()
+    assert sF.grad.abs().max() > 0 and rP.grad.abs().max() > 0
+
+
+@pytest.mark.cuda
+def test_geometry_gradients_contract():
+    """Contracts: no geometry grads unless requested (fast path returns None
+    via autograd), and the footprint family stays data-only."""
     _skip_if_no_cuda()
     src, dc, du_, dv_ = _geo_3d()
     vol = torch.rand(24, 24, 24, device=DEV)
+
+    # footprint projectors: geometry remains non-differentiable
     src_t = src.detach().clone().requires_grad_(True)
-    y = dct.cone_forward(vol, src_t, dc, du_, dv_, 40, 40, 1.0, 1.0, 1.0).sum()
+    y = dct.cone_forward_footprint(vol, src_t, dc, du_, dv_, 40, 40, 1.0, 1.0, 1.0).sum()
     (gs,) = torch.autograd.grad(y, src_t, allow_unused=True)
     assert gs is None
 

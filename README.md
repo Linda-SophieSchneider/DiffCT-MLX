@@ -165,9 +165,38 @@ sizes, Plug-and-Play priors). Verified by `tests/test_known_operator_gradflow.py
   when the input carries gradients, so unrolled TV gradient steps are
   second-order differentiable (mirrors `mx.grad` composability on MLX).
 
-Two caveats: **geometry arguments** (`src_pos`, `det_*`) receive no gradient
-on the Torch backend (only the MLX cone projector has a geometry VJP), and
-stochastic simulation ops (`add_poisson_noise`) are not differentiable.
+**Trainable geometry (pose/trajectory optimization).** The Torch Siddon
+projectors (parallel/fan/cone) also provide gradients w.r.t. their per-view
+geometry arrays (`src_pos`, `det_center`/`det_origin`, `det_u_vec`,
+`det_v_vec`, `ray_dir`) via finite-difference VJPs: computed only for inputs
+with `requires_grad` (the data-only path pays nothing), two forward passes per
+geometry component, step size chosen relative to each array's magnitude (works
+for mm- and m-scale setups alike). Semantics to know: Siddon ray weights are
+piecewise-linear in the geometry, so these are *smoothed subgradients* — exact
+against a matched-step contraction (pinned by tests), descent-quality in
+practice (see the pose-recovery test), but not second-order differentiable.
+On MLX, the cone projector has the equivalent VJP (`src_pos` by default, all
+four arrays with `DIFFCT_GEOMETRY_VJP=1`). The **footprint** family stays
+data-only, and stochastic simulation ops (`add_poisson_noise`) are not
+differentiable.
+
+**Recommended step-size parametrization for unrolled networks.** A free
+trainable step can wander into the divergent regime, where positivity clamps
+collapse the iterate to zero and all gradients vanish exactly (a dead
+network). Bound each unrolled step inside the stable region instead:
+
+```python
+from diffct_mlx import power_iteration
+
+L = power_iteration(lambda v: A.T @ (A @ v), A.domain_shape)   # ||A^T A||
+theta = torch.zeros(K, requires_grad=True)                     # one per iteration
+for k in range(K):
+    lam_k = (1.8 / L) * torch.sigmoid(theta[k])                # lam in (0, 1.8/L), init 0.9/L
+    x = torch.clamp(x + lam_k * (A.T @ (y - A @ x)), min=0.0)
+```
+
+Equivalently, spectrally normalize once (`A_hat = (1.0 / L**0.5) * A`) and
+train steps of order 1.
 
 ### Out-of-core & multi-GPU (TB-scale volumes)
 

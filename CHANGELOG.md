@@ -9,6 +9,26 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Trainable geometry on the Torch backend**: the Siddon projectors
+  (parallel/fan/cone) return finite-difference VJPs for their per-view
+  geometry arrays (`src_pos`, `det_center`/`det_origin`, `det_u_vec`,
+  `det_v_vec`, `ray_dir`) — computed only for inputs that `requires_grad`,
+  with magnitude-relative step sizes (mm- and m-scale setups both work).
+  Enables pose/trajectory optimization and geometry-aware known-operator
+  networks; verified by an exact matched-step contraction test and a
+  pose-recovery integration test. Footprint projectors remain data-only;
+  the FD gradients are smoothed subgradients (Siddon is piecewise-linear
+  in geometry) and not second-order differentiable.
+- `power_iteration` re-exported at the top level; README documents the
+  bounded step-size parametrization for unrolled networks
+  (`(1.8/L)*sigmoid(theta)`).
+- Known-operator gradient-flow guarantees: torch `xp.grad` is composable
+  (`create_graph` when the input carries gradients — unrolled TV steps are
+  second-order differentiable, mirroring `mx.grad`), correct under
+  `torch.no_grad()`; pinned by `tests/test_known_operator_gradflow.py`.
+
 ## [2.0.0.dev0] - 2026-07-10
 
 The unified, auto-backend **`diffct_mlx`** package: one API that runs on

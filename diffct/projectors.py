@@ -29,6 +29,58 @@ from .kernels import (
 # PyTorch Autograd Functions
 # ============================================================================
 
+# --------------------------------------------------------------------------- #
+# Finite-difference geometry VJPs (Siddon projectors)
+#
+# Gradients w.r.t. the per-view geometry arrays (source positions, detector
+# centers/origins, detector direction vectors) are computed by central
+# differences of the forward kernel. Every view's projection depends only on
+# that view's geometry row, so perturbing a whole column yields all per-view
+# gradients simultaneously — two forward passes per geometry component
+# (6 passes for a (V, 3) array). They are only computed for inputs that
+# require grad, so the standard image/volume-only path pays nothing.
+#
+# The step is chosen relative to each array's magnitude so the same code works
+# for setups specified in millimetres or metres (positions) and for unit
+# direction vectors. Second-order gradients through the geometry are not
+# supported (the FD result carries no autograd graph).
+# --------------------------------------------------------------------------- #
+_FD_REL_EPS_POS = 1e-3   # relative step for position-like arrays (src, det center)
+_FD_REL_EPS_VEC = 1e-2   # relative step for direction-vector arrays
+
+
+def _fd_eps(geom, rel):
+    scale = float(geom.abs().max())
+    return rel * max(scale, 1e-6)
+
+
+def _fd_geometry_grads(launch, geoms, needs, cotangent, rel_eps_list):
+    """Central-difference VJPs for per-view geometry arrays.
+
+    ``launch(*geoms) -> sinogram`` re-evaluates the forward projection with the
+    given geometry arrays; ``needs``/``rel_eps_list`` align with ``geoms``.
+    Returns one gradient (or ``None``) per geometry array.
+    """
+    reduce_dims = tuple(range(1, cotangent.ndim))
+    grads = [None] * len(geoms)
+    for k, (geom, needed, rel) in enumerate(zip(geoms, needs, rel_eps_list)):
+        if not needed:
+            continue
+        eps = _fd_eps(geom, rel)
+        grad_k = torch.zeros_like(geom)
+        for j in range(geom.shape[1]):
+            delta = torch.zeros_like(geom)
+            delta[:, j] = eps
+            plus = list(geoms)
+            plus[k] = geom + delta
+            minus = list(geoms)
+            minus[k] = geom - delta
+            diff = (launch(*plus) - launch(*minus)) / (2.0 * eps)
+            grad_k[:, j] = (cotangent * diff).sum(dim=reduce_dims)
+        grads[k] = grad_k
+    return grads
+
+
 class ParallelProjectorFunction(torch.autograd.Function):
     """
     Summary
@@ -139,13 +191,14 @@ class ParallelProjectorFunction(torch.autograd.Function):
             _DTYPE(detector_spacing), d_ray_dir_arr, d_det_origin_arr, d_det_u_vec_arr, cx, cy, _DTYPE(voxel_spacing)
         )
 
-        ctx.save_for_backward(ray_dir, det_origin, det_u_vec)
+        # image saved for the (optional) finite-difference geometry gradients.
+        ctx.save_for_backward(image, ray_dir, det_origin, det_u_vec)
         ctx.intermediate = (num_detectors, detector_spacing, Ny, Nx, voxel_spacing)
         return sinogram
     
     @staticmethod
     def backward(ctx, grad_sinogram):
-        ray_dir, det_origin, det_u_vec = ctx.saved_tensors
+        image, ray_dir, det_origin, det_u_vec = ctx.saved_tensors
         num_detectors, detector_spacing, Ny, Nx, voxel_spacing = ctx.intermediate
         device = DeviceManager.get_device(grad_sinogram)
         grad_sinogram = DeviceManager.ensure_device(grad_sinogram, device)
@@ -178,7 +231,30 @@ class ParallelProjectorFunction(torch.autograd.Function):
             _DTYPE(detector_spacing), d_ray_dir_arr, d_det_origin_arr, d_det_u_vec_arr, cx, cy, _DTYPE(voxel_spacing)
         )
 
-        return grad_image, None, None, None, None, None, None
+        grad_ray = grad_do = grad_duv = None
+        if any(ctx.needs_input_grad[1:4]):
+            image_f = image.to(dtype=torch.float32).contiguous()
+            d_image = TorchCUDABridge.tensor_to_cuda_array(image_f)
+
+            def _launch(ray_d, det_o, det_uv):
+                sino = torch.zeros((n_views, num_detectors), dtype=torch.float32, device=device)
+                _parallel_2d_forward_kernel[grid, tpb, numba_stream](
+                    d_image, Nx, Ny,
+                    TorchCUDABridge.tensor_to_cuda_array(sino), n_views, num_detectors,
+                    _DTYPE(detector_spacing),
+                    TorchCUDABridge.tensor_to_cuda_array(ray_d.contiguous()),
+                    TorchCUDABridge.tensor_to_cuda_array(det_o.contiguous()),
+                    TorchCUDABridge.tensor_to_cuda_array(det_uv.contiguous()),
+                    cx, cy, _DTYPE(voxel_spacing)
+                )
+                return sino
+
+            grad_ray, grad_do, grad_duv = _fd_geometry_grads(
+                _launch, [ray_dir, det_origin, det_u_vec],
+                ctx.needs_input_grad[1:4], grad_sinogram,
+                [_FD_REL_EPS_VEC, _FD_REL_EPS_POS, _FD_REL_EPS_VEC])
+
+        return grad_image, grad_ray, grad_do, grad_duv, None, None, None
 
 
 class ParallelBackprojectorFunction(torch.autograd.Function):
@@ -431,13 +507,14 @@ class FanProjectorFunction(torch.autograd.Function):
             cx, cy, _DTYPE(voxel_spacing)
         )
 
-        ctx.save_for_backward(src_pos, det_center, det_u_vec)
+        # image saved for the (optional) finite-difference geometry gradients.
+        ctx.save_for_backward(image, src_pos, det_center, det_u_vec)
         ctx.intermediate = (num_detectors, detector_spacing, Ny, Nx, voxel_spacing)
         return sinogram
 
     @staticmethod
     def backward(ctx, grad_sinogram):
-        src_pos, det_center, det_u_vec = ctx.saved_tensors
+        image, src_pos, det_center, det_u_vec = ctx.saved_tensors
         (n_det, det_spacing, Ny, Nx, voxel_spacing) = ctx.intermediate
         device = DeviceManager.get_device(grad_sinogram)
         grad_sinogram = DeviceManager.ensure_device(grad_sinogram, device)
@@ -470,7 +547,30 @@ class FanProjectorFunction(torch.autograd.Function):
             cx, cy, _DTYPE(voxel_spacing)
         )
 
-        return grad_img, None, None, None, None, None, None
+        grad_src = grad_dc = grad_duv = None
+        if any(ctx.needs_input_grad[1:4]):
+            image_f = image.to(dtype=torch.float32).contiguous()
+            d_image = TorchCUDABridge.tensor_to_cuda_array(image_f)
+
+            def _launch(src_p, det_c, det_uv):
+                sino = torch.zeros((n_views, n_det), dtype=torch.float32, device=device)
+                _fan_2d_forward_kernel[grid, tpb, numba_stream](
+                    d_image, Nx, Ny,
+                    TorchCUDABridge.tensor_to_cuda_array(sino), n_views, n_det,
+                    _DTYPE(det_spacing),
+                    TorchCUDABridge.tensor_to_cuda_array(src_p.contiguous()),
+                    TorchCUDABridge.tensor_to_cuda_array(det_c.contiguous()),
+                    TorchCUDABridge.tensor_to_cuda_array(det_uv.contiguous()),
+                    cx, cy, _DTYPE(voxel_spacing)
+                )
+                return sino
+
+            grad_src, grad_dc, grad_duv = _fd_geometry_grads(
+                _launch, [src_pos, det_center, det_u_vec],
+                ctx.needs_input_grad[1:4], grad_sinogram,
+                [_FD_REL_EPS_POS, _FD_REL_EPS_POS, _FD_REL_EPS_VEC])
+
+        return grad_img, grad_src, grad_dc, grad_duv, None, None, None
 
 
 class FanBackprojectorFunction(torch.autograd.Function):
@@ -735,13 +835,15 @@ class ConeProjectorFunction(torch.autograd.Function):
             cx, cy, cz, _DTYPE(voxel_spacing)
         )
 
-        ctx.save_for_backward(src_pos, det_center, det_u_vec, det_v_vec)
+        # The volume is saved for the (optional) finite-difference geometry
+        # gradients; save_for_backward stores a reference, not a copy.
+        ctx.save_for_backward(volume, src_pos, det_center, det_u_vec, det_v_vec)
         ctx.intermediate = (D, H, W, det_u, det_v, du, dv, voxel_spacing)
         return sino
 
     @staticmethod
     def backward(ctx, grad_sinogram):
-        src_pos, det_center, det_u_vec, det_v_vec = ctx.saved_tensors
+        volume, src_pos, det_center, det_u_vec, det_v_vec = ctx.saved_tensors
         (D, H, W, det_u, det_v, du, dv, voxel_spacing) = ctx.intermediate
         device = DeviceManager.get_device(grad_sinogram)
         grad_sinogram = DeviceManager.ensure_device(grad_sinogram, device)
@@ -779,7 +881,34 @@ class ConeProjectorFunction(torch.autograd.Function):
         )
 
         grad_vol = grad_vol_perm.permute(2, 1, 0).contiguous()
-        return grad_vol, None, None, None, None, None, None, None, None, None
+
+        # Optional finite-difference geometry gradients (only when requested).
+        grad_src = grad_dc = grad_duv = grad_dvv = None
+        if any(ctx.needs_input_grad[1:5]):
+            volume_perm = volume.to(dtype=torch.float32).contiguous().permute(2, 1, 0).contiguous()
+            d_vol = TorchCUDABridge.tensor_to_cuda_array(volume_perm)
+
+            def _launch(src_p, det_c, det_uv, det_vv):
+                sino = torch.zeros((n_views, det_u, det_v), dtype=torch.float32, device=device)
+                _cone_3d_forward_kernel[grid, tpb, numba_stream](
+                    d_vol, W, H, D,
+                    TorchCUDABridge.tensor_to_cuda_array(sino), n_views, det_u, det_v,
+                    _DTYPE(du), _DTYPE(dv),
+                    TorchCUDABridge.tensor_to_cuda_array(src_p.contiguous()),
+                    TorchCUDABridge.tensor_to_cuda_array(det_c.contiguous()),
+                    TorchCUDABridge.tensor_to_cuda_array(det_uv.contiguous()),
+                    TorchCUDABridge.tensor_to_cuda_array(det_vv.contiguous()),
+                    cx, cy, cz, _DTYPE(voxel_spacing)
+                )
+                return sino
+
+            grad_src, grad_dc, grad_duv, grad_dvv = _fd_geometry_grads(
+                _launch,
+                [src_pos, det_center, det_u_vec, det_v_vec],
+                ctx.needs_input_grad[1:5], grad_sinogram,
+                [_FD_REL_EPS_POS, _FD_REL_EPS_POS, _FD_REL_EPS_VEC, _FD_REL_EPS_VEC])
+
+        return grad_vol, grad_src, grad_dc, grad_duv, grad_dvv, None, None, None, None, None
 
 
 class ConeBackprojectorFunction(torch.autograd.Function):
