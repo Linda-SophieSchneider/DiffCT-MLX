@@ -76,8 +76,9 @@ def ring_removal(sinogram, *, radius: int = 8, strength: float = 1.0):
 def bad_pixel_correction(sinogram, *, threshold: float = 4.0, radius: int = 1):
     """Replace outlier detector pixels with the local spatial median.
 
-    Pixels deviating from their per-view detector-plane median by more than
-    ``threshold`` robust deviations (MAD-scaled) are treated as bad and replaced.
+    Pixels deviating from their local median by more than ``threshold`` scale
+    units are treated as bad and replaced. The scale is the global mean absolute
+    deviation from the local median (a robust, std-like spread estimate).
     """
     sinogram = xp.array(sinogram, dtype=_b.float32)
     med = median_filter(sinogram, radius)
@@ -111,6 +112,9 @@ def _wiener_1d(p, axis, sigma, reg):
     # Gaussian PSF is real & even -> its transfer function H(f) is real.
     h = xp.exp(-2.0 * (math.pi ** 2) * (float(sigma) ** 2) * (freqs * freqs))
     wiener = h / (h * h + float(reg))
+    # Normalize to unit DC gain: the raw Wiener gain at f=0 is 1/(1+reg), which
+    # would uniformly shrink all attenuation values by ~reg (a bias in mu).
+    wiener = wiener * (1.0 + float(reg))
     shape = [1] * p.ndim
     shape[axis] = n
     wiener = xp.reshape(wiener, shape)
@@ -135,11 +139,13 @@ def scatter_correction(intensity, *, fraction: float = 0.05, radius: int = 12):
     """First-order convolutional scatter estimate & subtraction (intensity domain).
 
     Models scatter as a broad low-pass of the measured intensity: ``I_corr =
-    I - fraction * boxblur(I)`` (clamped ``> 0``). Apply to intensity / transmission
-    **before** the log transform. A simple, fast stand-in for kernel-based scatter.
+    I - fraction * boxblur(I)`` (clamped ``> 0``). The blur acts per view in the
+    detector plane only (scatter is a detector-domain effect; views must not
+    mix). Apply to intensity / transmission **before** the log transform. A
+    simple, fast stand-in for kernel-based scatter.
     """
     intensity = xp.array(intensity, dtype=_b.float32)
-    scatter = float(fraction) * box_filter(intensity, radius)
+    scatter = float(fraction) * box_filter(intensity, radius, axes=_detector_axes(intensity))
     return xp.maximum(intensity - scatter, _EPS)
 
 

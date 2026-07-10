@@ -215,9 +215,13 @@ def apply_detector_blur(sinogram, sigma: float = 1.0):
 
 
 def add_scatter(intensity, fraction: float = 0.05, radius: int = 12):
-    """Add a broad low-pass scatter floor to the intensity (inverse of scatter_correction)."""
+    """Add a broad low-pass scatter floor to the intensity (inverse of scatter_correction).
+
+    The blur acts per view in the detector plane only (views must not mix).
+    """
     intensity = xp.array(intensity, dtype=_b.float32)
-    return intensity + float(fraction) * box_filter(intensity, radius)
+    detector_axes = tuple(range(1, intensity.ndim))
+    return intensity + float(fraction) * box_filter(intensity, radius, axes=detector_axes)
 
 
 def add_rings(intensity, strength: float = 0.01, seed: int = 0, gain=None):

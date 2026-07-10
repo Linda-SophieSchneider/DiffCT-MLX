@@ -82,21 +82,34 @@ def _value_range(x):
 # ---------------------------------------------------------------------------
 # Core filters (backend-neutral)
 # ---------------------------------------------------------------------------
-def box_filter(x, radius: int = 1):
-    """Uniform (mean) filter over a ``(2r+1)^ndim`` window with edge replication."""
+def _box_filter_1d(x, r, axis):
+    """Mean filter of width ``2r+1`` along ``axis`` with edge replication."""
+    n = int(x.shape[axis])
+    first = _slice_along(x, axis, slice(0, 1))
+    last = _slice_along(x, axis, slice(n - 1, n))
+    padded = xp.concatenate([first] * r + [x] + [last] * r, axis=axis)
+    acc = None
+    for off in range(2 * r + 1):
+        nb = _slice_along(padded, axis, slice(off, off + n))
+        acc = nb if acc is None else acc + nb
+    return acc / float(2 * r + 1)
+
+
+def box_filter(x, radius: int = 1, axes=None):
+    """Uniform (mean) filter over a ``(2r+1)^k`` window with edge replication.
+
+    ``axes`` selects which axes are filtered (default: all). The box window is
+    separable, so the filter runs one axis at a time — ``k*(2r+1)`` shifted adds
+    instead of ``(2r+1)^k`` — with identical results.
+    """
     r = int(radius)
     if r <= 0:
         return x
     x = xp.array(x, dtype=_b.float32)
-    x_pad = _pad_replicate(x, r)
-    shape = x.shape
-    acc = None
-    count = 0
-    for off in _window_offsets(x.ndim, r):
-        nb = _neighbor(x_pad, off, r, shape)
-        acc = nb if acc is None else acc + nb
-        count += 1
-    return acc / float(count)
+    axes = tuple(range(x.ndim)) if axes is None else tuple(a % x.ndim for a in axes)
+    for axis in axes:
+        x = _box_filter_1d(x, r, axis)
+    return x
 
 
 def bilateral_filter(x, radius: int = 1, sigma_spatial: float = 1.0, sigma_range: float | None = None):
