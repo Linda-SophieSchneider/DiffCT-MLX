@@ -6,21 +6,21 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Getting Started &mdash; diffct_mlx  documentation</title>
+  <title>Getting Started &mdash; DiffCT-MLX 2.0.0.dev0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/documentation_options.js?v=25d36582"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="API Reference" href="api.html" />
-    <link rel="prev" title="diffct_mlx Documentation" href="index.html" /> 
+    <link rel="prev" title="DiffCT-MLX: Differentiable CT — One API, Two Backends" href="index.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -32,7 +32,7 @@
           
           
           <a href="index.html" class="icon icon-home">
-            diffct_mlx
+            DiffCT-MLX
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -42,16 +42,18 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Getting Started</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#quick-start">Quick Start</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#project-layout">Project Layout</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#citation">Citation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#quick-start-example">Quick Start Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-to-go-next">Where to go next</a></li>
 </ul>
 </li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 </ul>
@@ -62,7 +64,7 @@
 
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="index.html">diffct_mlx</a>
+          <a href="index.html">DiffCT-MLX</a>
       </nav>
 
       <div class="wy-nav-content">
@@ -82,68 +84,82 @@
              
   <section id="getting-started">
 <h1>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h1>
-<p><code class="docutils literal notranslate"><span class="pre">diffct_mlx</span></code> targets Apple Silicon and provides differentiable projection,
-backprojection, geometry helpers, and reconstruction algorithms built on MLX.</p>
-<section id="requirements">
-<h2>Requirements<a class="headerlink" href="#requirements" title="Link to this heading"></a></h2>
+<p>This guide walks you through installing <strong>DiffCT-MLX</strong> and running your first
+reconstruction with the unified <code class="docutils literal notranslate"><span class="pre">diffct_mlx</span></code> package.</p>
+<section id="prerequisites">
+<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading"></a></h2>
+<p><strong>One of:</strong></p>
 <ul class="simple">
-<li><p>Python 3.10 or newer</p></li>
-<li><p>Apple Silicon hardware for actual MLX execution</p></li>
-<li><p>Dependencies from <code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code></p></li>
+<li><p>an NVIDIA CUDA GPU (compute capability 6.0+; CUDA Toolkit 11+), or</p></li>
+<li><p>an Apple-Silicon Mac (M-series).</p></li>
 </ul>
+<p><strong>Software:</strong> Python 3.10 or later.</p>
 </section>
 <section id="installation">
 <h2>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h2>
-<p>Install from PyPI:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>diffct_mlx
+<p>Install from source with the extra matching your platform:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Linda-SophieSchneider/DiffCT-MLX.git
+<span class="nb">cd</span><span class="w"> </span>DiffCT-MLX
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[cuda]&quot;</span><span class="w">     </span><span class="c1"># NVIDIA GPUs: Torch + numba-CUDA</span>
+<span class="c1"># or</span>
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[mlx]&quot;</span><span class="w">      </span><span class="c1"># Apple Silicon: MLX</span>
 </pre></div>
 </div>
-<p>Install from source in a virtual environment:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
-pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+<p>On CUDA systems install a CUDA-enabled PyTorch build first (see
+<a class="reference external" href="https://pytorch.org/get-started/locally/">pytorch.org</a>) and the
+<code class="docutils literal notranslate"><span class="pre">numba-cuda</span></code> package matching your toolkit (<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">numba-cuda[cu12]</span></code>
+or <code class="docutils literal notranslate"><span class="pre">[cu13]</span></code>). The optional <code class="docutils literal notranslate"><span class="pre">[zarr]</span></code> extra enables the compressed
+out-of-core storage backend.</p>
+<p><strong>Verify the installation:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">diffct_mlx</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dct</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">dct</span><span class="o">.</span><span class="n">backend</span><span class="p">)</span>        <span class="c1"># &#39;torch&#39; on CUDA systems, &#39;mlx&#39; on Apple Silicon</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">dct</span><span class="o">.</span><span class="n">__version__</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The backend is chosen automatically at import; set the environment variable
+<code class="docutils literal notranslate"><span class="pre">DIFFCT_BACKEND=torch</span></code> or <code class="docutils literal notranslate"><span class="pre">DIFFCT_BACKEND=mlx</span></code> to force one.</p>
+</section>
+<section id="quick-start-example">
+<h2>Quick Start Example<a class="headerlink" href="#quick-start-example" title="Link to this heading"></a></h2>
+<p>The same code runs on either backend — no device management required:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">diffct_mlx</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dct</span>
+
+<span class="c1"># A 2D Shepp-Logan phantom and a 360-view parallel-beam operator</span>
+<span class="n">n</span> <span class="o">=</span> <span class="mi">256</span>
+<span class="n">phantom</span> <span class="o">=</span> <span class="n">dct</span><span class="o">.</span><span class="n">shepp_logan_2d</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+
+<span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u</span> <span class="o">=</span> <span class="n">dct</span><span class="o">.</span><span class="n">circular_trajectory_2d_parallel</span><span class="p">(</span><span class="mi">360</span><span class="p">)</span>
+<span class="n">A</span> <span class="o">=</span> <span class="n">dct</span><span class="o">.</span><span class="n">make_parallel_2d_operator</span><span class="p">(</span>
+    <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span>
+    <span class="n">image_shape</span><span class="o">=</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">),</span> <span class="n">num_detectors</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">projector_mode</span><span class="o">=</span><span class="s2">&quot;siddon&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">sinogram</span> <span class="o">=</span> <span class="n">A</span> <span class="o">@</span> <span class="n">phantom</span>            <span class="c1"># differentiable forward projection</span>
+<span class="n">backproj</span> <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">sinogram</span>         <span class="c1"># differentiable adjoint</span>
+
+<span class="c1"># Analytic FBP reconstruction</span>
+<span class="n">params</span> <span class="o">=</span> <span class="n">dct</span><span class="o">.</span><span class="n">FBPParameters</span><span class="p">(</span><span class="n">normalization_scale</span><span class="o">=</span><span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="mi">360</span><span class="p">))</span>
+<span class="n">reco</span> <span class="o">=</span> <span class="n">dct</span><span class="o">.</span><span class="n">reconstruct_fbp</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="n">A</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">s</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+
+<span class="c1"># Or hand the operator to any registered solver</span>
+<span class="n">reco_cgls</span> <span class="o">=</span> <span class="n">dct</span><span class="o">.</span><span class="n">reconstruct</span><span class="p">(</span><span class="s2">&quot;cgls&quot;</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="n">iterations</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
 </pre></div>
 </div>
 </section>
-<section id="quick-start">
-<h2>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h2>
-<p>The repository ships runnable examples under <code class="docutils literal notranslate"><span class="pre">examples/</span></code> for:</p>
+<section id="where-to-go-next">
+<h2>Where to go next<a class="headerlink" href="#where-to-go-next" title="Link to this heading"></a></h2>
 <ul class="simple">
-<li><p>2D parallel-beam FBP</p></li>
-<li><p>2D fan-beam FBP</p></li>
-<li><p>3D cone-beam FDK</p></li>
-<li><p>Iterative reconstruction with non-circular trajectories</p></li>
+<li><p>The <strong>cases API</strong> (<code class="docutils literal notranslate"><span class="pre">build_parallel_2d_case</span></code>, <code class="docutils literal notranslate"><span class="pre">build_cone_3d_case</span></code>,
+<code class="docutils literal notranslate"><span class="pre">build_measured_cone_3d_case</span></code>, …) bundles simulated or measured data
+with matched forward/backprojectors and calibrated normalization constants.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dct.simulate_scan</span></code> produces realistic polychromatic, noisy data from a
+phantom; <code class="docutils literal notranslate"><span class="pre">diffct_mlx.physics</span></code> corrects real measurements.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx.orchestration</span></code> reconstructs volumes larger than GPU memory
+(and larger than host RAM) across multiple GPUs.</p></li>
+<li><p>Explore the <a class="reference internal" href="examples.html"><span class="doc">Examples</span></a> and the <a class="reference internal" href="api.html"><span class="doc">API Reference</span></a> reference.</p></li>
 </ul>
-<p>Example commands:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>examples/circular_trajectory/fbp_parallel.py
-python<span class="w"> </span>examples/circular_trajectory/fbp_fan.py
-python<span class="w"> </span>examples/circular_trajectory/fdk_cone.py
-</pre></div>
-</div>
-</section>
-<section id="project-layout">
-<h2>Project Layout<a class="headerlink" href="#project-layout" title="Link to this heading"></a></h2>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx/</span></code>: package code</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">examples/</span></code>: runnable geometry and reconstruction demos</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">diagnose_scripts/</span></code>: debugging and diagnostics helpers</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">tests/</span></code>: regression tests</p></li>
-</ul>
-</section>
-<section id="citation">
-<h2>Citation<a class="headerlink" href="#citation" title="Link to this heading"></a></h2>
-<p>If you use this library in your research, please cite:</p>
-<div class="highlight-bibtex notranslate"><div class="highlight"><pre><span></span><span class="nc">@article</span><span class="p">{</span><span class="nl">202605.1446</span><span class="p">,</span>
-<span class="w">  </span><span class="na">doi</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{10.20944/preprints202605.1446.v1}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">url</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{https://doi.org/10.20944/preprints202605.1446.v1}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">year</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="m">2026</span><span class="p">,</span>
-<span class="w">  </span><span class="na">month</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{May}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">publisher</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Preprints}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">author</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Yipeng Sun and Linda-Sophie Schneider and Chengze ye and Andreas Maier}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">title</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{diffct: Differentiable CT Operators from Circular Orbits to Arbitrary Trajectories}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">journal</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Preprints}</span>
-<span class="p">}</span>
-</pre></div>
-</div>
 </section>
 </section>
 
@@ -151,14 +167,14 @@ python<span class="w"> </span>examples/circular_trajectory/fdk_cone.py
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="index.html" class="btn btn-neutral float-left" title="diffct_mlx Documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="index.html" class="btn btn-neutral float-left" title="DiffCT-MLX: Differentiable CT — One API, Two Backends" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="api.html" class="btn btn-neutral float-right" title="API Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2026, Yipeng Sun, Linda-Sophie Schneider.</p>
+    <p>&#169; Copyright 2025-2026, Linda-Sophie Schneider; upstream diffct (c) Yipeng Sun.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

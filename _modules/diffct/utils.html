@@ -1,0 +1,419 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>diffct.utils &mdash; DiffCT-MLX 2.0.0.dev0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=25d36582"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            DiffCT-MLX
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started.html">Getting Started</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples.html">Examples</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">DiffCT-MLX</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">diffct.utils</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for diffct.utils</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Utility classes and helper functions for DiffCT package.</span>
+
+<span class="sd">This module provides utility classes and functions for device management,</span>
+<span class="sd">PyTorch-CUDA bridging, stream caching, trigonometric table generation,</span>
+<span class="sd">memory layout validation, and CUDA grid computation.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">numba</span><span class="w"> </span><span class="kn">import</span> <span class="n">cuda</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">_DTYPE</span><span class="p">,</span> <span class="n">_TPB_2D</span><span class="p">,</span> <span class="n">_TPB_3D</span>
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># Device Management Utilities</span>
+<span class="c1"># ============================================================================</span>
+
+<div class="viewcode-block" id="DeviceManager">
+<a class="viewcode-back" href="../../api.html#diffct.utils.DeviceManager">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DeviceManager</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Utilities for managing PyTorch tensor devices.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="DeviceManager.get_device">
+<a class="viewcode-back" href="../../api.html#diffct.utils.DeviceManager.get_device">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_device</span><span class="p">(</span><span class="n">tensor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the device of a PyTorch tensor.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        tensor : torch.Tensor</span>
+<span class="sd">            Tensor whose device to determine.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        torch.device</span>
+<span class="sd">            Device of the tensor or CPU if unavailable.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; DeviceManager.get_device(torch.tensor([1, 2, 3]))</span>
+<span class="sd">        device(type=&#39;cpu&#39;)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">tensor</span><span class="o">.</span><span class="n">device</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="s2">&quot;device&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DeviceManager.ensure_device">
+<a class="viewcode-back" href="../../api.html#diffct.utils.DeviceManager.ensure_device">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ensure_device</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Ensure a tensor resides on a given device.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        tensor : torch.Tensor</span>
+<span class="sd">            Tensor to move.</span>
+<span class="sd">        device : torch.device</span>
+<span class="sd">            Desired device.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        torch.Tensor</span>
+<span class="sd">            Tensor on the specified device. Unchanged if already on it.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; DeviceManager.ensure_device(</span>
+<span class="sd">        ...     torch.tensor([1, 2, 3]),</span>
+<span class="sd">        ...     torch.device(&#39;cuda&#39;)</span>
+<span class="sd">        ... )</span>
+<span class="sd">        tensor([1, 2, 3], device=&#39;cuda:0&#39;)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="s2">&quot;to&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">tensor</span><span class="o">.</span><span class="n">device</span> <span class="o">!=</span> <span class="n">device</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">tensor</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">tensor</span></div>
+</div>
+
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># PyTorch-CUDA Bridge</span>
+<span class="c1"># ============================================================================</span>
+
+<div class="viewcode-block" id="TorchCUDABridge">
+<a class="viewcode-back" href="../../api.html#diffct.utils.TorchCUDABridge">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">TorchCUDABridge</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Bridge between PyTorch tensors and Numba CUDA arrays.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="TorchCUDABridge.tensor_to_cuda_array">
+<a class="viewcode-back" href="../../api.html#diffct.utils.TorchCUDABridge.tensor_to_cuda_array">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tensor_to_cuda_array</span><span class="p">(</span><span class="n">tensor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert a PyTorch CUDA tensor to a Numba CUDA DeviceNDArray.</span>
+
+<span class="sd">        Provides a zero-copy view of a detached PyTorch tensor as a Numba CUDA array,</span>
+<span class="sd">        avoiding CPU data transfers. The returned array shares memory with the</span>
+<span class="sd">        original tensor.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        tensor : torch.Tensor</span>
+<span class="sd">            PyTorch tensor on a CUDA device.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        numba.cuda.cudadrv.devicearray.DeviceNDArray</span>
+<span class="sd">            Numba CUDA array view sharing memory with `tensor`.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If `tensor` is not on a CUDA device.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; t = torch.randn(10, device=&#39;cuda&#39;)</span>
+<span class="sd">        &gt;&gt;&gt; arr = TorchCUDABridge.tensor_to_cuda_array(t)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">tensor</span><span class="o">.</span><span class="n">is_cuda</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Tensor must be on CUDA device&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cuda</span><span class="o">.</span><span class="n">as_cuda_array</span><span class="p">(</span><span class="n">tensor</span><span class="o">.</span><span class="n">detach</span><span class="p">())</span></div>
+</div>
+
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># Stream Management (cached external Numba stream)</span>
+<span class="c1"># ============================================================================</span>
+
+<span class="c1"># Cache keyed by (device_index, stream_ptr). A single global slot would be</span>
+<span class="c1"># unsafe across GPUs: a numba external_stream is created under whatever device</span>
+<span class="c1"># is current, so reusing one cached stream on a different device is wrong. The</span>
+<span class="c1"># multi-GPU out-of-core layer relies on this being per-device.</span>
+<span class="n">_numba_stream_cache</span> <span class="o">=</span> <span class="p">{}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_numba_external_stream_for</span><span class="p">(</span><span class="n">pt_stream</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a cached numba.cuda.external_stream for a PyTorch CUDA stream.</span>
+
+<span class="sd">    Cached per (device index, stream pointer) so that multi-GPU dispatch gets a</span>
+<span class="sd">    stream bound to the correct device.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    pt_stream : torch.cuda.Stream, optional</span>
+<span class="sd">        PyTorch CUDA stream. If None, uses current stream.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    numba.cuda.cudadrv.driver.Stream</span>
+<span class="sd">        Numba external stream wrapper around the PyTorch CUDA stream.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">pt_stream</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">pt_stream</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">current_stream</span><span class="p">()</span>
+    <span class="n">dev</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">pt_stream</span><span class="p">,</span> <span class="s2">&quot;device&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">dev_index</span> <span class="o">=</span> <span class="n">dev</span><span class="o">.</span><span class="n">index</span> <span class="k">if</span> <span class="n">dev</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">current_device</span><span class="p">()</span>
+    <span class="n">ptr</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">pt_stream</span><span class="o">.</span><span class="n">cuda_stream</span><span class="p">)</span>
+    <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">dev_index</span><span class="p">,</span> <span class="n">ptr</span><span class="p">)</span>
+    <span class="n">cached</span> <span class="o">=</span> <span class="n">_numba_stream_cache</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">cached</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">cached</span>
+    <span class="n">numba_stream</span> <span class="o">=</span> <span class="n">cuda</span><span class="o">.</span><span class="n">external_stream</span><span class="p">(</span><span class="n">pt_stream</span><span class="o">.</span><span class="n">cuda_stream</span><span class="p">)</span>
+    <span class="n">_numba_stream_cache</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">numba_stream</span>
+    <span class="k">return</span> <span class="n">numba_stream</span>
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># GPU-aware Trigonometric Table Generation</span>
+<span class="c1"># ============================================================================</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_3d_memory_layout</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="n">expected_order</span><span class="o">=</span><span class="s1">&#39;DHW&#39;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate 3D tensor memory layout to prevent coordinate system inconsistencies.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    tensor : torch.Tensor</span>
+<span class="sd">        3D tensor to validate</span>
+<span class="sd">    expected_order : str, optional</span>
+<span class="sd">        Expected memory order (&#39;DHW&#39;, &#39;VHW&#39;, etc.). Default is &#39;DHW&#39;.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If tensor has unexpected memory layout or is non-contiguous</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">shape</span> <span class="o">=</span> <span class="n">tensor</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Expected 3D tensor, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span><span class="si">}</span><span class="s2">D&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Early return for common case - contiguous tensor with expected ordering</span>
+    <span class="k">if</span> <span class="n">tensor</span><span class="o">.</span><span class="n">is_contiguous</span><span class="p">()</span> <span class="ow">and</span> <span class="n">expected_order</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;DHW&#39;</span><span class="p">,</span> <span class="s1">&#39;VHW&#39;</span><span class="p">):</span>
+        <span class="c1"># For DHW and VHW, the expected order matches memory layout when contiguous</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Only check memory order for DHW and VHW, not for internal WHD layout</span>
+    <span class="k">if</span> <span class="n">expected_order</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;DHW&#39;</span><span class="p">,</span> <span class="s1">&#39;VHW&#39;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">tensor</span><span class="o">.</span><span class="n">is_contiguous</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;Input tensor must be contiguous. Call .contiguous() before passing to &quot;</span>
+                <span class="s2">&quot;cone beam functions to avoid memory duplication and ensure correct results.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="n">strides</span> <span class="o">=</span> <span class="n">tensor</span><span class="o">.</span><span class="n">stride</span><span class="p">()</span>
+        <span class="n">order_mapping</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;DHW&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>  <span class="c1"># Depth, Height, Width</span>
+            <span class="s1">&#39;VHW&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>  <span class="c1"># Views, Height, Width (for sinograms)</span>
+        <span class="p">}</span>
+        <span class="k">if</span> <span class="n">expected_order</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">order_mapping</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported expected_order: </span><span class="si">{</span><span class="n">expected_order</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">expected_stride_order</span> <span class="o">=</span> <span class="n">order_mapping</span><span class="p">[</span><span class="n">expected_order</span><span class="p">]</span>
+        <span class="c1"># Check if actual strides match expected order</span>
+        <span class="n">sorted_strides</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">enumerate</span><span class="p">(</span><span class="n">strides</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">actual_order</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">idx</span> <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">sorted_strides</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">actual_order</span> <span class="o">!=</span> <span class="n">expected_stride_order</span><span class="p">:</span>
+            <span class="c1"># Create appropriate error message based on context</span>
+            <span class="k">if</span> <span class="n">expected_order</span> <span class="o">==</span> <span class="s1">&#39;VHW&#39;</span><span class="p">:</span>
+                <span class="n">actual_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="si">}</span><span class="s2">)&quot;</span>
+                <span class="n">expected_str</span> <span class="o">=</span> <span class="s2">&quot;(Views, Height, Width)&quot;</span>
+                <span class="n">fix_str</span> <span class="o">=</span> <span class="s2">&quot;ensure your sinogram has shape (num_views, det_v, det_u)&quot;</span>
+            <span class="k">elif</span> <span class="n">expected_order</span> <span class="o">==</span> <span class="s1">&#39;DHW&#39;</span><span class="p">:</span>
+                <span class="n">actual_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="si">}</span><span class="s2">)&quot;</span>
+                <span class="n">expected_str</span> <span class="o">=</span> <span class="s2">&quot;(Depth, Height, Width)&quot;</span>
+                <span class="n">fix_str</span> <span class="o">=</span> <span class="s2">&quot;ensure your volume has shape (D, H, W)&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">actual_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">shape</span><span class="p">))</span>
+                <span class="n">expected_str</span> <span class="o">=</span> <span class="n">expected_order</span>
+                <span class="n">fix_str</span> <span class="o">=</span> <span class="s2">&quot;check tensor dimensions&quot;</span>
+
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Memory layout mismatch: expected </span><span class="si">{</span><span class="n">expected_str</span><span class="si">}</span><span class="s2"> order, &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;but tensor has shape </span><span class="si">{</span><span class="n">actual_str</span><span class="si">}</span><span class="s2">. Please </span><span class="si">{</span><span class="n">fix_str</span><span class="si">}</span><span class="s2"> and ensure &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;the tensor is contiguous (.contiguous()) before passing to the function.&quot;</span>
+            <span class="p">)</span>
+    <span class="c1"># For &#39;WHD&#39; (internal layout), skip stride check entirely</span>
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># CUDA Grid Computation</span>
+<span class="c1"># ============================================================================</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_grid_2d</span><span class="p">(</span><span class="n">n1</span><span class="p">,</span> <span class="n">n2</span><span class="p">,</span> <span class="n">tpb</span><span class="o">=</span><span class="n">_TPB_2D</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute 2D CUDA grid and block dimensions.</span>
+
+<span class="sd">    Determine optimal grid and block sizes for 2D CUDA ray-tracing kernels.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n1 : int</span>
+<span class="sd">        Number of elements along the first dimension (e.g., projection angles).</span>
+<span class="sd">    n2 : int</span>
+<span class="sd">        Number of elements along the second dimension (e.g., detector elements).</span>
+<span class="sd">    tpb : tuple of int, optional</span>
+<span class="sd">        Threads per block (default is `_TPB_2D`) to balance occupancy and memory.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    grid : tuple of int</span>
+<span class="sd">        Blocks count per axis.</span>
+<span class="sd">    tpb : tuple of int</span>
+<span class="sd">        Threads per block per axis.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; grid, tpb = _grid_2d(180, 256)</span>
+<span class="sd">    &gt;&gt;&gt; grid</span>
+<span class="sd">    (12, 16)</span>
+<span class="sd">    &gt;&gt;&gt; tpb</span>
+<span class="sd">    (16, 16)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">n1</span> <span class="o">/</span> <span class="n">tpb</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">n2</span> <span class="o">/</span> <span class="n">tpb</span><span class="p">[</span><span class="mi">1</span><span class="p">])),</span> <span class="n">tpb</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_grid_3d</span><span class="p">(</span><span class="n">n1</span><span class="p">,</span> <span class="n">n2</span><span class="p">,</span> <span class="n">n3</span><span class="p">,</span> <span class="n">tpb</span><span class="o">=</span><span class="n">_TPB_3D</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute 3D CUDA grid and block dimensions.</span>
+
+<span class="sd">    Determine optimal grid and block sizes for 3D CUDA cone-beam kernels.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n1 : int</span>
+<span class="sd">        Number of elements along the first dimension (e.g., projection views).</span>
+<span class="sd">    n2 : int</span>
+<span class="sd">        Number of elements along the second dimension (e.g., detector u-axis).</span>
+<span class="sd">    n3 : int</span>
+<span class="sd">        Number of elements along the third dimension (e.g., detector v-axis).</span>
+<span class="sd">    tpb : tuple of int, optional</span>
+<span class="sd">        Threads per block (default is `_TPB_3D`) to balance occupancy and registers.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    grid : tuple of int</span>
+<span class="sd">        Blocks count per axis.</span>
+<span class="sd">    tpb : tuple of int</span>
+<span class="sd">        Threads per block per axis.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; grid, tpb = _grid_3d(360, 256, 256)</span>
+<span class="sd">    &gt;&gt;&gt; grid</span>
+<span class="sd">    (45, 32, 32)</span>
+<span class="sd">    &gt;&gt;&gt; tpb</span>
+<span class="sd">    (8, 8, 8)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">n1</span> <span class="o">/</span> <span class="n">tpb</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+        <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">n2</span> <span class="o">/</span> <span class="n">tpb</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span>
+        <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">n3</span> <span class="o">/</span> <span class="n">tpb</span><span class="p">[</span><span class="mi">2</span><span class="p">]),</span>
+    <span class="p">),</span> <span class="n">tpb</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Linda-Sophie Schneider; upstream diffct (c) Yipeng Sun.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>diffct_mlx Documentation &mdash; diffct_mlx  documentation</title>
+  <title>DiffCT-MLX: Differentiable CT — One API, Two Backends &mdash; DiffCT-MLX 2.0.0.dev0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/documentation_options.js?v=25d36582"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -31,7 +31,7 @@
           
           
           <a href="#" class="icon icon-home">
-            diffct_mlx
+            DiffCT-MLX
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
@@ -41,9 +41,12 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 </ul>
@@ -54,7 +57,7 @@
 
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="#">diffct_mlx</a>
+          <a href="#">DiffCT-MLX</a>
       </nav>
 
       <div class="wy-nav-content">
@@ -62,7 +65,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">diffct_mlx Documentation</li>
+      <li class="breadcrumb-item active">DiffCT-MLX: Differentiable CT — One API, Two Backends</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
       </li>
@@ -72,36 +75,121 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="diffct-mlx-documentation">
-<h1>diffct_mlx Documentation<a class="headerlink" href="#diffct-mlx-documentation" title="Link to this heading"></a></h1>
-<p><code class="docutils literal notranslate"><span class="pre">diffct_mlx</span></code> is a differentiable CT reconstruction library for Apple Silicon
-using MLX and custom Metal kernels.</p>
-<p>This documentation reflects the current repository state on <code class="docutils literal notranslate"><span class="pre">main</span></code>.</p>
+  <section id="diffct-mlx-differentiable-ct-one-api-two-backends">
+<h1>DiffCT-MLX: Differentiable CT — One API, Two Backends<a class="headerlink" href="#diffct-mlx-differentiable-ct-one-api-two-backends" title="Link to this heading"></a></h1>
+<p><strong>DiffCT-MLX</strong> is a differentiable computed-tomography library with a single
+user-facing package, <code class="docutils literal notranslate"><span class="pre">diffct_mlx</span></code>, that selects its compute engine at import
+time:</p>
+<ul class="simple">
+<li><p><strong>Torch / numba-CUDA</strong> on NVIDIA GPUs (wrapping the vendored <code class="docutils literal notranslate"><span class="pre">diffct</span></code>
+engine, adapted from <a class="reference external" href="https://github.com/sypsyp97/diffct">sypsyp97/diffct</a>),</p></li>
+<li><p><strong>MLX / Metal</strong> on Apple Silicon.</p></li>
+</ul>
+<p>The same script — projectors, geometry, reconstruction, physics — runs
+unchanged on both platforms. Override the automatic choice with the
+<code class="docutils literal notranslate"><span class="pre">DIFFCT_BACKEND</span></code> environment variable (<code class="docutils literal notranslate"><span class="pre">torch</span></code> / <code class="docutils literal notranslate"><span class="pre">mlx</span></code>).</p>
+<section id="key-features">
+<h2><strong>Key Features</strong><a class="headerlink" href="#key-features" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Fully differentiable:</strong> end-to-end gradient propagation through forward
+and backprojection on both backends (<code class="docutils literal notranslate"><span class="pre">torch.autograd</span></code> /
+<code class="docutils literal notranslate"><span class="pre">mx.custom_function</span></code> VJPs).</p></li>
+<li><p><strong>Two projector families:</strong> thin-ray Siddon and separable-footprint
+forward/adjoint pairs for parallel-, fan- and cone-beam geometries,
+including a sparse cone backprojection for region-of-interest gradients.</p></li>
+<li><p><strong>Arbitrary trajectories:</strong> per-view source/detector arrays — circular,
+spiral (helical), saddle, sinusoidal, laminography, or fully custom.</p></li>
+<li><p><strong>Complete reconstruction stack:</strong> amplitude-calibrated FBP/FDK,
+SART/SIRT/normalized-SART, TV-/ASD-/AwTV-POCS, DART, plus a solver registry
+(<code class="docutils literal notranslate"><span class="pre">cgls</span></code>, <code class="docutils literal notranslate"><span class="pre">wls</span></code>/<code class="docutils literal notranslate"><span class="pre">rwls</span></code>, <code class="docutils literal notranslate"><span class="pre">pcg</span></code>, <code class="docutils literal notranslate"><span class="pre">mlem</span></code>/<code class="docutils literal notranslate"><span class="pre">osem</span></code>, <code class="docutils literal notranslate"><span class="pre">mltr</span></code>, …)
+over a composable <code class="docutils literal notranslate"><span class="pre">LinearOperator</span></code> algebra with functionals,
+regularizers and Plug-and-Play denoisers.</p></li>
+<li><p><strong>Physics &amp; simulation:</strong> GPU-native preprocessing (flat field, rings, bad
+pixels, beam hardening, deblur, scatter, MAR) and forward simulation with an
+embedded, physically-validated X-ray spectrum / material-attenuation
+library (40–225 kVp).</p></li>
+<li><p><strong>Out-of-core + multi-GPU (CUDA):</strong> <code class="docutils literal notranslate"><span class="pre">diffct_mlx.orchestration</span></code> streams
+TB-scale volumes through chunked, conveyor-pipelined FDK/SIRT/OS-SART with
+automatic RAM/disk (memmap or zarr) spill.</p></li>
+</ul>
+</section>
+<section id="two-importable-packages">
+<h2><strong>Two importable packages</strong><a class="headerlink" href="#two-importable-packages" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx</span></code> — the unified, auto-backend API. <strong>Import this.</strong></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">diffct</span></code> — the low-level Torch/numba-CUDA engine (autograd Functions,
+CUDA kernels, analytical FBP/FDK helpers). Useful for advanced integrations
+on NVIDIA hardware; documented in the API reference.</p></li>
+</ul>
+</section>
+<section id="getting-started">
+<h2>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h2>
 <div class="toctree-wrapper compound">
-<p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="getting_started.html#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#prerequisites">Prerequisites</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started.html#installation">Installation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started.html#quick-start">Quick Start</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started.html#project-layout">Project Layout</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started.html#citation">Citation</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="api.html#top-level-package">Top-Level Package</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api.html#main-package-files">Main Package Files</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="examples.html#circular-trajectories">Circular Trajectories</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples.html#non-circular-trajectories">Non-Circular Trajectories</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples.html#algorithm-driver">Algorithm Driver</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples.html#notes">Notes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#quick-start-example">Quick Start Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#where-to-go-next">Where to go next</a></li>
 </ul>
 </li>
 </ul>
 </div>
+</section>
+<section id="user-guide">
+<h2>User Guide<a class="headerlink" href="#user-guide" title="Link to this heading"></a></h2>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api.html#the-unified-package-diffct-mlx">The unified package: <code class="docutils literal notranslate"><span class="pre">diffct_mlx</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#the-low-level-engine-diffct">The low-level engine: <code class="docutils literal notranslate"><span class="pre">diffct</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#core-projector-functions">Core Projector Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#geometry-helpers">Geometry Helpers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#analytical-reconstruction-helpers">Analytical Reconstruction Helpers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#ramp-filter-options">Ramp Filter Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#analytical-fbp-fdk-architecture">Analytical FBP / FDK architecture</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#utilities">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#constants">Constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#backward-compatibility">Backward Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#usage-notes">Usage Notes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="fbp_parallel_example.html">Parallel Beam Filtered Backprojection (FBP)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="fbp_fan_example.html">Fan Beam Filtered Backprojection (FBP)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="fdk_cone_example.html">Cone Beam FDK Reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="iterative_reco_parallel_example.html">Parallel Beam Iterative Reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="iterative_reco_fan_example.html">Fan Beam Iterative Reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="iterative_reco_cone_example.html">Cone Beam Iterative Reconstruction</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="citation">
+<h2>Citation<a class="headerlink" href="#citation" title="Link to this heading"></a></h2>
+<p>If you build on the vendored CUDA engine, please also cite the upstream
+<code class="docutils literal notranslate"><span class="pre">diffct</span></code> project:</p>
+<div class="highlight-bibtex notranslate"><div class="highlight"><pre><span></span><span class="nc">@software</span><span class="p">{</span><span class="nl">DiffCT2025</span><span class="p">,</span>
+<span class="w">  </span><span class="na">author</span><span class="w">       </span><span class="p">=</span><span class="w"> </span><span class="s">{Yipeng Sun}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">title</span><span class="w">        </span><span class="p">=</span><span class="w"> </span><span class="s">{DiffCT: Differentiable Computed Tomography</span>
+<span class="s">                 Reconstruction with CUDA}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">year</span><span class="w">         </span><span class="p">=</span><span class="w"> </span><span class="m">2025</span><span class="p">,</span>
+<span class="w">  </span><span class="na">publisher</span><span class="w">    </span><span class="p">=</span><span class="w"> </span><span class="s">{Zenodo}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">doi</span><span class="w">          </span><span class="p">=</span><span class="w"> </span><span class="s">{10.5281/zenodo.14999333}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">url</span><span class="w">          </span><span class="p">=</span><span class="w"> </span><span class="s">{https://doi.org/10.5281/zenodo.14999333}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="license">
+<h2>License<a class="headerlink" href="#license" title="Link to this heading"></a></h2>
+<p>Apache 2.0 — see the <a class="reference external" href="https://github.com/Linda-SophieSchneider/DiffCT-MLX/blob/main/LICENSE">LICENSE</a> file
+and <a class="reference external" href="https://github.com/Linda-SophieSchneider/DiffCT-MLX/blob/main/ATTRIBUTION.md">ATTRIBUTION.md</a>
+for provenance.</p>
+</section>
 </section>
 
 
@@ -114,7 +202,7 @@ using MLX and custom Metal kernels.</p>
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2026, Yipeng Sun, Linda-Sophie Schneider.</p>
+    <p>&#169; Copyright 2025-2026, Linda-Sophie Schneider; upstream diffct (c) Yipeng Sun.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

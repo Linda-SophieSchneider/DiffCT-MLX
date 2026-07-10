@@ -1,0 +1,654 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>diffct.analytical &mdash; DiffCT-MLX 2.0.0.dev0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=25d36582"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            DiffCT-MLX
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started.html">Getting Started</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples.html">Examples</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">DiffCT-MLX</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">diffct.analytical</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for diffct.analytical</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Analytical reconstruction helpers (ramp filter, cosine weights, Parker,</span>
+<span class="sd">angular weights, voxel-driven FBP/FDK backprojection wrappers).</span>
+
+<span class="sd">Ported from the main branch&#39;s ``diffct.differentiable`` module and rewritten</span>
+<span class="sd">for the dev branch&#39;s arbitrary-trajectory kernel API. Every helper here is</span>
+<span class="sd">trajectory-agnostic or takes the same ``(src_pos, det_center, det_u_vec,</span>
+<span class="sd">det_v_vec)`` arrays as the ``ParallelProjectorFunction`` /</span>
+<span class="sd">``FanProjectorFunction`` / ``ConeProjectorFunction`` classes, so they</span>
+<span class="sd">compose cleanly with both circular and non-circular trajectories.</span>
+
+<span class="sd">Fixes the long-standing FDK / FBP amplitude bugs on the dev branch:</span>
+<span class="sd">    * Analytical backprojection now goes through dedicated voxel-driven</span>
+<span class="sd">      gather kernels with the classical ``(sid/U)^2`` weight instead of</span>
+<span class="sd">      the Siddon adjoint.</span>
+<span class="sd">    * The analytical Fourier-convention constant ``1/(2*pi)`` is applied</span>
+<span class="sd">      automatically inside the ``*_weighted_backproject`` wrappers, so</span>
+<span class="sd">      a unit-density disk reconstructs to amplitude 1 without any</span>
+<span class="sd">      extra manual scaling in user code.</span>
+<span class="sd">    * ``ramp_filter_1d`` is scaled by ``1 / sample_spacing`` so the</span>
+<span class="sd">      reconstruction amplitude is stable across different detector</span>
+<span class="sd">      pitches.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">_DTYPE</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DeviceManager</span><span class="p">,</span>
+    <span class="n">TorchCUDABridge</span><span class="p">,</span>
+    <span class="n">_get_numba_external_stream_for</span><span class="p">,</span>
+    <span class="n">_grid_2d</span><span class="p">,</span>
+    <span class="n">_grid_3d</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.kernels</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">_parallel_2d_fbp_backproject_kernel</span><span class="p">,</span>
+    <span class="n">_fan_2d_fbp_backproject_kernel</span><span class="p">,</span>
+    <span class="n">_cone_3d_fdk_backproject_kernel</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># Detector coordinate helper</span>
+<span class="c1"># ============================================================================</span>
+
+
+<div class="viewcode-block" id="detector_coordinates_1d">
+<a class="viewcode-back" href="../../api.html#diffct.analytical.detector_coordinates_1d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">detector_coordinates_1d</span><span class="p">(</span><span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">detector_offset</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+                            <span class="n">device</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return detector cell centre coordinates along a 1D axis.</span>
+
+<span class="sd">    The convention matches the underlying dev-branch CUDA kernels:</span>
+<span class="sd">    ``u[k] = (k - num_detectors * 0.5) * detector_spacing + detector_offset``.</span>
+<span class="sd">    Note the ``num_detectors * 0.5`` (not ``(num_detectors - 1) * 0.5``) is</span>
+<span class="sd">    the existing dev-branch detector grid convention; this helper simply</span>
+<span class="sd">    mirrors it so any auxiliary Python math stays consistent with the GPU</span>
+<span class="sd">    kernels.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">num_detectors</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">k</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">num_detectors</span><span class="p">)</span> <span class="o">*</span> <span class="n">detector_spacing</span> <span class="o">+</span> <span class="n">detector_offset</span></div>
+
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># Angular integration weights</span>
+<span class="c1"># ============================================================================</span>
+
+
+<div class="viewcode-block" id="angular_integration_weights">
+<a class="viewcode-back" href="../../api.html#diffct.analytical.angular_integration_weights">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">angular_integration_weights</span><span class="p">(</span><span class="n">angles</span><span class="p">,</span> <span class="n">redundant_full_scan</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Trapezoidal per-view integration weights for the analytical FBP/FDK sum.</span>
+
+<span class="sd">    For a full ``2*pi`` scan, each redundant ray is sampled twice so the</span>
+<span class="sd">    classical FBP/FDK formula carries a ``1/2`` redundancy factor. When</span>
+<span class="sd">    ``redundant_full_scan=True`` (the default) this factor is baked into</span>
+<span class="sd">    the returned weights: they sum to ``pi`` over a uniform full scan,</span>
+<span class="sd">    which is exactly what a voxel-driven gather backprojector with the</span>
+<span class="sd">    ``(sid/U)^2`` weight needs to produce a unit-amplitude reconstruction.</span>
+
+<span class="sd">    For short scans (Parker-weighted) use ``redundant_full_scan=False``:</span>
+<span class="sd">    the weights then sum to the actual angular range and the Parker</span>
+<span class="sd">    window handles redundancy at the sinogram-filtering stage.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">angles</span> <span class="o">=</span> <span class="n">angles</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">angles</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="k">if</span> <span class="n">redundant_full_scan</span> <span class="k">else</span> <span class="mf">1.0</span><span class="p">)</span>
+
+    <span class="n">device</span> <span class="o">=</span> <span class="n">angles</span><span class="o">.</span><span class="n">device</span>
+    <span class="n">angles_sorted</span><span class="p">,</span> <span class="n">sort_idx</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+    <span class="n">diffs</span> <span class="o">=</span> <span class="n">angles_sorted</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">-</span> <span class="n">angles_sorted</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+    <span class="c1"># Endpoint-excluded uniform circular scans are periodic quadrature</span>
+    <span class="c1"># problems, not open-interval trapezoids. Treat both parallel-beam</span>
+    <span class="c1"># half scans over pi and fan/cone full scans over 2*pi as periodic</span>
+    <span class="c1"># when the missing closure gap matches the interior angular step.</span>
+    <span class="n">median_step</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">diffs</span><span class="p">)</span>
+    <span class="n">span</span> <span class="o">=</span> <span class="n">angles_sorted</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">angles_sorted</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">period</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">for</span> <span class="n">candidate</span> <span class="ow">in</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">):</span>
+        <span class="n">closure</span> <span class="o">=</span> <span class="n">angles</span><span class="o">.</span><span class="n">new_tensor</span><span class="p">(</span><span class="n">candidate</span><span class="p">)</span> <span class="o">-</span> <span class="n">span</span>
+        <span class="n">tol</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">1e-4</span><span class="p">,</span> <span class="mf">0.05</span> <span class="o">*</span> <span class="nb">float</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">median_step</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()))</span>
+        <span class="c1"># Full circular acquisitions can be endpoint-excluded</span>
+        <span class="c1"># (closure ~= median_step), endpoint-included (closure ~= 0),</span>
+        <span class="c1"># or downsampled from a finer full scan (closure smaller than</span>
+        <span class="c1"># the kept-view step, as in the walnut fixture). Treat these as</span>
+        <span class="c1"># periodic when the missing closure is no larger than one normal</span>
+        <span class="c1"># kept-view interval.</span>
+        <span class="k">if</span> <span class="n">closure</span> <span class="o">&gt;=</span> <span class="o">-</span><span class="n">tol</span> <span class="ow">and</span> <span class="nb">float</span><span class="p">(</span><span class="n">closure</span><span class="o">.</span><span class="n">item</span><span class="p">())</span> <span class="o">&lt;=</span> <span class="mf">1.5</span> <span class="o">*</span> <span class="nb">float</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">median_step</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">())</span> <span class="o">+</span> <span class="n">tol</span><span class="p">:</span>
+            <span class="n">period</span> <span class="o">=</span> <span class="n">candidate</span>
+            <span class="k">break</span>
+
+    <span class="n">w</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">angles</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">period</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">closure</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="n">angles</span><span class="o">.</span><span class="n">new_tensor</span><span class="p">(</span><span class="n">period</span><span class="p">)</span> <span class="o">-</span> <span class="n">span</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
+        <span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">closure</span> <span class="o">+</span> <span class="n">diffs</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">w</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">diffs</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">closure</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">w</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">diffs</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">diffs</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Open-interval trapezoidal rule: each interior sample gets</span>
+        <span class="c1"># (prev + next) / 2, boundaries get half the adjacent step.</span>
+        <span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">diffs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">w</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">diffs</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">w</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">diffs</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">diffs</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+
+    <span class="n">full_scan_tol</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">1e-4</span><span class="p">,</span> <span class="mf">0.05</span> <span class="o">*</span> <span class="nb">float</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">median_step</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()))</span>
+    <span class="n">is_periodic_full_scan</span> <span class="o">=</span> <span class="n">period</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">abs</span><span class="p">(</span><span class="n">period</span> <span class="o">-</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">full_scan_tol</span>
+    <span class="n">is_open_full_scan</span> <span class="o">=</span> <span class="n">period</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">abs</span><span class="p">(</span><span class="nb">float</span><span class="p">((</span><span class="n">span</span> <span class="o">-</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()))</span> <span class="o">&lt;=</span> <span class="n">full_scan_tol</span>
+    <span class="k">if</span> <span class="n">redundant_full_scan</span> <span class="ow">and</span> <span class="p">(</span><span class="n">is_periodic_full_scan</span> <span class="ow">or</span> <span class="n">is_open_full_scan</span><span class="p">):</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">w</span> <span class="o">*</span> <span class="mf">0.5</span>  <span class="c1"># absorb the 1/2 FBP/FDK redundancy factor</span>
+
+    <span class="c1"># Return weights in the input order so the caller can just multiply</span>
+    <span class="c1"># ``sino * d_beta`` without worrying about angle ordering.</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="n">sort_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">w</span>
+    <span class="k">return</span> <span class="n">out</span></div>
+
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># Cosine pre-weights</span>
+<span class="c1"># ============================================================================</span>
+
+
+<div class="viewcode-block" id="fan_cosine_weights">
+<a class="viewcode-back" href="../../api.html#diffct.analytical.fan_cosine_weights">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">fan_cosine_weights</span><span class="p">(</span><span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">sdd</span><span class="p">,</span> <span class="n">detector_offset</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+                       <span class="n">device</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-detector-cell ``cos(gamma)`` weight for fan-beam FBP.</span>
+
+<span class="sd">    ``cos(gamma) = sdd / sqrt(sdd^2 + u^2)`` where ``u`` is the in-plane</span>
+<span class="sd">    detector coordinate. Multiplying the sinogram by this weight before</span>
+<span class="sd">    the ramp filter compensates for the extra path length that off-</span>
+<span class="sd">    principal-ray fans traverse.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="n">detector_coordinates_1d</span><span class="p">(</span>
+        <span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">detector_offset</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">sdd</span> <span class="o">/</span> <span class="n">torch</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">sdd</span> <span class="o">*</span> <span class="n">sdd</span> <span class="o">+</span> <span class="n">u</span> <span class="o">*</span> <span class="n">u</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="cone_cosine_weights">
+<a class="viewcode-back" href="../../api.html#diffct.analytical.cone_cosine_weights">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">cone_cosine_weights</span><span class="p">(</span><span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">sdd</span><span class="p">,</span>
+                        <span class="n">detector_offset_u</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">detector_offset_v</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+                        <span class="n">device</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-detector-cell ``cos(gamma_cone)`` weight for cone-beam FDK.</span>
+
+<span class="sd">    ``cos(gamma_cone) = sdd / sqrt(sdd^2 + u^2 + v^2)``. Returns a</span>
+<span class="sd">    ``(det_u, det_v)`` tensor ready to broadcast across the view axis</span>
+<span class="sd">    of a cone sinogram ``(n_views, det_u, det_v)``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="n">detector_coordinates_1d</span><span class="p">(</span><span class="n">det_u</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">detector_offset_u</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">v</span> <span class="o">=</span> <span class="n">detector_coordinates_1d</span><span class="p">(</span><span class="n">det_v</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">detector_offset_v</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">uu</span> <span class="o">=</span> <span class="n">u</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">vv</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">sdd</span> <span class="o">/</span> <span class="n">torch</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">sdd</span> <span class="o">*</span> <span class="n">sdd</span> <span class="o">+</span> <span class="n">uu</span> <span class="o">*</span> <span class="n">uu</span> <span class="o">+</span> <span class="n">vv</span> <span class="o">*</span> <span class="n">vv</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># Parker short-scan weights (circular fan / cone only)</span>
+<span class="c1"># ============================================================================</span>
+
+
+<div class="viewcode-block" id="parker_weights">
+<a class="viewcode-back" href="../../api.html#diffct.analytical.parker_weights">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">parker_weights</span><span class="p">(</span><span class="n">angles</span><span class="p">,</span> <span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">sdd</span><span class="p">,</span> <span class="n">detector_offset</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parker redundancy weights for a circular fan-beam short scan.</span>
+
+<span class="sd">    The formula follows Parker (1982): each ray at view ``beta`` and</span>
+<span class="sd">    fan angle ``gamma`` is weighted by a smooth window that guarantees</span>
+<span class="sd">    every ray contributes exactly once when integrated over the scan.</span>
+<span class="sd">    For a full ``2*pi`` scan this returns a constant ``1`` tensor (the</span>
+<span class="sd">    usual redundancy ``1/2`` factor lives in</span>
+<span class="sd">    ``angular_integration_weights`` instead).</span>
+
+<span class="sd">    Only meaningful for circular (fan-shaped) trajectories — when using</span>
+<span class="sd">    non-circular trajectories you typically want either a constant weight</span>
+<span class="sd">    (full-coverage) or a custom redundancy scheme.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">angles</span> <span class="o">=</span> <span class="n">angles</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+    <span class="n">n_ang</span> <span class="o">=</span> <span class="n">angles</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">device</span> <span class="o">=</span> <span class="n">angles</span><span class="o">.</span><span class="n">device</span>
+
+    <span class="n">u</span> <span class="o">=</span> <span class="n">detector_coordinates_1d</span><span class="p">(</span>
+        <span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">detector_offset</span><span class="p">,</span>
+        <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">angles</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">gamma</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">atan</span><span class="p">(</span><span class="n">u</span> <span class="o">/</span> <span class="n">sdd</span><span class="p">)</span>  <span class="c1"># (n_det,)</span>
+    <span class="n">gamma_max</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">gamma</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
+
+    <span class="n">scan_range</span> <span class="o">=</span> <span class="nb">float</span><span class="p">((</span><span class="n">angles</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">-</span> <span class="n">angles</span><span class="o">.</span><span class="n">min</span><span class="p">())</span><span class="o">.</span><span class="n">item</span><span class="p">())</span> <span class="o">+</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">gamma_max</span>
+    <span class="k">if</span> <span class="n">scan_range</span> <span class="o">&gt;=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">-</span> <span class="mf">1e-6</span><span class="p">:</span>
+        <span class="c1"># Already a full scan — no Parker needed.</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="n">n_ang</span><span class="p">,</span> <span class="n">num_detectors</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">angles</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="n">beta</span> <span class="o">=</span> <span class="n">angles</span> <span class="o">-</span> <span class="n">angles</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>  <span class="c1"># shift so beta in [0, scan_range - 2*gamma_max]</span>
+    <span class="n">beta</span> <span class="o">=</span> <span class="n">beta</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">gamma_b</span> <span class="o">=</span> <span class="n">gamma</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">w</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">beta</span><span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="n">n_ang</span><span class="p">,</span> <span class="n">num_detectors</span><span class="p">))</span>
+
+    <span class="c1"># Region 1: 0 &lt;= beta &lt; 2*(gamma_max - gamma)</span>
+    <span class="n">r1</span> <span class="o">=</span> <span class="n">beta</span> <span class="o">&lt;</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="p">(</span><span class="n">gamma_max</span> <span class="o">-</span> <span class="n">gamma_b</span><span class="p">)</span>
+    <span class="n">arg1</span> <span class="o">=</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="mf">0.25</span><span class="p">)</span> <span class="o">*</span> <span class="n">beta</span> <span class="o">/</span> <span class="p">(</span><span class="n">gamma_max</span> <span class="o">-</span> <span class="n">gamma_b</span> <span class="o">+</span> <span class="mf">1e-12</span><span class="p">)</span>
+    <span class="n">w</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">r1</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">arg1</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">w</span><span class="p">)</span>
+
+    <span class="c1"># Region 3: pi - 2*gamma &lt;= beta &lt;= pi + 2*gamma_max</span>
+    <span class="n">r3</span> <span class="o">=</span> <span class="n">beta</span> <span class="o">&gt;</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">-</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">gamma_b</span>
+    <span class="n">arg3</span> <span class="o">=</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="mf">0.25</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">+</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">gamma_max</span> <span class="o">-</span> <span class="n">beta</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">gamma_max</span> <span class="o">+</span> <span class="n">gamma_b</span> <span class="o">+</span> <span class="mf">1e-12</span><span class="p">)</span>
+    <span class="n">w</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">r3</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">arg3</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">w</span><span class="p">)</span>
+
+    <span class="c1"># Outside scan range: zero (shouldn&#39;t happen for well-formed inputs).</span>
+    <span class="n">w</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">beta</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">w</span><span class="p">),</span> <span class="n">w</span><span class="p">)</span>
+    <span class="n">w</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">beta</span> <span class="o">&gt;</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">+</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">gamma_max</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">w</span><span class="p">),</span> <span class="n">w</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">w</span></div>
+
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># Ramp filter</span>
+<span class="c1"># ============================================================================</span>
+
+<span class="n">_RAMP_WINDOWS</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;ram-lak&quot;</span><span class="p">,</span> <span class="s2">&quot;hann&quot;</span><span class="p">,</span> <span class="s2">&quot;hanning&quot;</span><span class="p">,</span> <span class="s2">&quot;hamming&quot;</span><span class="p">,</span> <span class="s2">&quot;cosine&quot;</span><span class="p">,</span> <span class="s2">&quot;shepp-logan&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_ramp_window</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">freqs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Frequency-domain apodization window for the ramp filter.</span>
+
+<span class="sd">    ``freqs`` are in cycles per sample (matching ``torch.fft.fftfreq``).</span>
+<span class="sd">    The normalized coordinate ``nf = 2 * |freqs|`` maps DC to 0 and the</span>
+<span class="sd">    Nyquist bin to 1.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">freqs</span><span class="p">)</span>
+    <span class="n">nf</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">freqs</span><span class="p">)</span> <span class="o">*</span> <span class="mf">2.0</span>
+    <span class="n">nf</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="n">nf</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">key</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="s2">&quot;-&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;hann&quot;</span><span class="p">,</span> <span class="s2">&quot;hanning&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">nf</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;hamming&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mf">0.54</span> <span class="o">+</span> <span class="mf">0.46</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">nf</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;cosine&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">nf</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;shepp-logan&quot;</span><span class="p">:</span>
+        <span class="n">arg</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">nf</span> <span class="o">*</span> <span class="mf">0.5</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
+            <span class="n">nf</span> <span class="o">&gt;</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span> <span class="o">/</span> <span class="n">torch</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">),</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">nf</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;ram-lak&quot;</span><span class="p">,</span> <span class="s2">&quot;ramlak&quot;</span><span class="p">,</span> <span class="s2">&quot;none&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">freqs</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Unknown ramp window </span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2">. Expected one of </span><span class="si">{</span><span class="n">_RAMP_WINDOWS</span><span class="si">}</span><span class="s2"> or None.&quot;</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="ramp_filter_1d">
+<a class="viewcode-back" href="../../api.html#diffct.analytical.ramp_filter_1d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">ramp_filter_1d</span><span class="p">(</span><span class="n">sinogram_tensor</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">sample_spacing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">pad_factor</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                   <span class="n">window</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">use_rfft</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Apply a 1D ramp filter along ``dim`` using FFT.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    sinogram_tensor : torch.Tensor</span>
+<span class="sd">        Real-valued sinogram tensor.</span>
+<span class="sd">    dim : int, optional</span>
+<span class="sd">        Axis along which to filter. Default ``-1``.</span>
+<span class="sd">    sample_spacing : float, optional</span>
+<span class="sd">        Physical spacing between detector samples along ``dim``. The continuous</span>
+<span class="sd">        ramp filter has units of ``1/length``, so the FFT output is rescaled by</span>
+<span class="sd">        ``1 / sample_spacing`` to respect physical units.</span>
+<span class="sd">    pad_factor : int, optional</span>
+<span class="sd">        Zero-pad the signal to ``pad_factor * N`` along ``dim`` before the FFT</span>
+<span class="sd">        to suppress circular-convolution wrap-around artifacts.</span>
+<span class="sd">    window : str or None, optional</span>
+<span class="sd">        Frequency-domain apodization: ``None`` / ``&quot;ram-lak&quot;`` (unwindowed),</span>
+<span class="sd">        ``&quot;hann&quot;``, ``&quot;hamming&quot;``, ``&quot;cosine&quot;``, or ``&quot;shepp-logan&quot;``.</span>
+<span class="sd">    use_rfft : bool, optional</span>
+<span class="sd">        Use the real-valued FFT path when ``True`` (default).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dim_pos</span> <span class="o">=</span> <span class="n">dim</span> <span class="k">if</span> <span class="n">dim</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">sinogram_tensor</span><span class="o">.</span><span class="n">ndim</span> <span class="o">+</span> <span class="n">dim</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">sinogram_tensor</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="n">dim_pos</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">pad_factor</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">pad_factor</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">pad_factor</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">pad_factor</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">pad_factor</span><span class="p">)</span>
+    <span class="n">n_pad</span> <span class="o">=</span> <span class="n">n</span> <span class="o">*</span> <span class="n">pad_factor</span>
+    <span class="k">if</span> <span class="n">n_pad</span> <span class="o">&gt;</span> <span class="n">n</span><span class="p">:</span>
+        <span class="n">pad_total</span> <span class="o">=</span> <span class="n">n_pad</span> <span class="o">-</span> <span class="n">n</span>
+        <span class="n">pad_left</span> <span class="o">=</span> <span class="n">pad_total</span> <span class="o">//</span> <span class="mi">2</span>
+        <span class="n">pad_right</span> <span class="o">=</span> <span class="n">pad_total</span> <span class="o">-</span> <span class="n">pad_left</span>
+        <span class="n">pad_spec</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">sinogram_tensor</span><span class="o">.</span><span class="n">ndim</span>
+        <span class="n">rev_dim</span> <span class="o">=</span> <span class="n">sinogram_tensor</span><span class="o">.</span><span class="n">ndim</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">dim_pos</span>
+        <span class="n">pad_spec</span><span class="p">[</span><span class="mi">2</span> <span class="o">*</span> <span class="n">rev_dim</span><span class="p">]</span> <span class="o">=</span> <span class="n">pad_left</span>
+        <span class="n">pad_spec</span><span class="p">[</span><span class="mi">2</span> <span class="o">*</span> <span class="n">rev_dim</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">pad_right</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">pad</span><span class="p">(</span><span class="n">sinogram_tensor</span><span class="p">,</span> <span class="n">pad_spec</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;constant&quot;</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">pad_left</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">sinogram_tensor</span>
+
+    <span class="n">scale</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">sample_spacing</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">use_rfft</span> <span class="ow">and</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_floating_point</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+        <span class="n">freqs</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">rfftfreq</span><span class="p">(</span><span class="n">n_pad</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="n">ramp</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">freqs</span><span class="p">)</span> <span class="o">*</span> <span class="n">_ramp_window</span><span class="p">(</span><span class="n">window</span><span class="p">,</span> <span class="n">freqs</span><span class="p">)</span> <span class="o">*</span> <span class="n">scale</span>
+        <span class="n">shape</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span>
+        <span class="n">shape</span><span class="p">[</span><span class="n">dim_pos</span><span class="p">]</span> <span class="o">=</span> <span class="n">ramp</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">ramp</span> <span class="o">=</span> <span class="n">ramp</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span>
+        <span class="n">x_fft</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">rfft</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">dim_pos</span><span class="p">)</span>
+        <span class="n">x_filtered</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">irfft</span><span class="p">(</span><span class="n">x_fft</span> <span class="o">*</span> <span class="n">ramp</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n_pad</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">dim_pos</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">freqs</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fftfreq</span><span class="p">(</span><span class="n">n_pad</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+        <span class="n">freqs</span> <span class="o">=</span> <span class="n">freqs</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">real</span><span class="o">.</span><span class="n">dtype</span> <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">is_complex</span><span class="p">()</span> <span class="k">else</span> <span class="n">x</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="n">ramp</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">freqs</span><span class="p">)</span> <span class="o">*</span> <span class="n">_ramp_window</span><span class="p">(</span><span class="n">window</span><span class="p">,</span> <span class="n">freqs</span><span class="p">)</span> <span class="o">*</span> <span class="n">scale</span>
+        <span class="n">shape</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span>
+        <span class="n">shape</span><span class="p">[</span><span class="n">dim_pos</span><span class="p">]</span> <span class="o">=</span> <span class="n">ramp</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">ramp</span> <span class="o">=</span> <span class="n">ramp</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span>
+        <span class="n">x_fft</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">dim_pos</span><span class="p">)</span>
+        <span class="n">x_filtered</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft</span><span class="p">(</span><span class="n">x_fft</span> <span class="o">*</span> <span class="n">ramp</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">dim_pos</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">n_pad</span> <span class="o">&gt;</span> <span class="n">n</span><span class="p">:</span>
+        <span class="n">x_filtered</span> <span class="o">=</span> <span class="n">x_filtered</span><span class="o">.</span><span class="n">narrow</span><span class="p">(</span><span class="n">dim_pos</span><span class="p">,</span> <span class="n">pad_left</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">x_filtered</span></div>
+
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># Analytical FBP/FDK backprojection wrappers (voxel-driven gather)</span>
+<span class="c1"># ============================================================================</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_as_contig_f32</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+
+
+<div class="viewcode-block" id="parallel_weighted_backproject">
+<a class="viewcode-back" href="../../api.html#diffct.analytical.parallel_weighted_backproject">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">parallel_weighted_backproject</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span>
+                                  <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Voxel-driven parallel-beam FBP backprojection with analytical constant.</span>
+
+<span class="sd">    Runs the dedicated parallel-beam FBP gather kernel (one thread per</span>
+<span class="sd">    output pixel, linear interpolation of the filtered sinogram, no</span>
+<span class="sd">    distance weighting because parallel beam has no source) and</span>
+<span class="sd">    multiplies by ``1 / (2 * pi)`` so a unit-density disk reconstructs</span>
+<span class="sd">    to amplitude 1.</span>
+
+<span class="sd">    Assumes the input sinogram has already been ramp-filtered with</span>
+<span class="sd">    ``ramp_filter_1d`` and weighted by ``angular_integration_weights``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">device</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">get_device</span><span class="p">(</span><span class="n">sinogram</span><span class="p">)</span>
+    <span class="n">sinogram</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="n">ray_dir</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">ray_dir</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="n">det_origin</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">det_origin</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+    <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span> <span class="o">=</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span>
+    <span class="n">reco</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="n">d_sino</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">sinogram</span><span class="p">)</span>
+    <span class="n">d_reco</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">reco</span><span class="p">)</span>
+    <span class="n">d_ray_dir</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">ray_dir</span><span class="p">)</span>
+    <span class="n">d_det_origin</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_origin</span><span class="p">)</span>
+    <span class="n">d_det_u_vec</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">)</span>
+
+    <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span> <span class="o">=</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">Nx</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">Ny</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span> <span class="o">=</span> <span class="n">_grid_2d</span><span class="p">(</span><span class="n">Nx</span><span class="p">,</span> <span class="n">Ny</span><span class="p">)</span>
+
+    <span class="n">pt_stream</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">current_stream</span><span class="p">()</span>
+    <span class="n">numba_stream</span> <span class="o">=</span> <span class="n">_get_numba_external_stream_for</span><span class="p">(</span><span class="n">pt_stream</span><span class="p">)</span>
+
+    <span class="n">_parallel_2d_fbp_backproject_kernel</span><span class="p">[</span><span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span><span class="p">,</span> <span class="n">numba_stream</span><span class="p">](</span>
+        <span class="n">d_sino</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span><span class="p">,</span> <span class="n">d_reco</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span>
+        <span class="n">_DTYPE</span><span class="p">(</span><span class="n">detector_spacing</span><span class="p">),</span> <span class="n">d_ray_dir</span><span class="p">,</span> <span class="n">d_det_origin</span><span class="p">,</span> <span class="n">d_det_u_vec</span><span class="p">,</span>
+        <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">reco</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">))</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_fan_mean_sid_sdd</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Mean source-to-iso and source-to-detector distances measured along</span>
+<span class="sd">    the per-view detector normal. For a circular fan orbit this reduces</span>
+<span class="sd">    to the classical scalar ``sid`` / ``sdd``; for non-circular</span>
+<span class="sd">    trajectories it is the principled mean used to build the analytical</span>
+<span class="sd">    ``sdd/(2*pi*sid)`` FBP scale factor.&quot;&quot;&quot;</span>
+    <span class="c1"># Detector normal in 2D: rotate u_vec by 90 degrees, then flip so it</span>
+    <span class="c1"># points from the source toward the detector.</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="o">-</span><span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">cs</span> <span class="o">=</span> <span class="n">det_center</span> <span class="o">-</span> <span class="n">src_pos</span>
+    <span class="n">align</span> <span class="o">=</span> <span class="p">(</span><span class="n">cs</span> <span class="o">*</span> <span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">align</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="n">sid_n</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">src_pos</span> <span class="o">*</span> <span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">sdd_n</span> <span class="o">=</span> <span class="p">((</span><span class="n">det_center</span> <span class="o">-</span> <span class="n">src_pos</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">sid_n</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()),</span> <span class="nb">float</span><span class="p">(</span><span class="n">sdd_n</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
+
+
+<div class="viewcode-block" id="fan_weighted_backproject">
+<a class="viewcode-back" href="../../api.html#diffct.analytical.fan_weighted_backproject">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">fan_weighted_backproject</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span>
+                             <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Voxel-driven fan-beam FBP backprojection with analytical constant.</span>
+
+<span class="sd">    Runs the dedicated fan-beam FBP gather kernel (one thread per output</span>
+<span class="sd">    pixel, ``(sid_n/U_n)^2`` distance weighting, linear interpolation of</span>
+<span class="sd">    the filtered sinogram) and multiplies by the analytical constant</span>
+<span class="sd">    ``sdd_mean / (2 * pi * sid_mean)`` so a unit-density disk reconstructs</span>
+<span class="sd">    to amplitude 1. Both means are measured in the direction of the</span>
+<span class="sd">    detector normal per view, so the helper reduces to the classical</span>
+<span class="sd">    ``sdd/(2*pi*sid)`` on a circular orbit.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">device</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">get_device</span><span class="p">(</span><span class="n">sinogram</span><span class="p">)</span>
+    <span class="n">sinogram</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="n">src_pos</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="n">det_center</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">det_center</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+    <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span> <span class="o">=</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span>
+    <span class="n">reco</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="n">d_sino</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">sinogram</span><span class="p">)</span>
+    <span class="n">d_reco</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">reco</span><span class="p">)</span>
+    <span class="n">d_src_pos</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">src_pos</span><span class="p">)</span>
+    <span class="n">d_det_center</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_center</span><span class="p">)</span>
+    <span class="n">d_det_u_vec</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">)</span>
+
+    <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span> <span class="o">=</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">Nx</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">Ny</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span> <span class="o">=</span> <span class="n">_grid_2d</span><span class="p">(</span><span class="n">Nx</span><span class="p">,</span> <span class="n">Ny</span><span class="p">)</span>
+
+    <span class="n">pt_stream</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">current_stream</span><span class="p">()</span>
+    <span class="n">numba_stream</span> <span class="o">=</span> <span class="n">_get_numba_external_stream_for</span><span class="p">(</span><span class="n">pt_stream</span><span class="p">)</span>
+
+    <span class="n">_fan_2d_fbp_backproject_kernel</span><span class="p">[</span><span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span><span class="p">,</span> <span class="n">numba_stream</span><span class="p">](</span>
+        <span class="n">d_sino</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span><span class="p">,</span> <span class="n">d_reco</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span>
+        <span class="n">_DTYPE</span><span class="p">(</span><span class="n">detector_spacing</span><span class="p">),</span> <span class="n">d_src_pos</span><span class="p">,</span> <span class="n">d_det_center</span><span class="p">,</span> <span class="n">d_det_u_vec</span><span class="p">,</span>
+        <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="n">sid_mean</span><span class="p">,</span> <span class="n">sdd_mean</span> <span class="o">=</span> <span class="n">_fan_mean_sid_sdd</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">)</span>
+    <span class="n">scale</span> <span class="o">=</span> <span class="n">sdd_mean</span> <span class="o">/</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">sid_mean</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">reco</span> <span class="o">*</span> <span class="n">scale</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_cone_mean_sid_sdd</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;3D version of ``_fan_mean_sid_sdd`` using ``n = u x v``.&quot;&quot;&quot;</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">n</span> <span class="o">/</span> <span class="n">torch</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">vector_norm</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="mf">1e-9</span><span class="p">)</span>
+    <span class="n">cs</span> <span class="o">=</span> <span class="n">det_center</span> <span class="o">-</span> <span class="n">src_pos</span>
+    <span class="n">align</span> <span class="o">=</span> <span class="p">(</span><span class="n">cs</span> <span class="o">*</span> <span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">align</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="n">sid_n</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">src_pos</span> <span class="o">*</span> <span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">sdd_n</span> <span class="o">=</span> <span class="p">((</span><span class="n">det_center</span> <span class="o">-</span> <span class="n">src_pos</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">sid_n</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()),</span> <span class="nb">float</span><span class="p">(</span><span class="n">sdd_n</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
+
+
+<div class="viewcode-block" id="cone_weighted_backproject">
+<a class="viewcode-back" href="../../api.html#diffct.analytical.cone_weighted_backproject">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">cone_weighted_backproject</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">,</span>
+                              <span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Voxel-driven cone-beam FDK backprojection with analytical constant.</span>
+
+<span class="sd">    Runs the dedicated cone-beam FDK gather kernel (one thread per output</span>
+<span class="sd">    voxel, ``(sid_n/U_n)^2`` distance weighting, bilinear interpolation of</span>
+<span class="sd">    the filtered sinogram) and multiplies by ``sdd_mean/(2*pi*sid_mean)``</span>
+<span class="sd">    so a unit-density sphere reconstructs to amplitude 1. Both means are</span>
+<span class="sd">    taken in the per-view detector-normal direction, so the helper</span>
+<span class="sd">    reduces to the classical ``sdd/(2*pi*sid)`` on a circular orbit.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">device</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">get_device</span><span class="p">(</span><span class="n">sinogram</span><span class="p">)</span>
+    <span class="n">sinogram</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="n">src_pos</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="n">det_center</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">det_center</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">_as_contig_f32</span><span class="p">(</span><span class="n">det_v_vec</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+    <span class="n">n_views</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_v</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">Nx</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nz</span> <span class="o">=</span> <span class="n">W</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">D</span>
+    <span class="c1"># Allocate reco in WHD layout to match the FDK gather kernel&#39;s</span>
+    <span class="c1"># coalescing (iz warp-adjacent, stride-1 along the D axis).</span>
+    <span class="n">reco_perm</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">Nx</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nz</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="n">d_sino</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">sinogram</span><span class="p">)</span>
+    <span class="n">d_reco</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">reco_perm</span><span class="p">)</span>
+    <span class="n">d_src_pos</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">src_pos</span><span class="p">)</span>
+    <span class="n">d_det_center</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_center</span><span class="p">)</span>
+    <span class="n">d_det_u_vec</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">)</span>
+    <span class="n">d_det_v_vec</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_v_vec</span><span class="p">)</span>
+
+    <span class="n">cx</span> <span class="o">=</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">Nx</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">cy</span> <span class="o">=</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">Ny</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">cz</span> <span class="o">=</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">Nz</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span> <span class="o">=</span> <span class="n">_grid_3d</span><span class="p">(</span><span class="n">Nz</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">)</span>
+
+    <span class="n">pt_stream</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">current_stream</span><span class="p">()</span>
+    <span class="n">numba_stream</span> <span class="o">=</span> <span class="n">_get_numba_external_stream_for</span><span class="p">(</span><span class="n">pt_stream</span><span class="p">)</span>
+
+    <span class="n">_cone_3d_fdk_backproject_kernel</span><span class="p">[</span><span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span><span class="p">,</span> <span class="n">numba_stream</span><span class="p">](</span>
+        <span class="n">d_sino</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_v</span><span class="p">,</span> <span class="n">d_reco</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nz</span><span class="p">,</span>
+        <span class="n">_DTYPE</span><span class="p">(</span><span class="n">du</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">dv</span><span class="p">),</span>
+        <span class="n">d_src_pos</span><span class="p">,</span> <span class="n">d_det_center</span><span class="p">,</span> <span class="n">d_det_u_vec</span><span class="p">,</span> <span class="n">d_det_v_vec</span><span class="p">,</span>
+        <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">cz</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="n">sid_mean</span><span class="p">,</span> <span class="n">sdd_mean</span> <span class="o">=</span> <span class="n">_cone_mean_sid_sdd</span><span class="p">(</span>
+        <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span>
+    <span class="p">)</span>
+    <span class="n">scale</span> <span class="o">=</span> <span class="n">sdd_mean</span> <span class="o">/</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">sid_mean</span><span class="p">)</span>
+
+    <span class="c1"># Convert back to (D, H, W) layout for the user.</span>
+    <span class="n">reco</span> <span class="o">=</span> <span class="n">reco_perm</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span> <span class="o">*</span> <span class="n">scale</span>
+    <span class="k">return</span> <span class="n">reco</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Linda-Sophie Schneider; upstream diffct (c) Yipeng Sun.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
