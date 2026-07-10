@@ -188,3 +188,6 @@ projectBrief.md
 
 # local reference clone (LLNL LEAP), not part of this package
 LEAP/
+
+# macOS Finder metadata
+.DS_Store

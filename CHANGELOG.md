@@ -29,6 +29,28 @@ and the project follows [Semantic Versioning](https://semver.org/).
   second-order differentiable, mirroring `mx.grad`), correct under
   `torch.no_grad()`; pinned by `tests/test_known_operator_gradflow.py`.
 
+### Fixed (MLX runtime validation on Apple Silicon, 2026-07-10)
+
+- **Metal Siddon kernels aligned with the CUDA reference** (parallel, fan
+  and cone, forward *and* adjoint): the vendored kernels interpolated the
+  image/volume bi-/trilinearly on nodes at **integer** indices — voxel
+  centers live at `k + 0.5 - c`, so every Siddon projection was shifted by
+  half a voxel per axis against the footprint kernels, the FBP/FDK gathers
+  and the analytic phantom projector (view-dependent detector shifts up to
+  ±1.24 px at fan/cone magnification 1.75). They now accumulate the
+  traversed cell (`image[cell] * seg_len`), exactly like the CUDA kernels.
+  **Geometry-affecting** for MLX-Siddon users: results shift by half a
+  voxel relative to earlier MLX builds. Siddon-vs-footprint cone
+  correlation on a 64³ Shepp-Logan rises from 0.972 to 0.994, case-builder
+  FDK from 0.923 to 0.986.
+- **Metal cone Siddon forward had a stray `voxel_spacing` factor** its
+  adjoint lacked, breaking the forward/adjoint pairing (and CUDA parity)
+  for `voxel_spacing != 1`.
+- Regression-pinned in the backend-neutral `tests/test_siddon_centering.py`
+  (centered-object centroid probes, anisotropic-spacing adjoint,
+  Siddon-vs-footprint agreement), which runs on MLX and torch/CUDA alike.
+
+
 ## [2.0.0.dev0] - 2026-07-10
 
 The unified, auto-backend **`diffct_mlx`** package: one API that runs on
