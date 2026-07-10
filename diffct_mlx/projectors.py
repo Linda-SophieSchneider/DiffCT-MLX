@@ -5,10 +5,11 @@ reconstruction algorithms) is written once and runs on MLX or Torch/CUDA
 unchanged. Operators dispatch to the active backend
 (:mod:`diffct_mlx.backend`).
 
-Footprint (separable-footprint) projectors are native on the MLX backend. The
-Torch/CUDA backend does not implement them yet; there the ``*_footprint``
-operators fall back to the line-based projector and emit a one-time warning, so
-existing scripts keep running across platforms.
+Both backends implement the full operator set natively, including the
+separable-footprint projectors and the sparse cone backprojection
+(``cone_backward_footprint(..., indices=...)``). The line-based fallback below
+only engages for a backend that lacks a native footprint operator (none of the
+shipped backends today) and warns once when it does.
 """
 
 import warnings
@@ -40,9 +41,14 @@ _warned = set()
 def _fallback(name, base):
     """Wrap a line-based projector as a footprint stand-in (warn once)."""
     def _wrapped(*args, **kwargs):
-        # ``cone_backward_footprint`` accepts an extra ``indices`` kwarg that the
-        # line-based operator does not understand; drop it in fallback mode.
-        kwargs.pop("indices", None)
+        # ``cone_backward_footprint`` accepts an extra ``indices`` kwarg (sparse
+        # voxel evaluation, returns a 1D vector). The line-based stand-in cannot
+        # honor that contract, so fail loudly instead of returning a dense volume.
+        if kwargs.pop("indices", None) is not None:
+            raise NotImplementedError(
+                f"{name}: sparse evaluation (indices=...) requires the native "
+                f"footprint operator, which the '{_BACKEND}' backend lacks."
+            )
         if name not in _warned:
             _warned.add(name)
             warnings.warn(
