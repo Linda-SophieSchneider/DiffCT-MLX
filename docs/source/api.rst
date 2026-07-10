@@ -1,12 +1,109 @@
 API Reference
 =============
 
-The `diffct` package is organised into focused modules that can be combined to build differentiable CT pipelines:
+DiffCT-MLX ships two importable packages. ``diffct_mlx`` is the unified,
+auto-backend API most users should import; ``diffct`` is the low-level
+Torch/numba-CUDA engine it wraps on NVIDIA systems.
+
+The unified package: ``diffct_mlx``
+-----------------------------------
+
+.. rubric:: Backend
+
+``diffct_mlx.backend`` selects the compute engine at import time (``torch`` or
+``mlx``; override with ``DIFFCT_BACKEND``). ``dct.backend`` is the chosen
+name. The backend-neutral array namespace ``diffct_mlx.backend.xp`` mirrors
+``mlx.core`` on both engines and is what all shared reconstruction code is
+written against.
+
+.. rubric:: Projectors (``diffct_mlx.projectors``, re-exported at top level)
+
+Functional operators with identical signatures on both backends:
+``parallel_forward`` / ``parallel_backward``, ``fan_forward`` /
+``fan_backward``, ``cone_forward`` / ``cone_backward``, and the
+separable-footprint variants ``*_forward_footprint`` / ``*_backward_footprint``
+(``cone_backward_footprint`` additionally accepts ``indices=`` for sparse
+region-of-interest evaluation). All flow gradients.
+
+.. rubric:: Geometry (``diffct_mlx.geometry``, re-exported at top level)
+
+Trajectory generators: ``circular_trajectory_3d``, ``spiral_trajectory_3d``
+(helical), ``sinusoidal_trajectory_3d``, ``saddle_trajectory_3d``,
+``random_trajectory_3d``, ``custom_trajectory_3d``,
+``laminography_trajectory_3d``, plus the 2D fan/parallel counterparts and
+``load_arbitrary_cone_geometry_from_json`` for measured-scan geometry files.
+
+.. rubric:: Operator algebra (``diffct_mlx.operators``)
+
+``LinearOperator`` with ``A @ x``, ``A.T``, composition, sums and scaling;
+``ProjectionOperator`` with ``.subset(views)`` for ordered-subset methods;
+builders ``make_parallel_2d_operator``, ``make_fan_2d_operator``,
+``make_cone_3d_operator`` (choose ``projector_mode="siddon"`` or
+``"footprint"``). ``IdentityOperator``, ``DiagonalOperator``,
+``FunctionOperator`` compose into pipelines; everything stays differentiable.
+
+.. rubric:: Functionals & denoisers (``diffct_mlx.functionals``, ``diffct_mlx.filters``)
+
+Objectives/regularizers/constraints: ``SquaredL2``, ``Tikhonov``, ``L1Norm``,
+``LpNorm``, ``Huber``, ``TotalVariation``, ``AdaptiveWeightedTV``,
+``NonNegativity``, ``Box``, ``soft_threshold``; edge-preserving denoisers
+``Bilateral``, ``Guided``, ``Median``, ``HistogramSparsity``, ``Azimuthal``,
+``DictionarySparsity`` and ``RegularizerSequence`` for Plug-and-Play priors.
+
+.. rubric:: Reconstruction (``diffct_mlx.reconstruction_algorithms``, re-exported at top level)
+
+Analytic: ``reconstruct_fbp`` / ``reconstruct_fdk`` (+ ``FBPParameters`` /
+``FDKParameters``). Iterative: ``reconstruct_sart`` / ``reconstruct_sirt``
+(+ normalized SART), ``reconstruct_tv_pocs`` / ``reconstruct_asd_pocs`` /
+``reconstruct_awtv_pocs``, ``reconstruct_dart``. Case builders bundling data +
+matched operators: ``build_parallel_2d_case``, ``build_fan_2d_case``,
+``build_cone_3d_case``, ``build_measured_cone_3d_case``,
+``build_npy_cone_3d_case``. Solver registry: ``reconstruct(name, A, b, ...)``,
+``register_algorithm``, ``list_algorithms`` with ``landweber``, ``cgls``,
+``pcg``, ``ls`` / ``wls`` / ``rls`` / ``rwls``, ``dls`` / ``rdls``, ``mlem`` /
+``osem``, ``mltr``.
+
+.. rubric:: Physics & simulation (``diffct_mlx.physics``)
+
+Corrections: ``flat_field``, ``ring_removal``, ``bad_pixel_correction``,
+``beam_hardening_polynomial``, ``detector_deblur``, ``scatter_correction``,
+``mar_inpaint`` and the composable ``PreprocessingPipeline``. Simulation:
+``Spectrum``, ``simulate_scan``, ``apply_beam_hardening``,
+``add_poisson_noise``; embedded spectrum library ``physics.spectra``
+(``tube_spectrum``, ``material_attenuation``, ``preset``, 40–225 kVp).
+
+.. rubric:: Sinogram-domain tools (``diffct_mlx.rebinning``)
+
+``apply_parker_weighting`` (short scans), ``apply_offset_weighting``
+(extended FOV), ``extend_truncation``, ``fan_to_parallel``,
+``curved_to_flat`` / ``flat_to_curved``.
+
+.. rubric:: Phantoms & calibration (``diffct_mlx.phantoms``, ``diffct_mlx.calibration``)
+
+``shepp_logan_2d`` / ``shepp_logan_3d`` voxel phantoms; the analytic engine
+``Ellipsoid`` / ``Phantom`` / ``shepp_logan_phantom`` with exact closed-form
+cone projections for ground truth. Self-calibration:
+``estimate_center_of_rotation``, ``refine_center_by_sharpness``,
+``apply_center_offset``.
+
+.. rubric:: Out-of-core & multi-GPU (``diffct_mlx.orchestration``; CUDA only)
+
+``chunked_cone_forward`` / ``chunked_cone_backward`` / ``chunked_cone_fdk``,
+``chunked_sirt``, ``chunked_os_sart``, ``mgpu_cone_forward`` /
+``mgpu_cone_backproject`` / ``mgpu_sirt``, storage helpers ``open_memmap`` /
+``open_zarr`` / ``set_out_of_core_dir`` / ``set_out_of_core_backend``, and the
+shadow-geometry primitives ``row_range_for_zslab`` / ``slice_range_for_vband``.
+
+The low-level engine: ``diffct``
+--------------------------------
+
+The vendored Torch/numba-CUDA engine is organised into focused modules that can be combined to build differentiable CT pipelines:
 
 - ``diffct.projectors`` – PyTorch ``autograd.Function`` implementations for forward and backward projectors
 - ``diffct.geometry`` – helpers to generate detector/source trajectories for 2D and 3D scans
 - ``diffct.analytical`` – analytical FBP / FDK building blocks (ramp filter, cosine weights, Parker weights, voxel-driven backprojection wrappers)
-- ``diffct.kernels`` – CUDA kernel primitives (Siddon forward / adjoint / FBP gather) for advanced users
+- ``diffct.kernels`` – CUDA kernel primitives (Siddon + separable-footprint forward / adjoint, FBP/FDK gather) for advanced users
+- ``diffct.footprint`` – separable-footprint autograd Functions, incl. the sparse cone backprojection
 - ``diffct.utils`` – CUDA device management and tensor bridge utilities
 - ``diffct.constants`` – low-level configuration values for advanced tuning
 - ``diffct.differentiable`` – deprecated compatibility shim that re-exports the public API

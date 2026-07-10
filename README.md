@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > **This is the `cuda` branch of [DiffCT-MLX](https://github.com/Linda-SophieSchneider/DiffCT-MLX), adapted from the original [diffct](https://github.com/sypsyp97) by Yipeng Sun (Apache-2.0).**
-> It is based on diffct's arbitrary-trajectory (`dev`) line, whose module layout and per-view projector convention match the MLX port. DiffCT-MLX's `main` branch is the Apple Silicon / MLX port; this `cuda` branch is being grown into an **auto-backend** package (MLX on Apple, Torch/CUDA elsewhere) so the same code runs on both. Maintained by [Linda-Sophie Schneider](https://github.com/Linda-SophieSchneider).
+> It is based on diffct's arbitrary-trajectory (`dev`) line, whose module layout and per-view projector convention match the MLX port. This branch hosts the unified **auto-backend** package `diffct_mlx` (MLX/Metal on Apple Silicon, Torch/numba-CUDA elsewhere) so the same code runs on both. Maintained by [Linda-Sophie Schneider](https://github.com/Linda-SophieSchneider).
 > See [ATTRIBUTION.md](ATTRIBUTION.md) for full provenance and license details.
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
@@ -55,9 +55,11 @@ reco = dct.reconstruct_fbp(
 
 **Parity & status.** FBP/FDK, SART/SIRT, TV-/ASD-/AwTV-POCS, DART, phantoms,
 trajectory generators and the measured-data helpers are all available and were
-verified on NVIDIA GPUs. One caveat: the **MLX backend** wiring on this branch is
-still in progress — on Apple Silicon use the `main` branch today (same
-`import diffct_mlx`, same API).
+verified on NVIDIA GPUs. The **MLX backend** is wired in
+(`diffct_mlx/backend/metal/` vendors the Metal kernels and `mx.custom_function`
+projectors; the `xp` namespace is attribute-identical to the torch one, pinned
+by a static parity test) — runtime validation on Apple-Silicon hardware is the
+remaining step.
 
 ### Projectors: Siddon vs. separable footprint
 
@@ -143,29 +145,56 @@ sino = dct.simulate_scan(vol, A, spectrum=spec, material_attenuation=mu,
 recon = dct.rwls(A, sino, regularizer=dct.TotalVariation(1e-3), iterations=60)
 ```
 
+### Out-of-core & multi-GPU (TB-scale volumes)
+
+`diffct_mlx.orchestration` reconstructs volumes far larger than GPU memory —
+and larger than host RAM — by partitioning work into memory-budgeted chunks
+(z-slabs for backprojection, detector-row bands for forward projection),
+dispatching chunks across all GPUs, and streaming data disk↔RAM↔GPU through an
+async conveyor (reader / GPU workers / writer threads with bounded queues):
+
+```python
+from diffct_mlx.orchestration import (
+    ConeGeom, chunked_cone_fdk, chunked_sirt, chunked_os_sart,
+    mgpu_sirt, open_memmap, set_out_of_core_dir, set_out_of_core_backend)
+
+set_out_of_core_dir("/mnt/bigdisk/scratch")     # where >RAM arrays spill
+geom = ConeGeom.from_arrays(src, det_center, det_u_vec, det_v_vec)
+
+# FDK for a volume that fits neither VRAM nor RAM: sinogram + volume live on
+# disk; the ramp filter, backprojection and positivity all stream in chunks.
+sino = open_memmap("/mnt/bigdisk/sino.npy", (n_views, det_u, det_v))
+vol  = chunked_cone_fdk(sino, geom, D, H, W, out=open_memmap("/mnt/bigdisk/vol.npy", (D, H, W)))
+
+x = chunked_sirt(sino, geom, D, H, W, det_u, det_v, n_iter=30)   # fully out-of-core SIRT
+x = mgpu_sirt(sino, geom, D, H, W, det_u, det_v, n_iter=30)      # in-VRAM, view-parallel multi-GPU
+```
+
+The RAM-vs-disk choice is automatic (arrays that fit a host-RAM budget stay in
+RAM); `set_out_of_core_backend("zarr")` swaps the raw memmap spill for chunked
++ compressed zarr storage. Verified on 2× RTX PRO 6000: chunked == monolithic
+to ~1e-6, 2-GPU == 1-GPU exact, 2048³ cone-FDK end-to-end with a bounded
+working set. This path is CUDA-only (it drives the numba-CUDA kernels
+directly).
+
 ## 🔀 Branches
 
-### `main` Branch (Stable, PyPI)
-The stable release branch supporting **circular-orbit** CT reconstruction.
-Every versioned release on [PyPI](https://pypi.org/project/diffct/) comes
-from `main`. Use this if you only need conventional circular fan / cone
-beam scans and want a pinned, tested release.
+### `main` — unified auto-backend package
+The unified `diffct_mlx` package described above: one API, two engines
+(Torch/numba-CUDA and MLX/Metal), auto-selected at import. This is the branch
+to use on every platform.
 
-### `dev` Branch (You are here — arbitrary trajectories)
-The `dev` branch is the arbitrary-trajectory evolution of the library.
+### `cuda` — development line of the unified package
+Where the unification work happens before it lands on `main`; after a merge
+the two branches are identical.
+
 Kernels take per-view ``(src_pos, det_center, det_u_vec[, det_v_vec])``
-arrays instead of closed-form ``sdd / sid / beta`` scalars, so you can
-reconstruct along **spiral, saddle, sinusoidal, or any user-supplied
-trajectory** without touching the CUDA kernels. All of the analytical
-FBP / FDK helpers, adjoint guarantees, and gradcheck / benchmark
-coverage from `main` are kept in sync — see [CHANGELOG.md](CHANGELOG.md)
-for the detailed parity list. The only feature currently deferred from
-`main` is the 1.3.0 separable-footprint (SF) projector backends, which
-rely on closed-form circular geometry.
+arrays instead of closed-form ``sdd / sid / beta`` scalars, so **spiral,
+saddle, sinusoidal, laminography, or any user-supplied trajectory** works
+without touching the kernels — on both backends.
 
-⚠️ **Note:** `dev` is under active development and is not published to
-PyPI. If you find any bugs please
-[raise an issue](https://github.com/sypsyp97/diffct/issues).
+⚠️ **Note:** not published to PyPI yet. If you find any bugs please
+[raise an issue](https://github.com/Linda-SophieSchneider/DiffCT-MLX/issues).
 
 ## ✨ Features
 
@@ -191,10 +220,18 @@ PyPI. If you find any bugs please
   ``diffct.geometry``, ``diffct.analytical``, ``diffct.kernels``,
   ``diffct.utils``, ``diffct.constants``. ``diffct.differentiable``
   is retained as a deprecated backward-compatibility shim.
-- **Tested:** 62 pytest tests covering adjoint identity, gradcheck,
-  smoke, accuracy, offset handling, and 29 ramp-filter window cases.
-  Opt-in 27-case ``pytest-benchmark`` perf suite under
-  ``tests/benchmarks/``.
+- **Two projector families:** thin-ray Siddon *and* separable-footprint
+  forward/adjoint pairs for every geometry (parallel/fan/cone), all with
+  native kernels on both backends, including a sparse cone backprojection
+  (``indices=``) for region-of-interest gradients.
+- **Out-of-core + multi-GPU:** ``diffct_mlx.orchestration`` streams
+  TB-scale volumes through chunked, conveyor-pipelined, multi-GPU
+  projection/backprojection/FDK/SIRT/OS-SART with automatic RAM/disk spill
+  (memmap or zarr).
+- **Tested:** 97 pytest tests covering adjoint identity, gradcheck, smoke,
+  accuracy, offset handling, ramp-filter windows, the operator/solver/
+  physics stack and regression pins from review sessions. Opt-in
+  ``pytest-benchmark`` perf suite under ``tests/benchmarks/``.
 
 ## 📐 Supported Geometries
 
@@ -209,19 +246,30 @@ user-supplied ``(n_views, 2 or 3)`` tensors).
 ## 🧩 Code Structure
 
 ```bash
-diffct/
-├── diffct/
-│   ├── __init__.py            # public API re-exports
-│   ├── constants.py           # dtype, TPB, JIT decorators
-│   ├── utils.py               # DeviceManager, TorchCUDABridge, grid helpers
-│   ├── geometry.py            # trajectory generators (circular, spiral, ...)
+DiffCT-MLX/
+├── diffct_mlx/                # THE unified auto-backend package (import this)
+│   ├── backend/               # backend selection + xp array namespace
+│   │   ├── _torch.py          #   Torch/CUDA adapter over the vendored diffct
+│   │   ├── _mlx.py            #   MLX/Metal adapter
+│   │   └── metal/             #   vendored Metal kernels + mx projectors (from main)
+│   ├── projectors.py          # unified functional projector API (both families)
+│   ├── geometry.py            # trajectory generators + laminography + JSON loader
+│   ├── operators.py           # differentiable LinearOperator algebra
+│   ├── functionals.py         # objectives / regularizers / constraints
+│   ├── filters.py             # edge-preserving denoisers + Plug-and-Play
+│   ├── physics/               # corrections, pipeline, simulation, spectra
+│   ├── rebinning.py           # Parker/offset weighting, fan→par, curved↔flat
+│   ├── calibration.py         # center-of-rotation self-calibration
+│   ├── phantoms/              # voxel phantoms + analytic phantom engine
+│   ├── orchestration/         # out-of-core + multi-GPU chunking (CUDA)
+│   └── reconstruction_algorithms/  # FBP/FDK, SART/SIRT, POCS, DART, solver registry
+├── diffct/                    # vendored Torch/numba-CUDA engine (upstream dev line)
 │   ├── projectors.py          # autograd Function classes
+│   ├── footprint.py           # separable-footprint autograd Functions (+ sparse)
 │   ├── analytical.py          # ramp filter, cosine weights, Parker, FBP/FDK wrappers
-│   ├── kernels/
-│   │   ├── parallel_beam.py   # Siddon forward/adjoint + FBP gather
-│   │   ├── fan_beam.py        # Siddon forward/adjoint + FBP gather
-│   │   └── cone_beam.py       # Siddon forward/adjoint + FDK gather
-│   └── differentiable.py      # deprecated compat shim
+│   ├── geometry.py            # trajectory generators (circular, spiral, ...)
+│   ├── kernels/               # Siddon + footprint + FBP/FDK gather CUDA kernels
+│   └── differentiable.py     # deprecated compat shim
 ├── examples/
 │   ├── circular_trajectory/   # canonical circular-orbit examples (fbp/fdk + iterative)
 │   ├── non_circular_trajectory/  # spiral / custom trajectory examples
@@ -252,10 +300,9 @@ repository and using an editable install.
 
 **CUDA 12 (recommended):**
 ```bash
-# Clone the repository and check out the dev branch
-git clone https://github.com/sypsyp97/diffct.git
-cd diffct
-git checkout dev
+# Clone the repository
+git clone https://github.com/Linda-SophieSchneider/DiffCT-MLX.git
+cd DiffCT-MLX
 
 # Create and activate conda environment
 conda create -n diffct python=3.12
@@ -277,9 +324,8 @@ pip install -e .
 <summary>CUDA 13 installation</summary>
 
 ```bash
-git clone https://github.com/sypsyp97/diffct.git
-cd diffct
-git checkout dev
+git clone https://github.com/Linda-SophieSchneider/DiffCT-MLX.git
+cd DiffCT-MLX
 conda create -n diffct python=3.12
 conda activate diffct
 conda install nvidia/label/cuda-13.0.2::cuda-toolkit
@@ -294,9 +340,8 @@ pip install -e .
 <summary>CUDA 11 installation</summary>
 
 ```bash
-git clone https://github.com/sypsyp97/diffct.git
-cd diffct
-git checkout dev
+git clone https://github.com/Linda-SophieSchneider/DiffCT-MLX.git
+cd DiffCT-MLX
 conda create -n diffct python=3.12
 conda activate diffct
 conda install nvidia/label/cuda-11.8.0::cuda-toolkit
@@ -310,7 +355,7 @@ pip install -e .
 ### Running the tests
 
 ```bash
-pytest tests/ -q                             # 58 tests, ~5 s
+pytest tests/ -q                             # 97 tests, ~5 s
 pytest tests/benchmarks/ --benchmark-only    # opt-in perf suite
 ```
 

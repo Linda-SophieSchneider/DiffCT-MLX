@@ -1,102 +1,88 @@
 Getting Started
 ===============
 
-This guide will walk you through the process of setting up `diffct` and running your first CT reconstruction example.
+This guide walks you through installing **DiffCT-MLX** and running your first
+reconstruction with the unified ``diffct_mlx`` package.
 
 Prerequisites
 -------------
 
-**Hardware Requirements:**
-- CUDA-capable GPU (compute capability 6.0 or higher recommended)
-- Minimum 4GB GPU memory for basic examples
+**One of:**
 
-**Software Requirements:**
-- Python 3.10 or later
-- CUDA Toolkit 11.0 or later
-- Required Python packages:
-  - PyTorch (with CUDA support)
-  - NumPy
-  - Numba (with CUDA support)
+- an NVIDIA CUDA GPU (compute capability 6.0+; CUDA Toolkit 11+), or
+- an Apple-Silicon Mac (M-series).
+
+**Software:** Python 3.10 or later.
 
 Installation
 ------------
 
-Install `diffct` directly from PyPI:
+Install from source with the extra matching your platform:
 
 .. code-block:: bash
 
-   pip install diffct
+   git clone https://github.com/Linda-SophieSchneider/DiffCT-MLX.git
+   cd DiffCT-MLX
+   pip install -e ".[cuda]"     # NVIDIA GPUs: Torch + numba-CUDA
+   # or
+   pip install -e ".[mlx]"      # Apple Silicon: MLX
 
-**Verify Installation:**
+On CUDA systems install a CUDA-enabled PyTorch build first (see
+`pytorch.org <https://pytorch.org/get-started/locally/>`_) and the
+``numba-cuda`` package matching your toolkit (``pip install numba-cuda[cu12]``
+or ``[cu13]``). The optional ``[zarr]`` extra enables the compressed
+out-of-core storage backend.
+
+**Verify the installation:**
 
 .. code-block:: python
 
-   import torch
-   import diffct
-   
-   # Check CUDA availability
-   print(f"CUDA available: {torch.cuda.is_available()}")
-   print(f"DiffCT version: {diffct.__version__}")
+   import diffct_mlx as dct
+
+   print(dct.backend)        # 'torch' on CUDA systems, 'mlx' on Apple Silicon
+   print(dct.__version__)
+
+The backend is chosen automatically at import; set the environment variable
+``DIFFCT_BACKEND=torch`` or ``DIFFCT_BACKEND=mlx`` to force one.
 
 Quick Start Example
 -------------------
 
-Here's a minimal example that uses the new geometry helpers and projector API:
+The same code runs on either backend — no device management required:
 
 .. code-block:: python
 
-   import torch
-   from diffct import ParallelProjectorFunction, ParallelBackprojectorFunction
-   from diffct.geometry import circular_trajectory_2d_parallel
+   import math
+   import diffct_mlx as dct
 
-   # Set device
-   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+   # A 2D Shepp-Logan phantom and a 360-view parallel-beam operator
+   n = 256
+   phantom = dct.shepp_logan_2d((n, n))
 
-   # Create a simple test image (128x128)
-   image = torch.zeros((128, 128), device=device)
-   image[40:88, 40:88] = 1.0  # Square phantom
-
-   # Define projection parameters
-   num_views = 180
-   num_detectors = 128
-   detector_spacing = 1.0
-   voxel_spacing = 1.0
-
-   # Generate parallel-beam geometry
-   ray_dir, det_origin, det_u_vec = circular_trajectory_2d_parallel(
-       num_views, device=device
+   ray_dir, det_origin, det_u = dct.circular_trajectory_2d_parallel(360)
+   A = dct.make_parallel_2d_operator(
+       ray_dir, det_origin, det_u,
+       image_shape=(n, n), num_detectors=n, projector_mode="siddon",
    )
 
-   # Forward projection
-   sinogram = ParallelProjectorFunction.apply(
-       image,
-       ray_dir,
-       det_origin,
-       det_u_vec,
-       num_detectors,
-       detector_spacing,
-       voxel_spacing,
-   )
+   sinogram = A @ phantom            # differentiable forward projection
+   backproj = A.T @ sinogram         # differentiable adjoint
 
-   # Backprojection
-   reconstruction = ParallelBackprojectorFunction.apply(
-       sinogram,
-       ray_dir,
-       det_origin,
-       det_u_vec,
-       detector_spacing,
-       image.shape[0],
-       image.shape[1],
-       voxel_spacing,
-   )
+   # Analytic FBP reconstruction
+   params = dct.FBPParameters(normalization_scale=math.pi / (2 * 360))
+   reco = dct.reconstruct_fbp(sinogram, lambda s: A.T @ s, params)
 
-   print(f"Original image shape: {image.shape}")
-   print(f"Sinogram shape: {sinogram.shape}")
-   print(f"Reconstruction shape: {reconstruction.shape}")
+   # Or hand the operator to any registered solver
+   reco_cgls = dct.reconstruct("cgls", A, sinogram, iterations=30)
 
-Next Steps
-----------
+Where to go next
+----------------
 
-- Explore the :doc:`examples` for detailed reconstruction algorithms
-- Check the :doc:`api` reference for complete function documentation
-- Review the mathematical background in each example for deeper understanding
+- The **cases API** (``build_parallel_2d_case``, ``build_cone_3d_case``,
+  ``build_measured_cone_3d_case``, ...) bundles simulated or measured data
+  with matched forward/backprojectors and calibrated normalization constants.
+- ``dct.simulate_scan`` produces realistic polychromatic, noisy data from a
+  phantom; ``diffct_mlx.physics`` corrects real measurements.
+- ``diffct_mlx.orchestration`` reconstructs volumes larger than GPU memory
+  (and larger than host RAM) across multiple GPUs.
+- Explore the :doc:`examples` and the :doc:`api` reference.

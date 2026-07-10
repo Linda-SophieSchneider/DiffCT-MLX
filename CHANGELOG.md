@@ -1,13 +1,110 @@
 # Changelog
 
-All notable changes to the ``diffct`` dev branch are documented in this file.
-The dev branch is the arbitrary-trajectory evolution of the library and is
-maintained in parallel with the ``main`` branch's circular-orbit lineage.
+All notable changes to DiffCT-MLX are documented in this file. Entries up to
+1.3.0.dev0 track the vendored ``diffct`` dev line this repository was adapted
+from; entries from 2.0.0.dev0 on track the unified ``diffct_mlx`` package.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [2.0.0.dev0] - 2026-07-10
+
+The unified, auto-backend **`diffct_mlx`** package: one API that runs on
+Torch/numba-CUDA (NVIDIA) and MLX/Metal (Apple Silicon), selected at import
+(`DIFFCT_BACKEND` overrides).
+
+### Added
+
+- **Unified API** with full parity to the Apple-Silicon `main` package:
+  functional projectors (Siddon + separable footprint, all geometries,
+  sparse cone backprojection), trajectory generators (+ laminography),
+  FBP/FDK, SART/SIRT/normalized-SART, TV-/ASD-/AwTV-POCS, DART, case
+  builders for simulated/measured/npy data, measured-data helpers.
+- **Native CUDA footprint kernels** for parallel/fan/cone plus a sparse cone
+  footprint backprojection (`indices=` → 1D vector).
+- **Operator/functional/solver framework**: differentiable `LinearOperator`
+  algebra with `ProjectionOperator.subset`, functionals
+  (L1/Lp/Huber/TV/AwTV/Box/...), solver registry (`cgls`, `pcg`,
+  `ls`/`wls`/`rls`/`rwls`, `dls`/`rdls`, `mlem`/`osem`, `mltr`,
+  `landweber`) and Plug-and-Play denoisers (bilateral, guided, median,
+  histogram-sparsity, azimuthal, dictionary).
+- **Physics & simulation**: GPU-native preprocessing (flat field, rings, bad
+  pixels, beam hardening, Wiener deblur, scatter, MAR inpainting) with a
+  `PreprocessingPipeline`; forward simulation (`simulate_scan`) with an
+  embedded, offline-generated X-ray spectrum + material-attenuation library
+  (W anode, 40–225 kVp).
+- **Sinogram-domain tools**: Parker short-scan and offset-detector
+  weighting, truncation extension, fan→parallel and curved↔flat rebinning —
+  backend-neutral.
+- **Analytic phantom engine** (`Ellipsoid`/`Phantom`, exact cone-beam line
+  integrals) and center-of-rotation self-calibration.
+- **Out-of-core + multi-GPU orchestration** (CUDA): chunked
+  forward/backward/FDK/SIRT/OS-SART with z-slab / v-band shadow geometry,
+  async disk↔GPU conveyor, automatic RAM/disk spill (memmap or zarr),
+  GPU-FFT streaming ramp filter; validated to 2048³ with a bounded working
+  set.
+- **MLX backend wiring**: the Metal kernels + `mx.custom_function`
+  projectors from `main` are vendored under `diffct_mlx/backend/metal/` and
+  adapted in `backend/_mlx.py`; the `xp` namespace is attribute-identical to
+  the torch shim (pinned by a static parity test). Runtime validation on
+  Apple hardware pending.
+
+### Fixed (review/debug session, 2026-07-10)
+
+- **Detector/voxel grid conventions standardized** to `(k - n/2) * spacing`
+  package-wide: the CUDA *and* Metal cone footprint kernels (and the Metal
+  cone Siddon kernels) used `(n-1)/2` — a half-pixel shift whenever kernel
+  families were mixed; the FBP/FDK gather kernels placed voxel centers at
+  `ix - c` instead of `ix + 0.5 - c` — a half-voxel shift of analytic
+  volumes against iterative ones. Rebinning helpers aligned to the same
+  grid. **Geometry-affecting** for cone-footprint / FDK-gather /
+  MLX-cone-Siddon users: results shift by half a pixel/voxel relative to
+  earlier builds.
+- **Parker weights** in `rebinning` had half the correct feathering
+  argument (conjugate-ray sums didn't normalize); now exactly matches the
+  validated `diffct.analytical` formula, and real per-view angles can be
+  passed via `betas`.
+- Rebinning gathers build flat indices in int64 (float32 index math
+  silently corrupted arrays above 2^24 elements); `curved_to_flat` /
+  `flat_to_curved` resample the u axis (axis 1) of 3D stacks; single-view /
+  non-uniform `fan_to_parallel` inputs now raise instead of mis-rebinning.
+- Warm-started SART/SIRT no longer skip their first iteration; `rls` no
+  longer discards `weights`; `rwls` rejects non-smooth regularizers instead
+  of silently ignoring them; AwTV-POCS actually anneals `alpha`; POCS
+  drivers reuse the geometry-only sweep cache; `normalized_sart_relaxation`
+  is honored (`backprojection_scale` defaults to `None`); DART's masked
+  subproblem no longer clips negative residual measurements.
+- `build_npy_cone_3d_case` kept detector counts consistent with the data
+  axes under `transpose_uv` (non-square detectors crashed; the expected
+  stack order is now documented as `(views, v, u)` with the default
+  `transpose_uv=True`).
+- `scatter_correction`/`add_scatter` blur per view in the detector plane
+  only (views used to mix); `box_filter` is separable (+`axes=`) and ~1000×
+  cheaper at radius 12 in 3D; `detector_deblur` has unit DC gain (values
+  were shrunk by ~`reg`); `auto_voxel_spacing_from_detector` bounds both
+  lateral axes by the horizontal FOV; `load_tiff_projections` applies
+  `revert` before the log transform; `estimate_cone_isocenter` survives a
+  single view.
+- Out-of-core conveyor propagates worker exceptions (a failing thread used
+  to deadlock the run); auto disk scratch is cleaned up (TB-scale leaks);
+  zarr gather writes are serialized; the gather path uploads the filtered
+  sinogram once per GPU; `chunked_sirt` takes memmap/zarr inputs lazily;
+  memmap outputs are flushed; the caller's CUDA device is restored.
+- Backend hardening: auto-detection picks MLX only when Metal is available
+  (Linux MLX wheels no longer shadow CUDA); `xp.grad` returns zeros for
+  disconnected objectives (single-slice `tv_gradient` crashed); `xp.clip`
+  with no bounds, `Box(-inf, inf).prox`, `xp.max(axis=...)` fixed;
+  `ProjectionOperator.subset(slice)` reports correct metadata; sparse cone
+  backprojection guards int32 overflow and empty index vectors.
+
+### Changed
+
+- Package renamed/versioned as `diffct-mlx 2.0.0.dev0` with extras
+  `[cuda]` / `[mlx]` / `[zarr]`; docs (README, Sphinx) rewritten for the
+  unified package; dead code removed (unused `_trig_tables`, eager
+  deprecated-shim import, never-read parameters).
 
 ## [1.3.0.dev0] - 2026-04-14
 

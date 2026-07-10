@@ -6,9 +6,10 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'diffct'
-copyright = '2025, Yipeng Sun'
-author = 'Yipeng Sun'
+project = 'DiffCT-MLX'
+copyright = '2025-2026, Linda-Sophie Schneider; upstream diffct (c) Yipeng Sun'
+author = 'Linda-Sophie Schneider'
+release = '2.0.0.dev0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
