@@ -297,10 +297,16 @@ class ProjectionOperator(LinearOperator):
 
     def subset(self, view_indices: Sequence[int] | Any) -> "ProjectionOperator":
         """Return the operator restricted to ``view_indices`` (a slice/list/array)."""
-        try:
-            n = len(view_indices)  # type: ignore[arg-type]
-        except TypeError:
-            n = self.n_views
+        if isinstance(view_indices, slice):
+            n = len(range(*view_indices.indices(self.n_views)))
+        else:
+            try:
+                n = len(view_indices)  # type: ignore[arg-type]
+            except TypeError:
+                raise TypeError(
+                    "view_indices must be a slice or a sized sequence/array of "
+                    f"view indices, got {type(view_indices).__name__}"
+                ) from None
         range_shape = (int(n),) + tuple(self.range_shape[1:])
         return ProjectionOperator(
             self._forward_fn,

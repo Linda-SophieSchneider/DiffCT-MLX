@@ -13,19 +13,42 @@ The rest of the package imports :data:`active` (the chosen backend module),
 import os
 
 
+def _mlx_usable():
+    """True when ``mlx`` imports AND its Metal (Apple GPU) backend is available.
+
+    MLX also ships Linux/CPU wheels; on such systems the Metal kernels this
+    package uses cannot run, so auto-detection must not pick MLX just because
+    the module imports (an explicit ``DIFFCT_BACKEND=mlx`` still forces it).
+    """
+    try:
+        import mlx.core as mx
+    except Exception:
+        return False
+    try:
+        return bool(mx.metal.is_available())
+    except Exception:
+        return True  # very old mlx without mx.metal — Apple-only anyway
+
+
 def _detect():
     forced = os.environ.get("DIFFCT_BACKEND", "").strip().lower()
-    if forced in ("mlx", "torch"):
+    if forced == "mlx":
+        try:
+            import mlx.core  # noqa: F401
+        except Exception as exc:
+            raise ImportError(
+                "DIFFCT_BACKEND=mlx is set but 'mlx' is not importable. "
+                "Install it with: pip install mlx"
+            ) from exc
+        return forced
+    if forced == "torch":
         return forced
     if forced:
         raise ValueError(
             f"DIFFCT_BACKEND must be 'mlx' or 'torch', got {forced!r}"
         )
-    try:
-        import mlx.core  # noqa: F401
+    if _mlx_usable():
         return "mlx"
-    except Exception:
-        pass
     try:
         import torch  # noqa: F401
         return "torch"

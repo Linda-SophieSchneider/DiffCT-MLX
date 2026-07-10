@@ -150,11 +150,14 @@ def _xp_arange(n, dtype=None):
 def _xp_grad(fn):
     """Return a function computing the gradient of scalar ``fn`` w.r.t. its arg.
 
-    Mirrors ``mlx.core.grad`` using torch autograd.
+    Mirrors ``mlx.core.grad`` using torch autograd, including for outputs that do
+    not depend on the input (``mx.grad`` returns zeros there; torch would raise).
     """
     def _g(x):
         x = x.detach().clone().requires_grad_(True)
         y = fn(x)
+        if not (isinstance(y, torch.Tensor) and y.requires_grad):
+            return torch.zeros_like(x)
         (grad,) = torch.autograd.grad(y, x, allow_unused=True)
         return grad if grad is not None else torch.zeros_like(x)
     return _g
@@ -174,7 +177,13 @@ def _xp_min(x, axis=None):
     return torch.min(x) if axis is None else torch.min(x, dim=axis).values
 
 
+def _xp_max(x, axis=None):
+    return torch.max(x) if axis is None else torch.max(x, dim=axis).values
+
+
 def _xp_clip(x, lo=None, hi=None):
+    if lo is None and hi is None:
+        return x
     return torch.clamp(
         x,
         min=None if lo is None else float(lo),
@@ -255,9 +264,12 @@ xp = SimpleNamespace(
     take=_xp_take,
     real=_xp_real,
     square=torch.square,
-    max=torch.max,
+    max=_xp_max,
     abs=torch.abs,
     arange=_xp_arange,
+    astype=lambda x, dtype: x.to(dtype),
+    moveaxis=torch.movedim,
+    int64=torch.int64,
     cos=torch.cos,
     sin=torch.sin,
     arctan=torch.arctan,
@@ -311,9 +323,8 @@ def cone_backward(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
 
 
 # --- Separable-footprint projectors ----------------------------------------
-# Native CUDA footprint kernels. Parallel-beam is implemented; fan/cone are not
-# yet defined here, so diffct_mlx.projectors falls those back to the line-based
-# projector (with a one-time warning) until their kernels land.
+# Native CUDA footprint kernels for all three geometries (parallel/fan/cone),
+# including the sparse cone backprojection variant (``indices=``).
 
 def parallel_forward_footprint(image, ray_dir, det_origin, det_u_vec,
                                num_detectors=128, detector_spacing=1.0, voxel_spacing=1.0):
