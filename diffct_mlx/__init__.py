@@ -14,9 +14,11 @@ functions regardless of platform::
     print(dct.backend)            # 'torch' or 'mlx'
     sino = dct.cone_forward(vol, src_pos, det_center, det_u, det_v, ...)
 
-This branch is adapted from the original ``diffct`` (see ATTRIBUTION.md). The
-high-level reconstruction layer is being ported incrementally; see the package
-roadmap for the current parity status.
+The Torch/CUDA engine is adapted from the original ``diffct`` (see
+ATTRIBUTION.md); the MLX/Metal engine is the original DiffCT-MLX
+implementation. The full reconstruction stack — analytic (FBP/FDK), iterative
+(SART/SIRT/POCS/DART), the operator/functional/solver framework, physics and
+simulation — is written once against the backend-neutral ``xp`` layer.
 """
 
 from .backend import NAME as backend
@@ -172,6 +174,7 @@ from .real_measured_data_helper import (
     build_upper_left_detector_transform,
     diagnose_cone_geometry,
     estimate_cone_isocenter,
+    load_tiff_projections,
     mu_to_hu,
     mu_to_uint16,
     normalize_volume,
@@ -352,6 +355,7 @@ __all__ = [
     "build_upper_left_detector_transform",
     "diagnose_cone_geometry",
     "estimate_cone_isocenter",
+    "load_tiff_projections",
     "mu_to_hu",
     "mu_to_uint16",
     "normalize_volume",

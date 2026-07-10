@@ -6,7 +6,7 @@ and custom trajectories for cone beam CT scanning geometries.
 
 import math
 import torch
-from typing import Callable, Tuple
+from typing import Callable
 
 
 # ============================================================================
@@ -54,7 +54,6 @@ def circular_trajectory_3d(n_views, sid, sdd, start_angle=0.0, end_angle=None, d
     ... )
     >>> print(src_pos.shape)  # (360, 3)
     """
-    import math
 
     if end_angle is None:
         end_angle = 2 * math.pi
@@ -146,7 +145,6 @@ def random_trajectory_3d(n_views, sid_mean, sdd_mean, sid_std=0.0, pos_std=0.0,
     ...     sid_std=100.0, pos_std=5.0, seed=42, device='cuda'
     ... )
     """
-    import math
 
     if seed is not None:
         torch.manual_seed(seed)

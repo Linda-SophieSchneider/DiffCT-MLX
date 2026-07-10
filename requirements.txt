@@ -1,5 +1,9 @@
-# Core dependencies
+# Dev / CI environment for the Torch/CUDA backend + docs + examples.
+# For library installs use the pyproject extras instead:
+#     pip install "diffct-mlx[cuda]"   (NVIDIA: torch + numba-cuda)
+#     pip install "diffct-mlx[mlx]"    (Apple Silicon: mlx)
 numpy
 torch
 numba
-matplotlib
+numba-cuda
+matplotlib      # examples / debug figures

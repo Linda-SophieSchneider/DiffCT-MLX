@@ -45,7 +45,6 @@ class ReconstructionParameters:
     raylength_thresholding: bool = True
     raylength_quantile: float = 1e-3
     raylength_epsilon: float = 5e-4
-    preserve_unmasked_computed_projection: bool = False
     detector_border_u: int = 0
     detector_border_v: int = 0
     volume_border_width: int = 0

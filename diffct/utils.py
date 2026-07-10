@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from numba import cuda
 
-from .constants import _DTYPE, _TPB_2D, _TPB_3D, _INF, _EPSILON
+from .constants import _DTYPE, _TPB_2D, _TPB_3D
 
 
 # ============================================================================
@@ -155,66 +155,6 @@ def _get_numba_external_stream_for(pt_stream=None):
 # GPU-aware Trigonometric Table Generation
 # ============================================================================
 
-def _trig_tables(angles, dtype=_DTYPE, device=None):
-    """Compute cosine and sine tables for input angles.
-
-    Precompute cosine and sine values and return as torch tensors on the
-    same device as `angles`.
-
-    Parameters
-    ----------
-    angles : array-like or torch.Tensor
-        Projection angles in radians. Can be a NumPy array or a PyTorch tensor on CPU or CUDA.
-    dtype : numpy.dtype or torch.dtype, optional
-        Desired data type for output tables. Default is `_DTYPE`.
-    device : torch.device, optional
-        Target device for output tensors. If None, uses the device of `angles`.
-
-    Returns
-    -------
-    cos : torch.Tensor
-        Cosine values of `angles` on the same device.
-    sin : torch.Tensor
-        Sine values of `angles` on the same device.
-
-    Examples
-    --------
-    >>> angles = torch.linspace(0, torch.pi, 180, device='cuda')
-    >>> cos, sin = _trig_tables(angles)
-    >>> cos.device
-    device(type='cuda', index=0)
-    """
-    if isinstance(angles, torch.Tensor):
-        device = angles.device if device is None else device
-        # Compute both cos and sin in one call to avoid redundant kernel launches
-        angles_device = angles.to(dtype=dtype, device=device)
-        cos = torch.cos(angles_device)
-        sin = torch.sin(angles_device)
-        return cos, sin
-    else:
-        # fallback for non-tensor inputs: compute via PyTorch on CPU for consistency
-        # Determine desired torch dtype
-        if isinstance(dtype, torch.dtype):
-            torch_dtype = dtype
-        else:
-            _NP_TO_TORCH = {
-                np.float32: torch.float32,
-                np.float64: torch.float64,
-            }
-            torch_dtype = _NP_TO_TORCH.get(dtype, torch.float32)
-        # Convert input angles to a CPU torch tensor and compute both simultaneously
-        angles_cpu = torch.tensor(angles, dtype=torch_dtype)
-        cos_cpu = torch.cos(angles_cpu)
-        sin_cpu = torch.sin(angles_cpu)
-        if device is not None:
-            return cos_cpu.to(device), sin_cpu.to(device)
-        else:
-            return cos_cpu, sin_cpu
-
-
-# ============================================================================
-# Memory Layout Validation
-# ============================================================================
 
 def _validate_3d_memory_layout(tensor, expected_order='DHW'):
     """Validate 3D tensor memory layout to prevent coordinate system inconsistencies.

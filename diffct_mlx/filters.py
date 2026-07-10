@@ -358,10 +358,7 @@ class RegularizerSequence(Functional):
     def value(self, x):
         total = xp.sum(x) * 0.0
         for step in self.steps:
-            try:
-                total = total + step.value(x)
-            except NotImplementedError:
-                pass
+            total = total + step.value(x)
         return total
 
     def prox(self, x, tau: float):

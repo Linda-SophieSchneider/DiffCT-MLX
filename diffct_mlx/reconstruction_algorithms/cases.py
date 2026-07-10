@@ -78,7 +78,6 @@ class ReconstructionCase:
     iterative_volume_support_mask: Array | None = None
     iterative_volume_support_mask_mode: str = "always"
     iterative_voxel_sensitivity_normalization: bool = False
-    iterative_preserve_unmasked_computed_projection: bool = False
     iterative_projection_weights: tuple[float, ...] | None = None
     tv_reg_iteration_count: int = 6
     tv_alpha: float = 0.12

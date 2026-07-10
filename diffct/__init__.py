@@ -41,11 +41,9 @@ from .analytical import (
     cone_weighted_backproject,
 )
 
-# For backwards compatibility, also import from differentiable module if it still exists
-try:
-    from . import differentiable
-except ImportError:
-    pass
+# The legacy ``diffct.differentiable`` shim is NOT imported eagerly: importing
+# it emits its DeprecationWarning, which plain ``import diffct`` should not
+# trigger. Legacy code can still ``import diffct.differentiable`` explicitly.
 
 __version__ = '1.3.3.dev0'
 

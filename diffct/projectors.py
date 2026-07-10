@@ -5,14 +5,12 @@ for differentiable CT forward projection and backprojection operations.
 """
 
 import torch
-import numpy as np
 
 from .constants import _DTYPE
 from .utils import (
     DeviceManager,
     TorchCUDABridge,
     _get_numba_external_stream_for,
-    _trig_tables,
     _validate_3d_memory_layout,
     _grid_2d,
     _grid_3d,

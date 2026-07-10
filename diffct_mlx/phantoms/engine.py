@@ -181,6 +181,13 @@ def shepp_logan_phantom(fov_radius: float = 1.0) -> Phantom:
     view in world units) — set it to ``(min(shape) / 2) * voxel_spacing`` so the
     voxelized phantom fills the volume and its analytic projections match the
     same physical geometry you reconstruct with.
+
+    .. note::
+       This table is the Kak–Slaney 3D variant, while
+       :func:`~diffct_mlx.phantoms.shepp_logan_3d` voxelizes the slightly
+       different Toft ``phantom3d`` table — the two volumes are not identical
+       by design. Compare analytic projections against ``Phantom.voxelize`` of
+       the *same* phantom object, not against ``shepp_logan_3d``.
     """
     r = float(fov_radius)
     prims = []

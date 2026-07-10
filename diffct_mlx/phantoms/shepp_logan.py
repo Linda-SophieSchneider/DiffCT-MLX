@@ -75,7 +75,12 @@ def shepp_logan_2d(shape_or_nx, ny: int | None = None) -> np.ndarray:
 
 
 def shepp_logan_3d(shape_or_nz, ny: int | None = None, nx: int | None = None) -> np.ndarray:
-    """Generate a 3D Shepp-Logan phantom as a NumPy array."""
+    """Generate a 3D Shepp-Logan phantom as a NumPy array.
+
+    Uses the Toft ``phantom3d`` ellipsoid table; the analytic
+    :func:`~diffct_mlx.phantoms.shepp_logan_phantom` engine uses the
+    Kak–Slaney variant, so the two volumes differ slightly by design.
+    """
     nz, ny, nx = _shape_3d(shape_or_nz, ny, nx)
     zz, yy, xx = np.mgrid[:nz, :ny, :nx]
     xx = (xx - (nx - 1) / 2) / ((nx - 1) / 2)
