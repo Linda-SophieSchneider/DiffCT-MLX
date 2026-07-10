@@ -150,16 +150,24 @@ def _xp_arange(n, dtype=None):
 def _xp_grad(fn):
     """Return a function computing the gradient of scalar ``fn`` w.r.t. its arg.
 
-    Mirrors ``mlx.core.grad`` using torch autograd, including for outputs that do
-    not depend on the input (``mx.grad`` returns zeros there; torch would raise).
+    Mirrors ``mlx.core.grad`` using torch autograd, including its composability:
+    when the input is part of an autograd graph (``requires_grad``), the returned
+    gradient is built with ``create_graph=True`` so gradient *steps* (e.g.
+    ``x - alpha * tv_gradient(x)`` in an unrolled/known-operator network) remain
+    differentiable end-to-end. Outputs that do not depend on the input yield
+    zeros (``mx.grad`` parity; torch would raise).
     """
     def _g(x):
-        x = x.detach().clone().requires_grad_(True)
-        y = fn(x)
-        if not (isinstance(y, torch.Tensor) and y.requires_grad):
-            return torch.zeros_like(x)
-        (grad,) = torch.autograd.grad(y, x, allow_unused=True)
-        return grad if grad is not None else torch.zeros_like(x)
+        through = (isinstance(x, torch.Tensor) and x.requires_grad
+                   and torch.is_grad_enabled())
+        with torch.enable_grad():
+            xx = x if through else x.detach().clone().requires_grad_(True)
+            y = fn(xx)
+            if not (isinstance(y, torch.Tensor) and y.requires_grad):
+                return torch.zeros_like(xx)
+            (grad,) = torch.autograd.grad(y, xx, create_graph=through,
+                                          allow_unused=True)
+        return grad if grad is not None else torch.zeros_like(xx)
     return _g
 
 

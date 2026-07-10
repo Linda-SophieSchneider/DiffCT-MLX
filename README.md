@@ -145,6 +145,30 @@ sino = dct.simulate_scan(vol, A, spectrum=spec, material_attenuation=mu,
 recon = dct.rwls(A, sino, regularizer=dct.TotalVariation(1e-3), iterations=60)
 ```
 
+### Trainable known-operator pipelines
+
+Every building block is differentiable end-to-end, so the operators can be
+embedded directly as known operators in learned reconstruction networks
+(learnable FBP filters, unrolled Landweber/SIRT/FISTA with trainable step
+sizes, Plug-and-Play priors). Verified by `tests/test_known_operator_gradflow.py`:
+
+- all 12 projector operators propagate gradients w.r.t. their data argument
+  (exact `grad(0.5*||Ax||^2) == A^T(Ax)` identities, incl. the sparse cone
+  backprojection);
+- the `LinearOperator` algebra, ramp filter (`torch.fft` on-device) and the
+  `reconstruct_fbp` driver are differentiable — e.g. learnable per-detector
+  weights through `A.T @ ramp(w * sino)`;
+- unrolled iterative schemes backprop to trainable step sizes **and** to the
+  measured data (use a convergent step, e.g. `0.9 / power_iteration(...)`);
+  `cgls` and `run_sirt` also work as differentiable blocks;
+- `TotalVariation.gradient` / `tv_gradient` are built with `create_graph`
+  when the input carries gradients, so unrolled TV gradient steps are
+  second-order differentiable (mirrors `mx.grad` composability on MLX).
+
+Two caveats: **geometry arguments** (`src_pos`, `det_*`) receive no gradient
+on the Torch backend (only the MLX cone projector has a geometry VJP), and
+stochastic simulation ops (`add_poisson_noise`) are not differentiable.
+
 ### Out-of-core & multi-GPU (TB-scale volumes)
 
 `diffct_mlx.orchestration` reconstructs volumes far larger than GPU memory —
