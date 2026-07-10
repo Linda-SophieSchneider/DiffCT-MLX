@@ -28,8 +28,8 @@ def _cone_3d_footprint_forward_kernel(
         return
 
     eps = _EPSILON
-    center_u = (np.float32(n_u) - _ONE) * _HALF
-    center_v = (np.float32(n_v) - _ONE) * _HALF
+    center_u = np.float32(n_u) * _HALF
+    center_v = np.float32(n_v) * _HALF
 
     src_x = d_src[iview, 0]
     src_y = d_src[iview, 1]
@@ -147,8 +147,8 @@ def _cone_3d_footprint_backward_kernel(
         return
 
     eps = _EPSILON
-    center_u = (np.float32(n_u) - _ONE) * _HALF
-    center_v = (np.float32(n_v) - _ONE) * _HALF
+    center_u = np.float32(n_u) * _HALF
+    center_v = np.float32(n_v) * _HALF
 
     px = ((np.float32(ix) + _HALF) - cx) * voxel_spacing
     py = ((np.float32(iy) + _HALF) - cy) * voxel_spacing
@@ -274,8 +274,8 @@ def _cone_3d_footprint_backward_sparse_kernel(
     iz = flat_idx // (Nx * Ny)
 
     eps = _EPSILON
-    center_u = (np.float32(n_u) - _ONE) * _HALF
-    center_v = (np.float32(n_v) - _ONE) * _HALF
+    center_u = np.float32(n_u) * _HALF
+    center_v = np.float32(n_v) * _HALF
 
     px = ((np.float32(ix) + _HALF) - cx) * voxel_spacing
     py = ((np.float32(iy) + _HALF) - cy) * voxel_spacing

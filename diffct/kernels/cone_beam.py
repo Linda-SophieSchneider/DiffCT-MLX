@@ -429,9 +429,11 @@ def _cone_3d_fdk_backproject_kernel(
         return
 
     # Voxel position in voxel-unit, origin-centred coordinates.
-    x_v = np.float32(ix) - cx
-    y_v = np.float32(iy) - cy
-    z_v = np.float32(iz) - cz
+    # Voxel CENTER (cell k spans [k-c, k+1-c) in the Siddon/footprint
+    # families, so the center sits at k + 0.5 - c).
+    x_v = np.float32(ix) + _HALF - cx
+    y_v = np.float32(iy) + _HALF - cy
+    z_v = np.float32(iz) + _HALF - cz
 
     du_v = du / voxel_spacing
     dv_v = dv / voxel_spacing

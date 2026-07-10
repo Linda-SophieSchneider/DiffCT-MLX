@@ -330,8 +330,10 @@ def _fan_2d_fbp_backproject_kernel(
     if ix >= Nx or iy >= Ny:
         return
 
-    x_v = np.float32(ix) - cx
-    y_v = np.float32(iy) - cy
+    # Voxel CENTER (cell k spans [k-c, k+1-c) in the Siddon/footprint
+    # families, so the center sits at k + 0.5 - c).
+    x_v = np.float32(ix) + _HALF - cx
+    y_v = np.float32(iy) + _HALF - cy
 
     det_spacing_v = det_spacing / voxel_spacing
     half_u = np.float32(n_det) * _HALF

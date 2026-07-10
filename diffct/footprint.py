@@ -443,11 +443,22 @@ class ConeFootprintBackprojectorSparseFunction(torch.autograd.Function):
         det_center = _to_f32_contig(DeviceManager.ensure_device(det_center, device))
         det_u_vec = _to_f32_contig(DeviceManager.ensure_device(det_u_vec, device))
         det_v_vec = _to_f32_contig(DeviceManager.ensure_device(det_v_vec, device))
+        n_voxels = int(D) * int(H) * int(W)
+        if n_voxels > 2**31 - 1:
+            raise ValueError(
+                f"sparse cone backprojection: volume has {n_voxels} voxels, "
+                "which exceeds int32 flat indexing (max ~1290^3). Chunk the "
+                "volume (e.g. diffct_mlx.orchestration) instead."
+            )
         indices = DeviceManager.ensure_device(indices, device).to(torch.int32).contiguous()
 
         n_views, n_u, n_v = sinogram.shape
         n_samples = int(indices.shape[0])
         out = torch.zeros((n_samples,), dtype=sinogram.dtype, device=device)
+        if n_samples == 0:
+            ctx.save_for_backward(indices, src_pos, det_center, det_u_vec, det_v_vec)
+            ctx.intermediate = (D, H, W, n_u, n_v, du, dv, voxel_spacing)
+            return out
 
         d_sino = TorchCUDABridge.tensor_to_cuda_array(sinogram)
         d_out = TorchCUDABridge.tensor_to_cuda_array(out)
