@@ -54,9 +54,12 @@ def reconstruct_awtv_pocs(
     volume, ones_volume, zero_volume = initialize_volume(reco_params)
 
     beta = float(reg_params.beta)
+    alpha = float(reg_params.alpha)
     previous_pocs_projection = None
     first_projection_index = order[0]
 
+    # Reuse geometry-only raylength/sensitivity maps across outer iterations.
+    sweep_cache: dict = {}
     for iteration in range(reco_params.iteration_count):
         skip_first_sart = iteration == 0 and reco_params.initial_volume is not None
         iteration_reference = zero_volume if skip_first_sart else volume
@@ -71,6 +74,7 @@ def reconstruct_awtv_pocs(
                 params=reco_params,
                 beta=beta,
                 outer_iteration_index=iteration,
+                sweep_cache=sweep_cache,
             )
 
         volume = clamp_reconstruction_volume(volume, reco_params, stage="iteration")
@@ -82,11 +86,11 @@ def reconstruct_awtv_pocs(
                 if ds < float(reg_params.epsilon):
                     beta *= float(reg_params.beta_red)
 
-            volume, _, _ = awtv_pocs_step(
+            volume, _, alpha = awtv_pocs_step(
                 volume,
                 iteration_reference,
                 reg_params.reg_iteration_count,
-                reg_params.alpha,
+                alpha,
                 reg_params.delta,
                 eta=reg_params.tv_eps,
             )

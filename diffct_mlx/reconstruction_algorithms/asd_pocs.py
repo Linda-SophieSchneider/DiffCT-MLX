@@ -60,6 +60,8 @@ def reconstruct_asd_pocs(
     dtvg = 0.0
     first_projection_index = order[0]
 
+    # Reuse geometry-only raylength/sensitivity maps across outer iterations.
+    sweep_cache: dict = {}
     for iteration in range(reco_params.iteration_count):
         skip_first_sart = iteration == 0 and reco_params.initial_volume is not None
         iteration_reference = zero_volume if skip_first_sart else volume
@@ -74,6 +76,7 @@ def reconstruct_asd_pocs(
                 params=reco_params,
                 beta=beta,
                 outer_iteration_index=iteration,
+                sweep_cache=sweep_cache,
             )
 
         volume = clamp_reconstruction_volume(volume, reco_params, stage="iteration")

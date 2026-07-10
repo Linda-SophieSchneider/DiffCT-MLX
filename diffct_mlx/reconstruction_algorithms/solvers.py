@@ -192,7 +192,6 @@ def ls(A, b, **kwargs):
 @register_algorithm("rls")
 def rls(A, b, *, beta: float = 1e-2, **kwargs):
     """Tikhonov-regularized least squares (ridge): ``+ 0.5 beta ||x||^2``."""
-    kwargs.pop("weights", None)
     return wls(A, b, weights=kwargs.pop("weights", None), beta=beta, **kwargs)
 
 
@@ -225,6 +224,11 @@ def rwls(
       the data-term Lipschitz constant estimated by power iteration.
     """
     b = xp.array(b, dtype=_b.float32)
+    if regularizer is not None and not regularizer.is_smooth:
+        raise ValueError(
+            "rwls applies `regularizer` via its gradient, but it is non-smooth. "
+            "Pass proximable functionals (L1Norm, denoisers, ...) as `constraint` instead."
+        )
     W = _weight_operator(weights, A.range_shape)
     reg = regularizer if regularizer is not None else ZeroFunctional()
     if constraint is None:

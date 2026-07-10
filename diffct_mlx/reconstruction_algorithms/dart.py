@@ -391,13 +391,16 @@ def reconstruct_dart(
             backprojection = back_project(projection, projection_index)
             return backprojection * _mask
 
+        # The masked subproblem's measurements are residuals (measured minus the
+        # fixed part) and are legitimately negative wherever the segmentation
+        # overestimates the fixed volume — disable measurement clipping for it.
         volume = run_iterative_sweeps(
             volume=updated_volume,
             measured_projections=free_measurements,
             ones_volume=ones_volume,
             forward_project=masked_forward_project,
             back_project=masked_back_project,
-            params=params,
+            params=replace(params, pixel_extreme_values=(float("-inf"), float("inf"))),
             outer_iteration_index=iteration,
         )
         if params.apply_smoothing and iteration < params.iteration_count - 1:

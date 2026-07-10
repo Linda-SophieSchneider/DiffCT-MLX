@@ -885,9 +885,11 @@ def build_measured_cone_3d_case(config: MeasuredConeDataConfig) -> Reconstructio
 class NpyProjectionsConfig:
     """Configuration for building a cone-beam case from pre-computed .npy line integrals.
 
-    The npy file must contain raw forward-projector output (float32,
-    shape [n_views, det_u, det_v]).  No log transform is applied — the
-    array is used as the sinogram directly.
+    The npy file must contain line integrals (float32). No log transform is
+    applied — the array is used as the sinogram directly. With the default
+    ``transpose_uv=True`` the stack is expected in detector-image order
+    ``[n_views, det_v, det_u]`` (rows = v, matching the TIFF pipeline); set
+    ``transpose_uv=False`` if it is already stored ``[n_views, det_u, det_v]``.
 
     If the source volume has a non-zero background (e.g. Firefly volumes with a
     constant air offset), set subtract_air_baseline=True.  This estimates a
@@ -965,10 +967,15 @@ def build_npy_cone_3d_case(config: NpyProjectionsConfig) -> ReconstructionCase:
 
     du = float(geo["detector"]["pixel_size_mm"]["u"])
     dv = float(geo["detector"]["pixel_size_mm"]["v"])
+    # Detector counts are bound to the data axes: axis 1 is the projector's u
+    # axis, axis 2 its v axis. ``transpose_uv`` relabels the *geometry* (vectors
+    # and pitches) so that a stack stored in detector-image order
+    # (views, v, u) is consumed correctly without copying the data — the counts
+    # must therefore NOT be swapped along with the vectors.
     det_u = sino_np.shape[1]
     det_v = sino_np.shape[2]
 
-    det_u_vec, det_v_vec, du, dv, det_u, det_v = apply_detector_geometry_convention(
+    det_u_vec, det_v_vec, du, dv, _, _ = apply_detector_geometry_convention(
         det_u_vec, det_v_vec,
         du=du, dv=dv, det_u=det_u, det_v=det_v,
         flip_u=config.flip_u, flip_v=config.flip_v, transpose_uv=config.transpose_uv,

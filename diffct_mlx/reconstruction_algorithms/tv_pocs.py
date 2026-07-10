@@ -46,6 +46,8 @@ def reconstruct_tv_pocs(
     measured = normalize_measured_projections(measured_projections, reco_params.dtype)
     volume, ones_volume, zero_volume = initialize_volume(reco_params)
 
+    # Reuse geometry-only raylength/sensitivity maps across outer iterations.
+    sweep_cache: dict = {}
     for iteration in range(reco_params.iteration_count):
         skip_first_sart = iteration == 0 and reco_params.initial_volume is not None
         iteration_reference = zero_volume if skip_first_sart else volume
@@ -59,6 +61,7 @@ def reconstruct_tv_pocs(
                 back_project=back_project,
                 params=reco_params,
                 outer_iteration_index=iteration,
+                sweep_cache=sweep_cache,
             )
 
         volume = clamp_reconstruction_volume(volume, reco_params, stage="iteration")

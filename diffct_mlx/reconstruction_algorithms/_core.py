@@ -56,7 +56,9 @@ class ReconstructionParameters:
     projection_subset_count: int = 1
     projection_weights: Sequence[float] | None = None
     normalized_sart_relaxation: float = 0.9
-    backprojection_scale: float | None = 1.0
+    # None resolves per update method (normalized_sart -> normalized_sart_relaxation,
+    # otherwise 1.0); an explicit float always wins.
+    backprojection_scale: float | None = None
     dtype: Any = field(default_factory=lambda: _b.float32)
 
 
@@ -610,11 +612,15 @@ def resolve_projection_weights(
 _SENSITIVITY_CACHE_BUDGET_BYTES = 8 * 1024 ** 3
 
 
-def _volume_byte_size(shape) -> int:
+def _volume_byte_size(shape, dtype=None) -> int:
     total = 1
     for dim in shape:
         total *= int(dim)
-    return total * 4
+    try:
+        itemsize = int(getattr(dtype, "itemsize", 4) or 4)
+    except Exception:
+        itemsize = 4
+    return total * itemsize
 
 
 def get_cached_raylengths(sweep_cache, ones_volume, forward_project, params, projection_count):
@@ -638,7 +644,7 @@ def get_cached_sensitivities(sweep_cache, raylength_projections, back_project, p
         return None
     if sweep_cache is not None and "sensitivities" in sweep_cache:
         return sweep_cache["sensitivities"]
-    need = projection_count * _volume_byte_size(params.volume_shape)
+    need = projection_count * _volume_byte_size(params.volume_shape, params.dtype)
     sensitivities = None
     if need <= _SENSITIVITY_CACHE_BUDGET_BYTES:
         sensitivities = precompute_sensitivity_volumes(raylength_projections, back_project, params, projection_count)
@@ -655,7 +661,7 @@ def get_cached_ns_backprojections(sweep_cache, raylength_projections, back_proje
     """
     if sweep_cache is not None and "ns_sensitivity" in sweep_cache:
         return sweep_cache["ns_sensitivity"]
-    need = projection_count * _volume_byte_size(params.volume_shape)
+    need = projection_count * _volume_byte_size(params.volume_shape, params.dtype)
     result = None
     if need <= _SENSITIVITY_CACHE_BUDGET_BYTES:
         result = {}

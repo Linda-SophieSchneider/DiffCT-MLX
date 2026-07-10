@@ -44,18 +44,16 @@ def reconstruct_sart(
     # across outer iterations via this cache.
     sweep_cache: dict = {}
     for iteration in range(params.iteration_count):
-        skip_first_sart = iteration == 0 and params.initial_volume is not None
-        if not skip_first_sart:
-            volume = run_iterative_sweeps(
-                volume=volume,
-                measured_projections=measured,
-                ones_volume=ones_volume,
-                forward_project=forward_project,
-                back_project=back_project,
-                params=params,
-                outer_iteration_index=iteration,
-                sweep_cache=sweep_cache,
-            )
+        volume = run_iterative_sweeps(
+            volume=volume,
+            measured_projections=measured,
+            ones_volume=ones_volume,
+            forward_project=forward_project,
+            back_project=back_project,
+            params=params,
+            outer_iteration_index=iteration,
+            sweep_cache=sweep_cache,
+        )
         volume = clamp_reconstruction_volume(volume, params, stage="iteration")
         # Force evaluation per outer iteration so long runs do not accumulate an
         # unbounded lazy graph on lazy backends (MLX/Metal).

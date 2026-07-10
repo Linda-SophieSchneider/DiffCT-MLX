@@ -242,11 +242,14 @@ def auto_voxel_spacing_from_detector(
     if fov_v_mm <= 0.0:
         fov_v_mm = raw_fov_v_mm
 
+    # Volume is (D, H, W) = (z, y, x): both lateral axes (x width, y height)
+    # rotate through the horizontal detector FOV (u); only z is bounded by the
+    # vertical FOV (v).
     depth, height, width = volume_shape
     return float(
         min(
             fov_u_mm / float(width),
-            fov_v_mm / float(height),
+            fov_u_mm / float(height),
             fov_v_mm / float(depth),
         )
     )
@@ -467,6 +470,12 @@ def load_tiff_projections(
             )
         stack[idx] = proj
 
+    if revert:
+        # Detector stores inverted counts: undo on the RAW intensities, before
+        # any i0 normalization / log transform (inverting attenuation values
+        # would be meaningless).
+        np.subtract(65535.0, stack, out=stack)
+
     if log_transform:
         debug_indices = None
         debug_before = None
@@ -527,12 +536,13 @@ def load_tiff_projections(
                 output_path,
             )
         
-    if revert:
-        np.subtract(65535.0, stack, out=stack)
+    elif revert:
+        # revert without log transform: normalize the inverted counts to a
+        # transmission-like range (the inversion itself happened above).
         i0 = max(float(np.percentile(stack, i0_percentile)), 1.0)
         np.divide(stack, i0, out=stack)
         np.clip(stack, 1e-6, 1.0, out=stack)
-    
+
     return stack
 
 
@@ -552,7 +562,9 @@ def estimate_cone_isocenter(src_pos, det_center):
         proj = identity - np.outer(direction, direction)
         system += proj
         rhs += proj @ point
-    return np.linalg.solve(system, rhs).astype(np.float32)
+    # A single view (or parallel central rays) leaves the system rank-deficient:
+    # use the pseudoinverse solution (closest point on / between the rays).
+    return (np.linalg.lstsq(system, rhs, rcond=None)[0]).astype(np.float32)
 
 
 def diagnose_cone_geometry(src_pos, det_center, det_u_vec, det_v_vec):
