@@ -15,8 +15,8 @@ per chunk, but no graph is kept across chunk boundaries.
 
 Sub-geometry conventions match ``diffct/kernels/cone_footprint.py`` exactly:
 volume voxel world position ``p = (idx + 0.5 - n/2) * voxel_spacing`` per axis
-(D↔world-z), detector row ``iv`` at ``(iv - (n_v-1)/2)*dv`` along ``det_v_vec``
-from ``det_center``.
+(D↔world-z), detector row ``iv`` at ``(iv - n_v/2)*dv`` along ``det_v_vec``
+from ``det_center`` (the package-wide detector-grid convention).
 """
 
 from __future__ import annotations
@@ -30,11 +30,18 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from diffct.footprint import (
-    ConeFootprintProjectorFunction,
-    ConeFootprintBackprojectorFunction,
-)
-from diffct.projectors import ConeBackprojectorFunction
+try:
+    from diffct.footprint import (
+        ConeFootprintProjectorFunction,
+        ConeFootprintBackprojectorFunction,
+    )
+    from diffct.projectors import ConeBackprojectorFunction
+except ImportError as _exc:  # pragma: no cover - torch/numba missing (e.g. MLX)
+    raise ImportError(
+        "diffct_mlx.orchestration requires the Torch/CUDA backend (it drives "
+        "the vendored numba-CUDA cone kernels directly); it is not available "
+        "on the MLX backend."
+    ) from _exc
 
 # Backward autograd Functions selectable for chunked backprojection. Both share
 # the (sino, src, dc, u, v, D, H, W, du, dv, vs) -> (D,H,W) signature and the
@@ -109,7 +116,7 @@ def _v_bins_of_points(P, geom: ConeGeom, dv, n_v):
         t = num[None, :] / denom
     Q = S[None, :, :] + t[..., None] * PS            # (K,V,3)
     v0 = np.einsum("kvc,vc->kv", Q - C[None, :, :], Vv)   # signed distance along v
-    v_bin = v0 / dv + (n_v - 1) * 0.5
+    v_bin = v0 / dv + n_v * 0.5
     v_bin[np.abs(denom) < _EPS] = np.nan
     return v_bin
 
@@ -205,6 +212,38 @@ def _alloc_out(out, shape):
     return out
 
 
+def _flush(arr):
+    """Flush a memmap-backed output before returning it (crash/other-process
+    visibility); no-op for RAM arrays and zarr (committed per write)."""
+    flush = getattr(arr, "flush", None)
+    if callable(flush):
+        try:
+            flush()
+        except Exception:
+            pass
+    return arr
+
+
+def _ooc_delete(arr):
+    """Best-effort removal of an AUTO-created disk scratch array (memmap .npy
+    file or zarr store). Never call on user-provided ``out=`` arrays."""
+    import os
+    import shutil
+    path = getattr(arr, "filename", None)                     # np.memmap
+    if path is None:
+        store = getattr(arr, "store", None)                   # zarr
+        path = getattr(store, "root", None) or getattr(store, "path", None)
+    if path is None:
+        return
+    try:
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+        elif os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
+
+
 # --------------------------------------------------------------------------- #
 # Automatic RAM-vs-disk decision. Arrays that fit a host-RAM budget stay in RAM;
 # larger ones are transparently backed by a disk memmap (path to TB-scale). Set
@@ -213,7 +252,9 @@ def _alloc_out(out, shape):
 
 _OOC_DIR = None
 _OOC_COUNTER = 0
+_OOC_LOCK = threading.Lock()
 _OOC_BACKEND = "memmap"   # "memmap" (raw .npy) or "zarr" (chunked + compressed)
+_ABORT = object()          # conveyor sentinel: unblock consumers after a failure
 
 
 def set_out_of_core_dir(path):
@@ -277,9 +318,11 @@ def _ooc_path(tag, work_dir):
             f"set_out_of_core_dir('/path/on/big/disk') to control this.",
             RuntimeWarning, stacklevel=3)
     os.makedirs(d, exist_ok=True)
-    _OOC_COUNTER += 1
+    with _OOC_LOCK:
+        _OOC_COUNTER += 1
+        count = _OOC_COUNTER
     ext = ".zarr" if _OOC_BACKEND == "zarr" else ".npy"
-    return os.path.join(d, f"diffct_ooc_{os.getpid()}_{_OOC_COUNTER}_{tag}{ext}")
+    return os.path.join(d, f"diffct_ooc_{os.getpid()}_{count}_{tag}{ext}")
 
 
 def _resolve_output(out, shape, tag, work_dir=None, ram_budget=None):
@@ -373,22 +416,36 @@ def _resolve_gpus(gpus):
 
 
 def _run_on_gpus(tasks, gpus):
-    """Run per-chunk callables, one active chunk per GPU (round-robin threads)."""
-    if len(gpus) <= 1:
-        dev = gpus[0]
-        for fn in tasks:
-            fn(dev)
-        return
-    lock_by_gpu = {g: threading.Lock() for g in gpus}
+    """Run per-chunk callables, one active chunk per GPU (round-robin threads).
 
-    def worker(idx_fn):
-        idx, fn = idx_fn
-        dev = gpus[idx % len(gpus)]
-        with lock_by_gpu[dev]:
-            fn(dev)
+    The caller thread's CUDA device is restored afterwards (tasks call
+    ``torch.cuda.set_device`` / ``numba.cuda.select_device`` themselves).
+    """
+    prev_dev = torch.cuda.current_device() if torch.cuda.is_available() else None
+    try:
+        if len(gpus) <= 1:
+            dev = gpus[0]
+            for fn in tasks:
+                fn(dev)
+            return
+        lock_by_gpu = {g: threading.Lock() for g in gpus}
 
-    with ThreadPoolExecutor(max_workers=len(gpus)) as ex:
-        list(ex.map(worker, enumerate(tasks)))
+        def worker(idx_fn):
+            idx, fn = idx_fn
+            dev = gpus[idx % len(gpus)]
+            with lock_by_gpu[dev]:
+                fn(dev)
+
+        with ThreadPoolExecutor(max_workers=len(gpus)) as ex:
+            list(ex.map(worker, enumerate(tasks)))
+    finally:
+        if prev_dev is not None:
+            torch.cuda.set_device(prev_dev)
+            try:
+                from numba import cuda as _cuda
+                _cuda.select_device(prev_dev)
+            except Exception:
+                pass
 
 
 def _pin_to_dev(arr, dev):
@@ -421,46 +478,90 @@ def _conveyor_run(chunk_ids, read_fn, compute_fn, write_fn, gpus, prefetch=None,
     write_q = queue.Queue(maxsize=prefetch)
     tt = {"read": 0.0, "compute": 0.0, "write": 0.0, "wall": 0.0}
     lock = threading.Lock()
+    stop = threading.Event()          # set on the first failure: unblocks everyone
+    errors: list[BaseException] = []
 
     def acc(k, dt):
         with lock:
             tt[k] += dt
 
+    def fail(exc):
+        with lock:
+            errors.append(exc)
+        stop.set()
+
+    def q_put(q, item):
+        """Bounded put that aborts (returns False) once the run failed, so a
+        producer never deadlocks on a queue whose consumer died."""
+        while not stop.is_set():
+            try:
+                q.put(item, timeout=0.25)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def q_get(q):
+        """Bounded get; returns the ABORT sentinel once the run failed, so a
+        consumer never deadlocks on a queue whose producer died."""
+        while not stop.is_set():
+            try:
+                return q.get(timeout=0.25)
+            except queue.Empty:
+                continue
+        return _ABORT
+
     def reader():
-        for cid in ids:
-            t = time.perf_counter()
-            inp = read_fn(cid)
-            acc("read", time.perf_counter() - t)
-            read_q.put((cid, inp))
-        for _ in gpus:
-            read_q.put(None)
+        try:
+            for cid in ids:
+                t = time.perf_counter()
+                inp = read_fn(cid)
+                acc("read", time.perf_counter() - t)
+                if not q_put(read_q, (cid, inp)):
+                    return
+        except BaseException as exc:  # noqa: BLE001 - re-raised in the caller
+            fail(exc)
+        finally:
+            for _ in gpus:
+                if not q_put(read_q, None):
+                    break
 
     def gpu_worker(dev):
-        torch.cuda.set_device(dev)
-        from numba import cuda as _cuda
-        _cuda.select_device(dev)
-        while True:
-            item = read_q.get()
-            if item is None:
-                write_q.put(None)
-                return
-            cid, inp = item
-            t = time.perf_counter()
-            out = compute_fn(cid, inp, dev)
-            acc("compute", time.perf_counter() - t)
-            write_q.put((cid, out))
+        try:
+            torch.cuda.set_device(dev)
+            from numba import cuda as _cuda
+            _cuda.select_device(dev)
+            while True:
+                item = q_get(read_q)
+                if item is None or item is _ABORT:
+                    break
+                cid, inp = item
+                t = time.perf_counter()
+                out = compute_fn(cid, inp, dev)
+                acc("compute", time.perf_counter() - t)
+                if not q_put(write_q, (cid, out)):
+                    return
+        except BaseException as exc:  # noqa: BLE001 - re-raised in the caller
+            fail(exc)
+        finally:
+            q_put(write_q, None)
 
     def writer():
-        done = 0
-        while done < len(gpus):
-            item = write_q.get()
-            if item is None:
-                done += 1
-                continue
-            cid, out = item
-            t = time.perf_counter()
-            write_fn(cid, out)
-            acc("write", time.perf_counter() - t)
+        try:
+            done = 0
+            while done < len(gpus):
+                item = q_get(write_q)
+                if item is _ABORT:
+                    return
+                if item is None:
+                    done += 1
+                    continue
+                cid, out = item
+                t = time.perf_counter()
+                write_fn(cid, out)
+                acc("write", time.perf_counter() - t)
+        except BaseException as exc:  # noqa: BLE001 - re-raised in the caller
+            fail(exc)
 
     t0 = time.perf_counter()
     rt = threading.Thread(target=reader)
@@ -471,6 +572,10 @@ def _conveyor_run(chunk_ids, read_fn, compute_fn, write_fn, gpus, prefetch=None,
     tt["wall"] = time.perf_counter() - t0
     if timings is not None:
         timings.update(tt)
+    if errors:
+        raise RuntimeError(
+            f"out-of-core conveyor failed in a worker thread: {errors[0]!r}"
+        ) from errors[0]
 
 
 # --------------------------------------------------------------------------- #
@@ -527,7 +632,7 @@ def chunked_cone_backward(sinogram, geom: ConeGeom, D, H, W,
         out[z0:z1] = slab
 
     _conveyor_run(_chunks(D, step), read_fn, compute_fn, write_fn, gpus, timings=timings)
-    return out
+    return _flush(out)
 
 
 def chunked_cone_forward(volume, geom: ConeGeom, det_u, det_v,
@@ -575,7 +680,7 @@ def chunked_cone_forward(volume, geom: ConeGeom, det_u, det_v,
         out[:, :, v0:v1] = band
 
     _conveyor_run(_chunks(det_v, max_rows), read_fn, compute_fn, write_fn, gpus, timings=timings)
-    return out
+    return _flush(out)
 
 
 def _fdk_gather_slab(filtered_dev, geom_tensors, D, z0, z1, H, W, du, dv, vs):
@@ -629,7 +734,9 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
 
     ``backprojector``: ``"siddon"`` (default, highest fidelity, matches
     ``reconstruct_fdk``), ``"footprint"`` (matched atomic-free), or ``"gather"``
-    (distance-weighted voxel-driven FDK kernel; applies ``sdd/(2*pi*sid)``).
+    (distance-weighted voxel-driven FDK kernel; applies ``sdd/(2*pi*sid)``
+    itself — do not also pass ``normalization_scale`` or the volume is scaled
+    twice; the gather path also keeps the whole filtered sinogram on each GPU).
     """
     # Ramp-filter the sinogram, streaming over views (auto RAM/disk) so a
     # sinogram larger than RAM can be filtered without a full-array load.
@@ -645,11 +752,14 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
         return np.maximum(s, 0.0) if enforce_positivity else s
 
     if backprojector in ("siddon", "footprint"):
-        return chunked_cone_backward(
-            filtered, geom, D, H, W, du, dv, voxel_spacing,
-            projector=backprojector, gpus=gpus, max_slices=max_slices,
-            out=out, post_fn=_post, work_dir=work_dir, ram_budget=ram_budget,
-            timings=timings)
+        try:
+            return chunked_cone_backward(
+                filtered, geom, D, H, W, du, dv, voxel_spacing,
+                projector=backprojector, gpus=gpus, max_slices=max_slices,
+                out=out, post_fn=_post, work_dir=work_dir, ram_budget=ram_budget,
+                timings=timings)
+        finally:
+            _ooc_delete(filtered)   # auto disk spill of the filtered sinogram
     elif backprojector == "gather":
         gpus_ = _resolve_gpus(gpus)
         n_views, n_u, n_v = filtered.shape
@@ -659,23 +769,39 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
             torch.as_tensor(geom.det_u_vec), torch.as_tensor(geom.det_v_vec))
         fdk_scale = sd / (2.0 * np.pi * st)
         out = _resolve_output(out, (D, H, W), "fdk_vol", work_dir, ram_budget)
+        # The gather kernel needs the WHOLE filtered sinogram on-device: upload
+        # it once per GPU and reuse across slabs (it must fit in VRAM — use
+        # "siddon"/"footprint" for sinograms larger than a single GPU).
+        dev_cache: dict = {}
+        cache_lock = threading.Lock()
+        write_lock = threading.Lock()   # zarr chunks are not slab-aligned
 
         def make_task(z0, z1):
             def task(dev):
                 torch.cuda.set_device(dev)
                 from numba import cuda as _cuda
                 _cuda.select_device(dev)
-                filt_dev = _to_dev(filtered, dev)
-                geom_tensors = (
-                    _to_dev(geom.src_pos, dev), _to_dev(geom.det_center, dev),
-                    _to_dev(geom.det_u_vec, dev), _to_dev(geom.det_v_vec, dev))
+                with cache_lock:
+                    cached = dev_cache.get(dev)
+                    if cached is None:
+                        cached = (
+                            _to_dev(filtered, dev),
+                            (_to_dev(geom.src_pos, dev), _to_dev(geom.det_center, dev),
+                             _to_dev(geom.det_u_vec, dev), _to_dev(geom.det_v_vec, dev)))
+                        dev_cache[dev] = cached
+                filt_dev, geom_tensors = cached
                 slab = _fdk_gather_slab(filt_dev, geom_tensors, D, z0, z1, H, W,
                                         du, dv, voxel_spacing)
-                out[z0:z1] = _post(slab.detach().cpu().numpy(), extra=fdk_scale)
+                result = _post(slab.detach().cpu().numpy(), extra=fdk_scale)
+                with write_lock:
+                    out[z0:z1] = result
             return task
 
-        _run_on_gpus([make_task(z0, z1) for z0, z1 in _chunks(D, step)], gpus_)
-        return out
+        try:
+            _run_on_gpus([make_task(z0, z1) for z0, z1 in _chunks(D, step)], gpus_)
+        finally:
+            _ooc_delete(filtered)   # auto disk spill of the filtered sinogram
+        return _flush(out)
     else:
         raise ValueError(
             f"backprojector must be 'siddon', 'footprint' or 'gather', got {backprojector!r}")
@@ -698,9 +824,8 @@ def chunked_sirt(measured, geom: ConeGeom, D, H, W, det_u, det_v,
     ``None`` to keep the scratch arrays in RAM (small problems). ``out`` may be a
     preallocated memmap for the result volume.
     """
-    import os
     gpus = _resolve_gpus(gpus)
-    m = _np32(measured)
+    m = _lazy_input(measured)
     n_views = geom.n_views
     sino_shape = (n_views, det_u, det_v)
     vol_shape = (D, H, W)
@@ -727,18 +852,25 @@ def chunked_sirt(measured, geom: ConeGeom, D, H, W, det_u, det_v,
     vstep = max(1, min(n_views, 64))   # host-side elementwise chunking
     zstep = max(1, min(D, 64))
 
-    for _ in range(int(n_iter)):
-        fwd(x, ax)                                            # ax = A x
-        for a, b in _chunks(n_views, vstep):                  # resid = R (m - ax)
-            rs = rowsum[a:b]
-            resid[a:b] = np.where(rs > eps, (m[a:b] - ax[a:b]) / np.where(rs > eps, rs, 1.0), 0.0)
-        bwd(resid, bp)                                        # bp = Aᵀ resid
-        for z0, z1 in _chunks(D, zstep):                      # x += relax C bp
-            cs = colsum[z0:z1]
-            upd = np.where(cs > eps, bp[z0:z1] / np.where(cs > eps, cs, 1.0), 0.0)
-            xs = x[z0:z1] + float(relaxation) * upd
-            x[z0:z1] = np.maximum(xs, 0.0) if enforce_positivity else xs
-    return x
+    try:
+        for _ in range(int(n_iter)):
+            fwd(x, ax)                                            # ax = A x
+            for a, b in _chunks(n_views, vstep):                  # resid = R (m - ax)
+                rs = rowsum[a:b]
+                resid[a:b] = np.where(rs > eps, (m[a:b] - ax[a:b]) / np.where(rs > eps, rs, 1.0), 0.0)
+            bwd(resid, bp)                                        # bp = Aᵀ resid
+            for z0, z1 in _chunks(D, zstep):                      # x += relax C bp
+                cs = colsum[z0:z1]
+                upd = np.where(cs > eps, bp[z0:z1] / np.where(cs > eps, cs, 1.0), 0.0)
+                xs = x[z0:z1] + float(relaxation) * upd
+                x[z0:z1] = np.maximum(xs, 0.0) if enforce_positivity else xs
+    finally:
+        # Auto-allocated disk scratch would otherwise accumulate (TBs per run
+        # at scale). ``x`` is the result — never deleted.
+        for scratch in (ones_vol, ones_sino, rowsum, colsum, ax, resid, bp):
+            if scratch is not x:
+                _ooc_delete(scratch)
+    return _flush(x)
 
 
 def _subset_geom(geom: ConeGeom, idx) -> ConeGeom:
@@ -782,24 +914,32 @@ def chunked_os_sart(measured, geom: ConeGeom, D, H, W, det_u, det_v,
     x[:] = 0.0
     bp = alloc(vol_shape, "bp")
     subsets = [np.arange(j, nv, n_subsets) for j in range(int(n_subsets))]
+    # Preallocate one forward buffer per subset (fresh auto-allocation per call
+    # would leak disk scratch every subset-iteration at TB scale).
+    ax_bufs = [alloc((len(idx), det_u, det_v), f"ax{j}") for j, idx in enumerate(subsets)]
     zstep = max(1, min(D, 64))
 
-    for _ in range(int(n_iter)):
-        for idx in subsets:
-            gs = _subset_geom(geom, idx)
-            ax_s = np.asarray(chunked_cone_forward(x, gs, det_u, det_v, du, dv,
-                                                   voxel_spacing, gpus=gpus))
-            rs = np.asarray(rowsum[idx], dtype=np.float32)
-            m_s = np.asarray(m[idx], dtype=np.float32)
-            resid = np.where(rs > eps, (m_s - ax_s) / np.where(rs > eps, rs, 1.0), 0.0).astype(np.float32)
-            chunked_cone_backward(resid, gs, D, H, W, du, dv, voxel_spacing,
-                                  projector=projector, gpus=gpus, max_slices=max_slices, out=bp)
-            for z0, z1 in _chunks(D, zstep):
-                cs = np.asarray(colsum[z0:z1])
-                upd = np.where(cs > eps, np.asarray(bp[z0:z1]) / np.where(cs > eps, cs, 1.0), 0.0)
-                xs = np.asarray(x[z0:z1]) + float(relaxation) * upd
-                x[z0:z1] = np.maximum(xs, 0.0) if enforce_positivity else xs
-    return x
+    try:
+        for _ in range(int(n_iter)):
+            for idx, ax_buf in zip(subsets, ax_bufs):
+                gs = _subset_geom(geom, idx)
+                ax_s = np.asarray(chunked_cone_forward(x, gs, det_u, det_v, du, dv,
+                                                       voxel_spacing, gpus=gpus, out=ax_buf))
+                rs = np.asarray(rowsum[idx], dtype=np.float32)
+                m_s = np.asarray(m[idx], dtype=np.float32)
+                resid = np.where(rs > eps, (m_s - ax_s) / np.where(rs > eps, rs, 1.0), 0.0).astype(np.float32)
+                chunked_cone_backward(resid, gs, D, H, W, du, dv, voxel_spacing,
+                                      projector=projector, gpus=gpus, max_slices=max_slices, out=bp)
+                for z0, z1 in _chunks(D, zstep):
+                    cs = np.asarray(colsum[z0:z1])
+                    upd = np.where(cs > eps, np.asarray(bp[z0:z1]) / np.where(cs > eps, cs, 1.0), 0.0)
+                    xs = np.asarray(x[z0:z1]) + float(relaxation) * upd
+                    x[z0:z1] = np.maximum(xs, 0.0) if enforce_positivity else xs
+    finally:
+        for scratch in (ones_vol, ones_sino, rowsum, colsum, bp, *ax_bufs):
+            if scratch is not x:
+                _ooc_delete(scratch)
+    return _flush(x)
 
 
 # --------------------------------------------------------------------------- #
@@ -967,6 +1107,7 @@ def mgpu_sirt(measured, geom: ConeGeom, D, H, W, det_u, det_v,
         d0 = gpus[0]
         dev0 = torch.device("cuda", d0)
         bands = _bands_for(geom.n_views, gpus)
+        prev_dev = torch.cuda.current_device()
         torch.cuda.set_device(d0)
         m_t = torch.as_tensor(m, device=dev0)
         fwd = lambda x: _forward_resident(x, geom, det_u, det_v, du, dv, voxel_spacing, bands, d0)
@@ -983,7 +1124,9 @@ def mgpu_sirt(measured, geom: ConeGeom, D, H, W, det_u, det_v,
             x = x + float(relaxation) * update
             if enforce_positivity:
                 x = torch.clamp(x, min=0.0)
-        return x.detach().cpu().numpy()
+        result = x.detach().cpu().numpy()
+        torch.cuda.set_device(prev_dev)
+        return result
 
     fwd = lambda vol: mgpu_cone_forward(vol, geom, det_u, det_v, du, dv, voxel_spacing, gpus=gpus)
     bwd = lambda sino: mgpu_cone_backproject(sino, geom, D, H, W, du, dv, voxel_spacing,
