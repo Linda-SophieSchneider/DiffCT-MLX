@@ -105,6 +105,58 @@
 <span class="c1"># PyTorch Autograd Functions</span>
 <span class="c1"># ============================================================================</span>
 
+<span class="c1"># --------------------------------------------------------------------------- #</span>
+<span class="c1"># Finite-difference geometry VJPs (Siddon projectors)</span>
+<span class="c1">#</span>
+<span class="c1"># Gradients w.r.t. the per-view geometry arrays (source positions, detector</span>
+<span class="c1"># centers/origins, detector direction vectors) are computed by central</span>
+<span class="c1"># differences of the forward kernel. Every view&#39;s projection depends only on</span>
+<span class="c1"># that view&#39;s geometry row, so perturbing a whole column yields all per-view</span>
+<span class="c1"># gradients simultaneously — two forward passes per geometry component</span>
+<span class="c1"># (6 passes for a (V, 3) array). They are only computed for inputs that</span>
+<span class="c1"># require grad, so the standard image/volume-only path pays nothing.</span>
+<span class="c1">#</span>
+<span class="c1"># The step is chosen relative to each array&#39;s magnitude so the same code works</span>
+<span class="c1"># for setups specified in millimetres or metres (positions) and for unit</span>
+<span class="c1"># direction vectors. Second-order gradients through the geometry are not</span>
+<span class="c1"># supported (the FD result carries no autograd graph).</span>
+<span class="c1"># --------------------------------------------------------------------------- #</span>
+<span class="n">_FD_REL_EPS_POS</span> <span class="o">=</span> <span class="mf">1e-3</span>   <span class="c1"># relative step for position-like arrays (src, det center)</span>
+<span class="n">_FD_REL_EPS_VEC</span> <span class="o">=</span> <span class="mf">1e-2</span>   <span class="c1"># relative step for direction-vector arrays</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_fd_eps</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">rel</span><span class="p">):</span>
+    <span class="n">scale</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">geom</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+    <span class="k">return</span> <span class="n">rel</span> <span class="o">*</span> <span class="nb">max</span><span class="p">(</span><span class="n">scale</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_fd_geometry_grads</span><span class="p">(</span><span class="n">launch</span><span class="p">,</span> <span class="n">geoms</span><span class="p">,</span> <span class="n">needs</span><span class="p">,</span> <span class="n">cotangent</span><span class="p">,</span> <span class="n">rel_eps_list</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Central-difference VJPs for per-view geometry arrays.</span>
+
+<span class="sd">    ``launch(*geoms) -&gt; sinogram`` re-evaluates the forward projection with the</span>
+<span class="sd">    given geometry arrays; ``needs``/``rel_eps_list`` align with ``geoms``.</span>
+<span class="sd">    Returns one gradient (or ``None``) per geometry array.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">reduce_dims</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">cotangent</span><span class="o">.</span><span class="n">ndim</span><span class="p">))</span>
+    <span class="n">grads</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">geoms</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">needed</span><span class="p">,</span> <span class="n">rel</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">geoms</span><span class="p">,</span> <span class="n">needs</span><span class="p">,</span> <span class="n">rel_eps_list</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">needed</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">eps</span> <span class="o">=</span> <span class="n">_fd_eps</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">rel</span><span class="p">)</span>
+        <span class="n">grad_k</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">geom</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">geom</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+            <span class="n">delta</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">geom</span><span class="p">)</span>
+            <span class="n">delta</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">eps</span>
+            <span class="n">plus</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">geoms</span><span class="p">)</span>
+            <span class="n">plus</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">geom</span> <span class="o">+</span> <span class="n">delta</span>
+            <span class="n">minus</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">geoms</span><span class="p">)</span>
+            <span class="n">minus</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">geom</span> <span class="o">-</span> <span class="n">delta</span>
+            <span class="n">diff</span> <span class="o">=</span> <span class="p">(</span><span class="n">launch</span><span class="p">(</span><span class="o">*</span><span class="n">plus</span><span class="p">)</span> <span class="o">-</span> <span class="n">launch</span><span class="p">(</span><span class="o">*</span><span class="n">minus</span><span class="p">))</span> <span class="o">/</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">eps</span><span class="p">)</span>
+            <span class="n">grad_k</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">cotangent</span> <span class="o">*</span> <span class="n">diff</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="n">reduce_dims</span><span class="p">)</span>
+        <span class="n">grads</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">grad_k</span>
+    <span class="k">return</span> <span class="n">grads</span>
+
+
 <div class="viewcode-block" id="ParallelProjectorFunction">
 <a class="viewcode-back" href="../../api.html#diffct.ParallelProjectorFunction">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ParallelProjectorFunction</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">autograd</span><span class="o">.</span><span class="n">Function</span><span class="p">):</span>
@@ -219,7 +271,8 @@
             <span class="n">_DTYPE</span><span class="p">(</span><span class="n">detector_spacing</span><span class="p">),</span> <span class="n">d_ray_dir_arr</span><span class="p">,</span> <span class="n">d_det_origin_arr</span><span class="p">,</span> <span class="n">d_det_u_vec_arr</span><span class="p">,</span> <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">)</span>
         <span class="p">)</span>
 
-        <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span><span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">)</span>
+        <span class="c1"># image saved for the (optional) finite-difference geometry gradients.</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">)</span>
         <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span> <span class="o">=</span> <span class="p">(</span><span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">sinogram</span></div>
 
@@ -228,7 +281,7 @@
 <a class="viewcode-back" href="../../api.html#diffct.ParallelProjectorFunction.backward">[docs]</a>
     <span class="nd">@staticmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">backward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">grad_sinogram</span><span class="p">):</span>
-        <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">saved_tensors</span>
+        <span class="n">image</span><span class="p">,</span> <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">saved_tensors</span>
         <span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">voxel_spacing</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span>
         <span class="n">device</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">get_device</span><span class="p">(</span><span class="n">grad_sinogram</span><span class="p">)</span>
         <span class="n">grad_sinogram</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">grad_sinogram</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
@@ -261,7 +314,30 @@
             <span class="n">_DTYPE</span><span class="p">(</span><span class="n">detector_spacing</span><span class="p">),</span> <span class="n">d_ray_dir_arr</span><span class="p">,</span> <span class="n">d_det_origin_arr</span><span class="p">,</span> <span class="n">d_det_u_vec_arr</span><span class="p">,</span> <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">)</span>
         <span class="p">)</span>
 
-        <span class="k">return</span> <span class="n">grad_image</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span></div>
+        <span class="n">grad_ray</span> <span class="o">=</span> <span class="n">grad_do</span> <span class="o">=</span> <span class="n">grad_duv</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">]):</span>
+            <span class="n">image_f</span> <span class="o">=</span> <span class="n">image</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+            <span class="n">d_image</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">image_f</span><span class="p">)</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">_launch</span><span class="p">(</span><span class="n">ray_d</span><span class="p">,</span> <span class="n">det_o</span><span class="p">,</span> <span class="n">det_uv</span><span class="p">):</span>
+                <span class="n">sino</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="n">num_detectors</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+                <span class="n">_parallel_2d_forward_kernel</span><span class="p">[</span><span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span><span class="p">,</span> <span class="n">numba_stream</span><span class="p">](</span>
+                    <span class="n">d_image</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">sino</span><span class="p">),</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">num_detectors</span><span class="p">,</span>
+                    <span class="n">_DTYPE</span><span class="p">(</span><span class="n">detector_spacing</span><span class="p">),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">ray_d</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_o</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_uv</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()),</span>
+                    <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="k">return</span> <span class="n">sino</span>
+
+            <span class="n">grad_ray</span><span class="p">,</span> <span class="n">grad_do</span><span class="p">,</span> <span class="n">grad_duv</span> <span class="o">=</span> <span class="n">_fd_geometry_grads</span><span class="p">(</span>
+                <span class="n">_launch</span><span class="p">,</span> <span class="p">[</span><span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">],</span>
+                <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">],</span> <span class="n">grad_sinogram</span><span class="p">,</span>
+                <span class="p">[</span><span class="n">_FD_REL_EPS_VEC</span><span class="p">,</span> <span class="n">_FD_REL_EPS_POS</span><span class="p">,</span> <span class="n">_FD_REL_EPS_VEC</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">grad_image</span><span class="p">,</span> <span class="n">grad_ray</span><span class="p">,</span> <span class="n">grad_do</span><span class="p">,</span> <span class="n">grad_duv</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span></div>
 </div>
 
 
@@ -529,7 +605,8 @@
             <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">)</span>
         <span class="p">)</span>
 
-        <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">)</span>
+        <span class="c1"># image saved for the (optional) finite-difference geometry gradients.</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">)</span>
         <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span> <span class="o">=</span> <span class="p">(</span><span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">sinogram</span></div>
 
@@ -538,7 +615,7 @@
 <a class="viewcode-back" href="../../api.html#diffct.FanProjectorFunction.backward">[docs]</a>
     <span class="nd">@staticmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">backward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">grad_sinogram</span><span class="p">):</span>
-        <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">saved_tensors</span>
+        <span class="n">image</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">saved_tensors</span>
         <span class="p">(</span><span class="n">n_det</span><span class="p">,</span> <span class="n">det_spacing</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span>
         <span class="n">device</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">get_device</span><span class="p">(</span><span class="n">grad_sinogram</span><span class="p">)</span>
         <span class="n">grad_sinogram</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">grad_sinogram</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
@@ -571,7 +648,30 @@
             <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">)</span>
         <span class="p">)</span>
 
-        <span class="k">return</span> <span class="n">grad_img</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span></div>
+        <span class="n">grad_src</span> <span class="o">=</span> <span class="n">grad_dc</span> <span class="o">=</span> <span class="n">grad_duv</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">]):</span>
+            <span class="n">image_f</span> <span class="o">=</span> <span class="n">image</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+            <span class="n">d_image</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">image_f</span><span class="p">)</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">_launch</span><span class="p">(</span><span class="n">src_p</span><span class="p">,</span> <span class="n">det_c</span><span class="p">,</span> <span class="n">det_uv</span><span class="p">):</span>
+                <span class="n">sino</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+                <span class="n">_fan_2d_forward_kernel</span><span class="p">[</span><span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span><span class="p">,</span> <span class="n">numba_stream</span><span class="p">](</span>
+                    <span class="n">d_image</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">sino</span><span class="p">),</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span><span class="p">,</span>
+                    <span class="n">_DTYPE</span><span class="p">(</span><span class="n">det_spacing</span><span class="p">),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">src_p</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_c</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_uv</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()),</span>
+                    <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="k">return</span> <span class="n">sino</span>
+
+            <span class="n">grad_src</span><span class="p">,</span> <span class="n">grad_dc</span><span class="p">,</span> <span class="n">grad_duv</span> <span class="o">=</span> <span class="n">_fd_geometry_grads</span><span class="p">(</span>
+                <span class="n">_launch</span><span class="p">,</span> <span class="p">[</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">],</span>
+                <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">],</span> <span class="n">grad_sinogram</span><span class="p">,</span>
+                <span class="p">[</span><span class="n">_FD_REL_EPS_POS</span><span class="p">,</span> <span class="n">_FD_REL_EPS_POS</span><span class="p">,</span> <span class="n">_FD_REL_EPS_VEC</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">grad_img</span><span class="p">,</span> <span class="n">grad_src</span><span class="p">,</span> <span class="n">grad_dc</span><span class="p">,</span> <span class="n">grad_duv</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span></div>
 </div>
 
 
@@ -851,7 +951,9 @@
             <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">cz</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">)</span>
         <span class="p">)</span>
 
-        <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">)</span>
+        <span class="c1"># The volume is saved for the (optional) finite-difference geometry</span>
+        <span class="c1"># gradients; save_for_backward stores a reference, not a copy.</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span><span class="n">volume</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">)</span>
         <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span> <span class="o">=</span> <span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">sino</span></div>
 
@@ -860,7 +962,7 @@
 <a class="viewcode-back" href="../../api.html#diffct.ConeProjectorFunction.backward">[docs]</a>
     <span class="nd">@staticmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">backward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">grad_sinogram</span><span class="p">):</span>
-        <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">saved_tensors</span>
+        <span class="n">volume</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">saved_tensors</span>
         <span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span>
         <span class="n">device</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">get_device</span><span class="p">(</span><span class="n">grad_sinogram</span><span class="p">)</span>
         <span class="n">grad_sinogram</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">grad_sinogram</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
@@ -898,7 +1000,34 @@
         <span class="p">)</span>
 
         <span class="n">grad_vol</span> <span class="o">=</span> <span class="n">grad_vol_perm</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
-        <span class="k">return</span> <span class="n">grad_vol</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span></div>
+
+        <span class="c1"># Optional finite-difference geometry gradients (only when requested).</span>
+        <span class="n">grad_src</span> <span class="o">=</span> <span class="n">grad_dc</span> <span class="o">=</span> <span class="n">grad_duv</span> <span class="o">=</span> <span class="n">grad_dvv</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">5</span><span class="p">]):</span>
+            <span class="n">volume_perm</span> <span class="o">=</span> <span class="n">volume</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+            <span class="n">d_vol</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">volume_perm</span><span class="p">)</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">_launch</span><span class="p">(</span><span class="n">src_p</span><span class="p">,</span> <span class="n">det_c</span><span class="p">,</span> <span class="n">det_uv</span><span class="p">,</span> <span class="n">det_vv</span><span class="p">):</span>
+                <span class="n">sino</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+                <span class="n">_cone_3d_forward_kernel</span><span class="p">[</span><span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span><span class="p">,</span> <span class="n">numba_stream</span><span class="p">](</span>
+                    <span class="n">d_vol</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">sino</span><span class="p">),</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">,</span>
+                    <span class="n">_DTYPE</span><span class="p">(</span><span class="n">du</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">dv</span><span class="p">),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">src_p</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_c</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_uv</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">det_vv</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()),</span>
+                    <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">cz</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="k">return</span> <span class="n">sino</span>
+
+            <span class="n">grad_src</span><span class="p">,</span> <span class="n">grad_dc</span><span class="p">,</span> <span class="n">grad_duv</span><span class="p">,</span> <span class="n">grad_dvv</span> <span class="o">=</span> <span class="n">_fd_geometry_grads</span><span class="p">(</span>
+                <span class="n">_launch</span><span class="p">,</span>
+                <span class="p">[</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">],</span>
+                <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">5</span><span class="p">],</span> <span class="n">grad_sinogram</span><span class="p">,</span>
+                <span class="p">[</span><span class="n">_FD_REL_EPS_POS</span><span class="p">,</span> <span class="n">_FD_REL_EPS_POS</span><span class="p">,</span> <span class="n">_FD_REL_EPS_VEC</span><span class="p">,</span> <span class="n">_FD_REL_EPS_VEC</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">grad_vol</span><span class="p">,</span> <span class="n">grad_src</span><span class="p">,</span> <span class="n">grad_dc</span><span class="p">,</span> <span class="n">grad_duv</span><span class="p">,</span> <span class="n">grad_dvv</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span></div>
 </div>
 
 
