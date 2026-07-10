@@ -106,30 +106,9 @@ _PARALLEL_2D_FORWARD_SOURCE = """
             float seg_len = t_next - t;
 
             if (seg_len > eps) {
-                // Bilinear interpolation at midpoint
-                float t_mid = t + seg_len * 0.5f;
-                float mid_x = pnt_x + t_mid * dir_x + cx;
-                float mid_y = pnt_y + t_mid * dir_y + cy;
-
-                int ix0 = (int)metal::floor(mid_x);
-                int iy0 = (int)metal::floor(mid_y);
-                float dx = mid_x - (float)ix0;
-                float dy = mid_y - (float)iy0;
-
-                ix0 = metal::max(0, metal::min(ix0, Nx - 2));
-                iy0 = metal::max(0, metal::min(iy0, Ny - 2));
-
-                float omdx = 1.0f - dx;
-                float omdy = 1.0f - dy;
-
-                float v00 = image[iy0 * Nx + ix0];
-                float v10 = image[iy0 * Nx + ix0 + 1];
-                float v01 = image[(iy0 + 1) * Nx + ix0];
-                float v11 = image[(iy0 + 1) * Nx + ix0 + 1];
-
-                float val = (v00 * omdx + v10 * dx) * omdy +
-                            (v01 * omdx + v11 * dx) * dy;
-                accum += val * seg_len;
+                // Cell-constant accumulation (matches the CUDA Siddon kernel:
+                // cell k spans [k - c, k + 1 - c), center at k + 0.5 - c)
+                accum += image[iy * Nx + ix] * seg_len;
             }
         }
 
@@ -237,27 +216,9 @@ _PARALLEL_2D_BACKWARD_SOURCE = """
             float seg_len = t_next - t;
 
             if (seg_len > eps) {
-                float t_mid = t + seg_len * 0.5f;
-                float mid_x = pnt_x + t_mid * dir_x + cx;
-                float mid_y = pnt_y + t_mid * dir_y + cy;
-
-                int ix0 = (int)metal::floor(mid_x);
-                int iy0 = (int)metal::floor(mid_y);
-                float dx = mid_x - (float)ix0;
-                float dy = mid_y - (float)iy0;
-
-                ix0 = metal::max(0, metal::min(ix0, Nx - 2));
-                iy0 = metal::max(0, metal::min(iy0, Ny - 2));
-
-                float omdx = 1.0f - dx;
-                float omdy = 1.0f - dy;
-                float cval = val * seg_len;
-
-                // Atomic add for backprojection (thread safety)
-                atomic_fetch_add_explicit(&grad_image[iy0 * Nx + ix0],         cval * omdx * omdy, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_image[iy0 * Nx + ix0 + 1],     cval * dx   * omdy, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_image[(iy0 + 1) * Nx + ix0],   cval * omdx * dy,   memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_image[(iy0 + 1) * Nx + ix0 + 1], cval * dx * dy,   memory_order_relaxed);
+                // Cell-constant adjoint of the forward kernel (atomic: several
+                // rays may hit the same cell)
+                atomic_fetch_add_explicit(&grad_image[iy * Nx + ix], val * seg_len, memory_order_relaxed);
             }
         }
 

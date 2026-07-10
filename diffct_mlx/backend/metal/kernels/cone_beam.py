@@ -148,41 +148,10 @@ _CONE_3D_FORWARD_SOURCE = """
             float seg_len = t_next - t;
 
             if (seg_len > eps) {
-                // Trilinear interpolation at midpoint
-                float t_mid = t + seg_len * 0.5f;
-                float mid_x = src_x + t_mid * dir_x + cx;
-                float mid_y = src_y + t_mid * dir_y + cy;
-                float mid_z = src_z + t_mid * dir_z + cz;
-
-                int ix0 = (int)metal::floor(mid_x);
-                int iy0 = (int)metal::floor(mid_y);
-                int iz0 = (int)metal::floor(mid_z);
-                float dx = mid_x - (float)ix0;
-                float dy = mid_y - (float)iy0;
-                float dz = mid_z - (float)iz0;
-
-                ix0 = metal::max(0, metal::min(ix0, Nx - 2));
-                iy0 = metal::max(0, metal::min(iy0, Ny - 2));
-                iz0 = metal::max(0, metal::min(iz0, Nz - 2));
-
-                float omdx = 1.0f - dx;
-                float omdy = 1.0f - dy;
-                float omdz = 1.0f - dz;
-
-                // Volume layout: (Nx, Ny, Nz) = WHD permuted
-                int base = ix0 * Ny * Nz + iy0 * Nz + iz0;
-                int yz_stride = Ny * Nz;
-
-                float val = vol[base]                         * omdx * omdy * omdz +
-                            vol[base + yz_stride]             * dx   * omdy * omdz +
-                            vol[base + Nz]                    * omdx * dy   * omdz +
-                            vol[base + 1]                     * omdx * omdy * dz   +
-                            vol[base + yz_stride + Nz]        * dx   * dy   * omdz +
-                            vol[base + yz_stride + 1]         * dx   * omdy * dz   +
-                            vol[base + Nz + 1]                * omdx * dy   * dz   +
-                            vol[base + yz_stride + Nz + 1]    * dx   * dy   * dz;
-
-                accum += val * seg_len * voxel_spacing;
+                // Cell-constant accumulation (matches the CUDA Siddon kernel:
+                // cell k spans [k - c, k + 1 - c), center at k + 0.5 - c).
+                // Volume layout: (Nx, Ny, Nz) = WHD permuted.
+                accum += vol[ix * Ny * Nz + iy * Nz + iz] * seg_len;
             }
         }
 
@@ -334,38 +303,9 @@ _CONE_3D_BACKWARD_SOURCE = """
             float seg_len = t_next - t;
 
             if (seg_len > eps) {
-                float t_mid = t + seg_len * 0.5f;
-                float mid_x = src_x + t_mid * dir_x + cx;
-                float mid_y = src_y + t_mid * dir_y + cy;
-                float mid_z = src_z + t_mid * dir_z + cz;
-
-                int ix0 = (int)metal::floor(mid_x);
-                int iy0 = (int)metal::floor(mid_y);
-                int iz0 = (int)metal::floor(mid_z);
-                float dx = mid_x - (float)ix0;
-                float dy = mid_y - (float)iy0;
-                float dz = mid_z - (float)iz0;
-
-                ix0 = metal::max(0, metal::min(ix0, Nx - 2));
-                iy0 = metal::max(0, metal::min(iy0, Ny - 2));
-                iz0 = metal::max(0, metal::min(iz0, Nz - 2));
-
-                float omdx = 1.0f - dx;
-                float omdy = 1.0f - dy;
-                float omdz = 1.0f - dz;
-                float cval = g * seg_len;
-
-                int base = ix0 * yz_stride + iy0 * Nz + iz0;
-
-                // Atomic backprojection with trilinear weights
-                atomic_fetch_add_explicit(&grad_vol[base],                         cval * omdx * omdy * omdz, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_vol[base + yz_stride],             cval * dx   * omdy * omdz, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_vol[base + Nz],                    cval * omdx * dy   * omdz, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_vol[base + 1],                     cval * omdx * omdy * dz,   memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_vol[base + yz_stride + Nz],        cval * dx   * dy   * omdz, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_vol[base + yz_stride + 1],         cval * dx   * omdy * dz,   memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_vol[base + Nz + 1],                cval * omdx * dy   * dz,   memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_vol[base + yz_stride + Nz + 1],    cval * dx   * dy   * dz,   memory_order_relaxed);
+                // Cell-constant adjoint of the forward kernel (atomic: several
+                // rays may hit the same cell)
+                atomic_fetch_add_explicit(&grad_vol[ix * yz_stride + iy * Nz + iz], g * seg_len, memory_order_relaxed);
             }
         }
 
