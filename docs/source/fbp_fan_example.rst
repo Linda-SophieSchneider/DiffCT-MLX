@@ -1,5 +1,5 @@
 Fan Beam Filtered Backprojection (FBP)
-====================================
+======================================
 
 This example demonstrates 2D fan beam filtered backprojection (FBP) reconstruction using the `FanProjectorFunction` and `FanBackprojectorFunction` from `diffct`.
 

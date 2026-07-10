@@ -1,5 +1,5 @@
 Parallel Beam Iterative Reconstruction
-=====================================
+======================================
 
 This example demonstrates 2D parallel beam iterative reconstruction using the differentiable `ParallelProjectorFunction` and `ParallelBackprojectorFunction` from `diffct`.
 

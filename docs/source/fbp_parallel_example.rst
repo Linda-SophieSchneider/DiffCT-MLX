@@ -1,5 +1,5 @@
 Parallel Beam Filtered Backprojection (FBP)
-==========================================
+===========================================
 
 This example demonstrates 2D parallel beam filtered backprojection (FBP) reconstruction using the `ParallelProjectorFunction` and `ParallelBackprojectorFunction` from `diffct`.
 
