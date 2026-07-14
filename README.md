@@ -417,14 +417,15 @@ pytest tests/benchmarks/ --benchmark-only    # opt-in perf suite
 If you use this library in your research, please cite:
 
 ```bibtex
-@software{diffct2025,
-  author       = {Yipeng Sun},
-  title        = {diffct: Differentiable Computed Tomography 
-                 Reconstruction with CUDA},
-  year         = 2025,
-  publisher    = {Zenodo},
-  doi          = {10.5281/zenodo.14999333},
-  url          = {https://doi.org/10.5281/zenodo.14999333}
+@article{202605.1446,
+  doi       = {10.20944/preprints202605.1446.v1},
+  url       = {https://doi.org/10.20944/preprints202605.1446.v1},
+  year      = 2026,
+  month     = {May},
+  publisher = {Preprints},
+  author    = {Yipeng Sun and Linda-Sophie Schneider and Chengze ye and Andreas Maier},
+  title     = {diffct: Differentiable CT Operators from Circular Orbits to Arbitrary Trajectories},
+  journal   = {Preprints}
 }
 ```
 
