@@ -15,6 +15,8 @@ from .utils import (
     _grid_2d,
     _grid_3d,
 )
+import os
+
 from .kernels import (
     _parallel_2d_forward_kernel,
     _parallel_2d_backward_kernel,
@@ -22,6 +24,7 @@ from .kernels import (
     _fan_2d_backward_kernel,
     _cone_3d_forward_kernel,
     _cone_3d_backward_kernel,
+    _cone_3d_geometry_grad_kernel,
 )
 
 
@@ -47,6 +50,11 @@ from .kernels import (
 # --------------------------------------------------------------------------- #
 _FD_REL_EPS_POS = 1e-3   # relative step for position-like arrays (src, det center)
 _FD_REL_EPS_VEC = 1e-2   # relative step for direction-vector arrays
+
+# Cone geometry gradients: "analytic" (default — one closed-form kernel pass,
+# gradients for all four geometry arrays; see _cone_3d_geometry_grad_kernel)
+# or "fd" (finite differences of the forward kernel, 6 passes per array).
+_GEOMETRY_VJP_MODE = os.getenv("DIFFCT_GEOMETRY_VJP", "analytic").strip().lower()
 
 
 def _fd_eps(geom, rel):
@@ -882,11 +890,40 @@ class ConeProjectorFunction(torch.autograd.Function):
 
         grad_vol = grad_vol_perm.permute(2, 1, 0).contiguous()
 
-        # Optional finite-difference geometry gradients (only when requested).
+        # Optional geometry gradients (only when requested).
         grad_src = grad_dc = grad_duv = grad_dvv = None
         if any(ctx.needs_input_grad[1:5]):
             volume_perm = volume.to(dtype=torch.float32).contiguous().permute(2, 1, 0).contiguous()
             d_vol = TorchCUDABridge.tensor_to_cuda_array(volume_perm)
+
+            if _GEOMETRY_VJP_MODE != "fd":
+                # Analytic geometry gradients: one kernel pass yields all four
+                # arrays (per-ray closed form contracted with the cotangent).
+                grad_src = torch.zeros_like(src_pos)
+                grad_dc = torch.zeros_like(det_center)
+                grad_duv = torch.zeros_like(det_u_vec)
+                grad_dvv = torch.zeros_like(det_v_vec)
+                _cone_3d_geometry_grad_kernel[grid, tpb, numba_stream](
+                    d_vol, W, H, D,
+                    d_grad_sino, n_views, det_u, det_v,
+                    _DTYPE(du), _DTYPE(dv),
+                    d_src_pos_arr, d_det_center_arr, d_det_u_vec_arr, d_det_v_vec_arr,
+                    cx, cy, cz, _DTYPE(voxel_spacing),
+                    TorchCUDABridge.tensor_to_cuda_array(grad_src),
+                    TorchCUDABridge.tensor_to_cuda_array(grad_dc),
+                    TorchCUDABridge.tensor_to_cuda_array(grad_duv),
+                    TorchCUDABridge.tensor_to_cuda_array(grad_dvv),
+                )
+                if not ctx.needs_input_grad[1]:
+                    grad_src = None
+                if not ctx.needs_input_grad[2]:
+                    grad_dc = None
+                if not ctx.needs_input_grad[3]:
+                    grad_duv = None
+                if not ctx.needs_input_grad[4]:
+                    grad_dvv = None
+                return (grad_vol, grad_src, grad_dc, grad_duv, grad_dvv,
+                        None, None, None, None, None)
 
             def _launch(src_p, det_c, det_uv, det_vv):
                 sino = torch.zeros((n_views, det_u, det_v), dtype=torch.float32, device=device)

@@ -11,6 +11,30 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Analytic geometry gradients for the cone Siddon projector (CUDA)**:
+  `_cone_3d_geometry_grad_kernel` computes closed-form per-view gradients
+  for `src_pos`, `det_center`, `det_u_vec` and `det_v_vec` in a single
+  kernel pass (endpoint derivatives of the trilinearly smoothed line
+  integral, with the projected moment accumulated by the same segment
+  quadrature as the gradient terms). Default for cone geometry gradients
+  (`DIFFCT_GEOMETRY_VJP=fd` forces finite differences); validated against
+  an exact torch-autograd `grid_sample` reference (cos > 0.998, norm ratio
+  within 1%) and ~4× faster than the FD path.
+- **Footprint forward projectors are geometry-trainable** (parallel, fan,
+  cone): finite-difference VJPs for their geometry arrays, so the operator
+  layer's default `projector_mode="footprint"` — and pipelines built on it,
+  e.g. differentiable view-coverage objectives — receive source/detector
+  gradients. Backprojectors remain data-only.
+
+### Known issues
+
+- The **Metal** analytic geometry kernel (`cone_3d_geometry_grad_kernel`,
+  `DIFFCT_GEOMETRY_VJP=1` on MLX) is stale: it still samples at integer-index
+  nodes (pre-d668ede convention) and its closed-form `-A/L` substitution
+  carries a quadrature-mismatch bias in the translation gradients. Use the
+  default FD `src_pos` VJP on MLX until it is ported to match the CUDA
+  kernel (see the FIXME in `diffct_mlx/backend/metal/kernels/cone_beam.py`).
+
 - **Trainable geometry on the Torch backend**: the Siddon projectors
   (parallel/fan/cone) return finite-difference VJPs for their per-view
   geometry arrays (`src_pos`, `det_center`/`det_origin`, `det_u_vec`,

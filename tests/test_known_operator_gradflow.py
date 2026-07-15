@@ -153,9 +153,15 @@ def test_geometry_gradients_exact_contraction():
     def P(s):
         return dct.cone_forward(vol, s, dc, du_, dv_, 40, 40, 1.0, 1.0, 1.0)
 
+    import diffct.projectors as Pm
     ref = (P(src) * 0.9).detach()
-    s_t = src.detach().clone().requires_grad_(True)
-    (g,) = torch.autograd.grad((P(s_t) - ref).square().sum(), s_t)
+    prev = Pm._GEOMETRY_VJP_MODE
+    Pm._GEOMETRY_VJP_MODE = "fd"      # this test pins the FD implementation
+    try:
+        s_t = src.detach().clone().requires_grad_(True)
+        (g,) = torch.autograd.grad((P(s_t) - ref).square().sum(), s_t)
+    finally:
+        Pm._GEOMETRY_VJP_MODE = prev
 
     with torch.no_grad():
         cot = 2.0 * (P(src) - ref)
@@ -217,17 +223,112 @@ def test_geometry_gradients_recover_pose():
 
 @pytest.mark.cuda
 def test_geometry_gradients_contract():
-    """Contracts: no geometry grads unless requested (fast path returns None
-    via autograd), and the footprint family stays data-only."""
+    """Contracts: footprint FORWARDS carry FD geometry grads (the operator
+    layer defaults to footprint), backprojectors stay data-only."""
     _skip_if_no_cuda()
     src, dc, du_, dv_ = _geo_3d()
     vol = torch.rand(24, 24, 24, device=DEV)
 
-    # footprint projectors: geometry remains non-differentiable
     src_t = src.detach().clone().requires_grad_(True)
-    y = dct.cone_forward_footprint(vol, src_t, dc, du_, dv_, 40, 40, 1.0, 1.0, 1.0).sum()
-    (gs,) = torch.autograd.grad(y, src_t, allow_unused=True)
-    assert gs is None
+    y = dct.cone_forward_footprint(vol, src_t, dc, du_, dv_, 40, 40, 1.0, 1.0, 1.0)
+    (y - (y * 0.9).detach()).square().sum().backward()
+    assert src_t.grad is not None and src_t.grad.abs().max() > 0
+
+    # backprojectors: geometry remains non-differentiable
+    sino = torch.rand(12, 40, 40, device=DEV)
+    src_b = src.detach().clone().requires_grad_(True)
+    z = dct.cone_backward(sino, src_b, dc, du_, dv_, 24, 24, 24, 1.0, 1.0, 1.0).sum()
+    (gb,) = torch.autograd.grad(z, src_b, allow_unused=True)
+    assert gb is None
+
+
+@pytest.mark.cuda
+def test_analytic_geometry_gradients_match_trilinear_reference():
+    """The analytic cone geometry kernel (default) must reproduce the exact
+    autograd gradient of the trilinearly interpolated line integral — checked
+    against a pure-torch grid_sample reference with a fixed random cotangent."""
+    _skip_if_no_cuda()
+    import torch.nn.functional as F
+    import diffct.projectors as P
+
+    n = 32
+    zz, yy, xx = torch.meshgrid(*[torch.arange(n, device=DEV, dtype=torch.float32)] * 3,
+                                indexing="ij")
+    vol = torch.exp(-(((xx - 16) ** 2 + (yy - 13) ** 2 + (zz - 18) ** 2) / (2 * 5.0 ** 2)))
+    src, dc, duv, dvv = dct.circular_trajectory_3d(8, 120.0, 240.0)
+    DU = DV = 48
+    gen = torch.Generator(device=DEV).manual_seed(0)
+    cot = torch.randn(8, DU, DV, generator=gen, device=DEV)
+
+    def tri_forward(s_pos, d_cen, u_vec):
+        V = vol[None, None]                  # (1,1,D,H,W); grid (x,y,z) = world axes
+        iu = torch.arange(DU, device=DEV, dtype=torch.float32) - DU * 0.5
+        iv = torch.arange(DV, device=DEV, dtype=torch.float32) - DV * 0.5
+        UU, VV = torch.meshgrid(iu, iv, indexing="ij")
+        pix = (d_cen[:, None, None, :] + UU[None, ..., None] * u_vec[:, None, None, :]
+               + VV[None, ..., None] * dvv[:, None, None, :])
+        ray = pix - s_pos[:, None, None, :]
+        dhat = ray / ray.norm(dim=-1, keepdim=True)
+        ts = torch.linspace(60.0, 180.0, 480, device=DEV)
+        dt = float(ts[1] - ts[0])
+        pts = s_pos[:, None, None, None, :] + ts[None, None, None, :, None] * dhat[..., None, :]
+        g = 2.0 * (pts + n * 0.5) / n - 1.0  # world -> voxel (+n/2) -> normalized
+        out = F.grid_sample(V, g.reshape(1, -1, 1, 1, 3), mode="bilinear",
+                            padding_mode="zeros", align_corners=False)
+        return out.reshape(8, DU, DV, -1).sum(dim=-1) * dt
+
+    s_t = src.detach().clone().requires_grad_(True)
+    d_t = dc.detach().clone().requires_grad_(True)
+    u_t = duv.detach().clone().requires_grad_(True)
+    gs_ref, gd_ref, gu_ref = torch.autograd.grad(
+        (tri_forward(s_t, d_t, u_t) * cot).sum(), (s_t, d_t, u_t))
+
+    assert P._GEOMETRY_VJP_MODE == "analytic"          # package default
+    s_k = src.detach().clone().requires_grad_(True)
+    d_k = dc.detach().clone().requires_grad_(True)
+    u_k = duv.detach().clone().requires_grad_(True)
+    out = dct.cone_forward(vol, s_k, d_k, u_k, dvv, DU, DV, 1.0, 1.0, 1.0)
+    gs_a, gd_a, gu_a = torch.autograd.grad((out * cot).sum(), (s_k, d_k, u_k))
+
+    for a, r in ((gs_a, gs_ref), (gd_a, gd_ref), (gu_a, gu_ref)):
+        cos = float((a * r).sum() / (a.norm() * r.norm()))
+        ratio = float(a.norm() / r.norm())
+        assert cos > 0.99 and abs(ratio - 1.0) < 0.06, (cos, ratio)
+
+
+@pytest.mark.cuda
+def test_analytic_and_fd_geometry_modes_agree():
+    """DIFFCT_GEOMETRY_VJP=fd and the analytic default are two smoothings of
+    the same derivative — with a structured cotangent they must agree in
+    direction for every geometry array."""
+    _skip_if_no_cuda()
+    import diffct.projectors as P
+
+    n = 32
+    zz, yy, xx = torch.meshgrid(*[torch.arange(n, device=DEV, dtype=torch.float32)] * 3,
+                                indexing="ij")
+    vol = torch.exp(-(((xx - 16) ** 2 + (yy - 13) ** 2 + (zz - 18) ** 2) / (2 * 5.0 ** 2)))
+    src, dc, duv, dvv = dct.circular_trajectory_3d(12, 120.0, 240.0)
+    shift = torch.tensor([1.2, -0.8, 0.9], device=DEV)
+    ref = dct.cone_forward(vol, src + shift, dc, duv, dvv, 48, 48, 1.0, 1.0, 1.0).detach()
+
+    def grads(mode):
+        prev = P._GEOMETRY_VJP_MODE
+        P._GEOMETRY_VJP_MODE = mode
+        try:
+            args = [t.detach().clone().requires_grad_(True) for t in (src, dc, duv, dvv)]
+            loss = (dct.cone_forward(vol, *args, 48, 48, 1.0, 1.0, 1.0) - ref).square().sum()
+            return torch.autograd.grad(loss, args)
+        finally:
+            P._GEOMETRY_VJP_MODE = prev
+
+    thresholds = (0.95, 0.95, 0.55, 0.55)   # positions strict; direction-vector
+    # gradients are moment-weighted and react more to the different smoothings
+    # (FD-of-cell-constant vs analytic-of-trilinear); their hard correctness pin
+    # is the trilinear-reference test above.
+    for (a, f), thr in zip(zip(grads("analytic"), grads("fd")), thresholds):
+        cos = float((a * f).sum() / (a.norm() * f.norm()))
+        assert cos > thr, (cos, thr)
 
 
 # --------------------------------------------------------------------------- #

@@ -827,6 +827,18 @@ cone_3d_footprint_backward_sparse_kernel = mx.fast.metal_kernel(
 # ∂a_p/∂p_mm via p = det_center + u_off_mm*u_vec + v_off_mm*v_vec.
 # ============================================================================
 
+# FIXME(Apple-side): this analytic geometry kernel is stale on two counts
+# after the 2026-07-10 cell-constant Siddon fix (d668ede):
+#   1. it still samples the volume trilinearly at integer-index NODES and its
+#      forward value no longer matches the fixed forward kernel;
+#   2. it substitutes the projected moment with the closed form -A/L, which
+#      cancels against the G terms with a DIFFERENT quadrature and leaves a
+#      systematic per-ray bias that dominates the translation gradients.
+# The CUDA port (diffct/kernels/cone_beam.py::_cone_3d_geometry_grad_kernel)
+# fixes both — center-based (k+0.5) trilinear sampling and a numerically
+# accumulated projected moment S = int lambda (grad_mu . d_hat) dt — and is
+# validated against an exact torch-autograd trilinear reference. Port those
+# two changes here before enabling DIFFCT_GEOMETRY_VJP=1 on MLX.
 _CONE_3D_GEOMETRY_GRAD_SOURCE = """
     uint iview = thread_position_in_grid.x;
     uint iu    = thread_position_in_grid.y;

@@ -20,6 +20,7 @@ from .cone_beam import (
     _cone_3d_forward_kernel,
     _cone_3d_backward_kernel,
     _cone_3d_fdk_backproject_kernel,
+    _cone_3d_geometry_grad_kernel,
 )
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     '_cone_3d_forward_kernel',
     '_cone_3d_backward_kernel',
     '_cone_3d_fdk_backproject_kernel',
+    '_cone_3d_geometry_grad_kernel',
 ]

@@ -165,20 +165,30 @@ sizes, Plug-and-Play priors). Verified by `tests/test_known_operator_gradflow.py
   when the input carries gradients, so unrolled TV gradient steps are
   second-order differentiable (mirrors `mx.grad` composability on MLX).
 
-**Trainable geometry (pose/trajectory optimization).** The Torch Siddon
-projectors (parallel/fan/cone) also provide gradients w.r.t. their per-view
-geometry arrays (`src_pos`, `det_center`/`det_origin`, `det_u_vec`,
-`det_v_vec`, `ray_dir`) via finite-difference VJPs: computed only for inputs
-with `requires_grad` (the data-only path pays nothing), two forward passes per
-geometry component, step size chosen relative to each array's magnitude (works
-for mm- and m-scale setups alike). Semantics to know: Siddon ray weights are
-piecewise-linear in the geometry, so these are *smoothed subgradients* — exact
-against a matched-step contraction (pinned by tests), descent-quality in
-practice (see the pose-recovery test), but not second-order differentiable.
-On MLX, the cone projector has the equivalent VJP (`src_pos` by default, all
-four arrays with `DIFFCT_GEOMETRY_VJP=1`). The **footprint** family stays
-data-only, and stochastic simulation ops (`add_poisson_noise`) are not
-differentiable.
+**Trainable geometry (pose/trajectory optimization).** All Torch forward
+projectors provide gradients w.r.t. their per-view geometry arrays
+(`src_pos`, `det_center`/`det_origin`, `det_u_vec`, `det_v_vec`, `ray_dir`),
+computed only for inputs with `requires_grad` (the data-only path pays
+nothing):
+
+- **Cone Siddon** uses an **analytic geometry kernel** (default): one kernel
+  pass yields closed-form gradients for all four geometry arrays — the
+  per-ray endpoint derivatives of the trilinearly smoothed line integral,
+  validated against an exact torch-autograd reference (cos > 0.998) and ~4×
+  faster than finite differences. Set `DIFFCT_GEOMETRY_VJP=fd` to force the
+  FD path instead.
+- **Fan/parallel Siddon and all footprint forwards** use finite-difference
+  VJPs (two forward passes per geometry component, magnitude-relative step —
+  mm- and m-scale setups both work). The operator layer's default
+  `projector_mode="footprint"` is therefore geometry-trainable too.
+
+Semantics to know: the discrete forwards are piecewise-linear in the
+geometry, so all of these are *smoothed* gradients — descent-quality in
+practice (see the pose-recovery tests), but not second-order differentiable.
+Backprojectors remain data-only, and stochastic simulation ops
+(`add_poisson_noise`) are not differentiable. On MLX, the cone projector has
+an FD `src_pos` VJP by default; its analytic kernel
+(`DIFFCT_GEOMETRY_VJP=1`) is currently stale (see CHANGELOG known issues).
 
 **Recommended step-size parametrization for unrolled networks.** A free
 trainable step can wander into the divergent regime, where positivity clamps

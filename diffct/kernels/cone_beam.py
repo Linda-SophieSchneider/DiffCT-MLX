@@ -575,3 +575,245 @@ def _cone_3d_fdk_backproject_kernel(
         accum += w * sample
 
     d_vol[ix, iy, iz] = accum
+
+
+@_FASTMATH_DECORATOR
+def _cone_3d_geometry_grad_kernel(
+    d_vol, Nx, Ny, Nz,
+    d_cot, n_views, n_u, n_v,
+    du, dv, d_src_pos, d_det_center, d_det_u_vec, d_det_v_vec,
+    cx, cy, cz, voxel_spacing,
+    d_grad_src, d_grad_dc, d_grad_duv, d_grad_dvv,
+):
+    """Analytic geometry gradients of the cone-beam line integral.
+
+    For each detector ray, differentiates the continuous line integral
+    ``a = int mu(s + t*(p - s)/L) dt`` w.r.t. the ray endpoints (source ``s``
+    and detector pixel ``p``), evaluated with a TRILINEARLY interpolated
+    ``mu`` so the spatial gradient exists (the cell-constant forward model is
+    piecewise constant; the trilinear model is its canonical smoothing — the
+    same convention as the MLX analytic geometry kernel):
+
+        da/ds = int (1-lambda) grad_mu dt + d_hat * int lambda (grad_mu . d_hat) dt
+        da/dp = int    lambda  grad_mu dt - d_hat * int lambda (grad_mu . d_hat) dt
+
+    with ``lambda = t / L``. (The projected moment ``S = int lambda
+    (grad_mu . d_hat) dt`` equals ``-A/L`` for rays whose mu vanishes at the
+    volume boundary, but it is accumulated with the same segment quadrature as
+    the G terms — substituting the closed form would subtract two large terms
+    with different quadrature errors and leave a systematic per-ray bias that
+    dominates the translation gradients.) Gradients for ``det_center`` /
+    ``det_v_vec`` follow from ``p = det_center + u_off * u_vec + v_off * v_vec``
+    by the chain rule. The traversal happens in voxel coordinates (positions
+    divided by ``voxel_spacing``) and the forward returns voxel-unit line
+    integrals, so millimetre-space gradients carry a ``1 / voxel_spacing``
+    factor (u/v offsets in mm cancel it for the vector gradients).
+
+    Grid: ``(iv, iu, iview) = cuda.grid(3)`` — one thread per detector ray;
+    per-view gradients are accumulated with atomics.
+    """
+    iv, iu, iview = cuda.grid(3)
+    if iview >= n_views or iu >= n_u or iv >= n_v:
+        return
+
+    g = d_cot[iview, iu, iv]
+    if g == _ZERO:
+        return
+
+    eps = _EPSILON
+
+    src_x = d_src_pos[iview, 0] / voxel_spacing
+    src_y = d_src_pos[iview, 1] / voxel_spacing
+    src_z = d_src_pos[iview, 2] / voxel_spacing
+
+    det_cx = d_det_center[iview, 0] / voxel_spacing
+    det_cy = d_det_center[iview, 1] / voxel_spacing
+    det_cz = d_det_center[iview, 2] / voxel_spacing
+
+    u_vec_x = d_det_u_vec[iview, 0]
+    u_vec_y = d_det_u_vec[iview, 1]
+    u_vec_z = d_det_u_vec[iview, 2]
+
+    v_vec_x = d_det_v_vec[iview, 0]
+    v_vec_y = d_det_v_vec[iview, 1]
+    v_vec_z = d_det_v_vec[iview, 2]
+
+    # Detector pixel offsets — package-wide (k - n/2) grid convention.
+    u_off_mm = (np.float32(iu) - np.float32(n_u) * _HALF) * du
+    v_off_mm = (np.float32(iv) - np.float32(n_v) * _HALF) * dv
+    u_off_vox = u_off_mm / voxel_spacing
+    v_off_vox = v_off_mm / voxel_spacing
+
+    det_x = det_cx + u_off_vox * u_vec_x + v_off_vox * v_vec_x
+    det_y = det_cy + u_off_vox * u_vec_y + v_off_vox * v_vec_y
+    det_z = det_cz + u_off_vox * u_vec_z + v_off_vox * v_vec_z
+
+    dir_x = det_x - src_x
+    dir_y = det_y - src_y
+    dir_z = det_z - src_z
+    length = math.sqrt(dir_x * dir_x + dir_y * dir_y + dir_z * dir_z)
+    if length < eps:
+        return
+    inv_len = _ONE / length
+    dir_x *= inv_len
+    dir_y *= inv_len
+    dir_z *= inv_len
+
+    t_min = -_INF
+    t_max = _INF
+
+    if abs(dir_x) > eps:
+        tx1 = (-cx - src_x) / dir_x
+        tx2 = (cx - src_x) / dir_x
+        t_min = max(t_min, min(tx1, tx2))
+        t_max = min(t_max, max(tx1, tx2))
+    elif src_x < -cx or src_x > cx:
+        return
+
+    if abs(dir_y) > eps:
+        ty1 = (-cy - src_y) / dir_y
+        ty2 = (cy - src_y) / dir_y
+        t_min = max(t_min, min(ty1, ty2))
+        t_max = min(t_max, max(ty1, ty2))
+    elif src_y < -cy or src_y > cy:
+        return
+
+    if abs(dir_z) > eps:
+        tz1 = (-cz - src_z) / dir_z
+        tz2 = (cz - src_z) / dir_z
+        t_min = max(t_min, min(tz1, tz2))
+        t_max = min(t_max, max(tz1, tz2))
+    elif src_z < -cz or src_z > cz:
+        return
+
+    if t_min >= t_max:
+        return
+
+    g1x = _ZERO
+    g1y = _ZERO
+    g1z = _ZERO
+    g2x = _ZERO
+    g2y = _ZERO
+    g2z = _ZERO
+    s_proj = _ZERO
+
+    t = t_min
+    ix = int(math.floor(src_x + t * dir_x + cx))
+    iy = int(math.floor(src_y + t * dir_y + cy))
+    iz = int(math.floor(src_z + t * dir_z + cz))
+
+    step_x = 1 if dir_x >= _ZERO else -1
+    step_y = 1 if dir_y >= _ZERO else -1
+    step_z = 1 if dir_z >= _ZERO else -1
+
+    inv_dir_x = _ONE / dir_x if abs(dir_x) > eps else _ZERO
+    inv_dir_y = _ONE / dir_y if abs(dir_y) > eps else _ZERO
+    inv_dir_z = _ONE / dir_z if abs(dir_z) > eps else _ZERO
+    dt_x = abs(inv_dir_x) if abs(dir_x) > eps else _INF
+    dt_y = abs(inv_dir_y) if abs(dir_y) > eps else _INF
+    dt_z = abs(inv_dir_z) if abs(dir_z) > eps else _INF
+
+    txn = (np.float32(ix + (1 if step_x > 0 else 0)) - cx - src_x) * inv_dir_x if abs(dir_x) > eps else _INF
+    tyn = (np.float32(iy + (1 if step_y > 0 else 0)) - cy - src_y) * inv_dir_y if abs(dir_y) > eps else _INF
+    tzn = (np.float32(iz + (1 if step_z > 0 else 0)) - cz - src_z) * inv_dir_z if abs(dir_z) > eps else _INF
+
+    while t < t_max:
+        if 0 <= ix < Nx and 0 <= iy < Ny and 0 <= iz < Nz:
+            t_next = min(min(min(txn, tyn), tzn), t_max)
+            seg_len = t_next - t
+
+            if seg_len > eps:
+                t_mid = t + seg_len * _HALF
+                mid_x = src_x + t_mid * dir_x + cx
+                mid_y = src_y + t_mid * dir_y + cy
+                mid_z = src_z + t_mid * dir_z + cz
+
+                # Trilinear cell around the segment midpoint (voxel CENTERS at
+                # k + 0.5, so shift by -0.5 before flooring).
+                fx = mid_x - _HALF
+                fy = mid_y - _HALF
+                fz = mid_z - _HALF
+                ix0 = int(math.floor(fx))
+                iy0 = int(math.floor(fy))
+                iz0 = int(math.floor(fz))
+                dx = fx - np.float32(ix0)
+                dy = fy - np.float32(iy0)
+                dz = fz - np.float32(iz0)
+
+                ix0 = max(0, min(ix0, Nx - 2))
+                iy0 = max(0, min(iy0, Ny - 2))
+                iz0 = max(0, min(iz0, Nz - 2))
+
+                omdx = _ONE - dx
+                omdy = _ONE - dy
+                omdz = _ONE - dz
+
+                v000 = d_vol[ix0, iy0, iz0]
+                v100 = d_vol[ix0 + 1, iy0, iz0]
+                v010 = d_vol[ix0, iy0 + 1, iz0]
+                v001 = d_vol[ix0, iy0, iz0 + 1]
+                v110 = d_vol[ix0 + 1, iy0 + 1, iz0]
+                v101 = d_vol[ix0 + 1, iy0, iz0 + 1]
+                v011 = d_vol[ix0, iy0 + 1, iz0 + 1]
+                v111 = d_vol[ix0 + 1, iy0 + 1, iz0 + 1]
+
+                dmu_x = (omdy * omdz * (v100 - v000) + dy * omdz * (v110 - v010)
+                         + omdy * dz * (v101 - v001) + dy * dz * (v111 - v011))
+                dmu_y = (omdx * omdz * (v010 - v000) + dx * omdz * (v110 - v100)
+                         + omdx * dz * (v011 - v001) + dx * dz * (v111 - v101))
+                dmu_z = (omdx * omdy * (v001 - v000) + dx * omdy * (v101 - v100)
+                         + omdx * dy * (v011 - v010) + dx * dy * (v111 - v110))
+
+                lam = t_mid * inv_len
+                w1 = seg_len * (_ONE - lam)
+                w2 = seg_len * lam
+
+                g1x += w1 * dmu_x
+                g1y += w1 * dmu_y
+                g1z += w1 * dmu_z
+                g2x += w2 * dmu_x
+                g2y += w2 * dmu_y
+                g2z += w2 * dmu_z
+                s_proj += w2 * (dmu_x * dir_x + dmu_y * dir_y + dmu_z * dir_z)
+
+        if txn <= tyn and txn <= tzn:
+            t = txn
+            ix += step_x
+            txn += dt_x
+        elif tyn <= txn and tyn <= tzn:
+            t = tyn
+            iy += step_y
+            tyn += dt_y
+        else:
+            t = tzn
+            iz += step_z
+            tzn += dt_z
+
+    # Voxel-space endpoint gradients; the forward returns voxel-unit line
+    # integrals of positions given in mm/voxel_spacing, so mm-space gradients
+    # carry 1/voxel_spacing.
+    inv_vs = _ONE / voxel_spacing
+
+    gs_x = g * (g1x + dir_x * s_proj) * inv_vs
+    gs_y = g * (g1y + dir_y * s_proj) * inv_vs
+    gs_z = g * (g1z + dir_z * s_proj) * inv_vs
+
+    gp_x = g * (g2x - dir_x * s_proj) * inv_vs
+    gp_y = g * (g2y - dir_y * s_proj) * inv_vs
+    gp_z = g * (g2z - dir_z * s_proj) * inv_vs
+
+    cuda.atomic.add(d_grad_src, (iview, 0), gs_x)
+    cuda.atomic.add(d_grad_src, (iview, 1), gs_y)
+    cuda.atomic.add(d_grad_src, (iview, 2), gs_z)
+
+    cuda.atomic.add(d_grad_dc, (iview, 0), gp_x)
+    cuda.atomic.add(d_grad_dc, (iview, 1), gp_y)
+    cuda.atomic.add(d_grad_dc, (iview, 2), gp_z)
+
+    cuda.atomic.add(d_grad_duv, (iview, 0), u_off_mm * gp_x)
+    cuda.atomic.add(d_grad_duv, (iview, 1), u_off_mm * gp_y)
+    cuda.atomic.add(d_grad_duv, (iview, 2), u_off_mm * gp_z)
+
+    cuda.atomic.add(d_grad_dvv, (iview, 0), v_off_mm * gp_x)
+    cuda.atomic.add(d_grad_dvv, (iview, 1), v_off_mm * gp_y)
+    cuda.atomic.add(d_grad_dvv, (iview, 2), v_off_mm * gp_z)

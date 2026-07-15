@@ -8,6 +8,11 @@ drop-in replacements. Currently: 2D parallel beam (fan / cone follow).
 import torch
 
 from .constants import _DTYPE
+from .projectors import (
+    _FD_REL_EPS_POS,
+    _FD_REL_EPS_VEC,
+    _fd_geometry_grads,
+)
 from .utils import (
     DeviceManager,
     TorchCUDABridge,
@@ -64,13 +69,14 @@ class ParallelFootprintProjectorFunction(torch.autograd.Function):
             _DTYPE(detector_spacing), d_ray, d_do, d_du, cx, cy, _DTYPE(voxel_spacing)
         )
 
-        ctx.save_for_backward(ray_dir, det_origin, det_u_vec)
+        # image saved for the (optional) finite-difference geometry gradients.
+        ctx.save_for_backward(image, ray_dir, det_origin, det_u_vec)
         ctx.intermediate = (num_detectors, detector_spacing, Ny, Nx, voxel_spacing)
         return sinogram
 
     @staticmethod
     def backward(ctx, grad_sinogram):
-        ray_dir, det_origin, det_u_vec = ctx.saved_tensors
+        image, ray_dir, det_origin, det_u_vec = ctx.saved_tensors
         num_detectors, detector_spacing, Ny, Nx, voxel_spacing = ctx.intermediate
         device = DeviceManager.get_device(grad_sinogram)
         grad_sinogram = _to_f32_contig(DeviceManager.ensure_device(grad_sinogram, device))
@@ -94,7 +100,21 @@ class ParallelFootprintProjectorFunction(torch.autograd.Function):
             d_grad_sino, n_views, num_detectors, d_img_grad, Nx, Ny,
             _DTYPE(detector_spacing), d_ray, d_do, d_du, cx, cy, _DTYPE(voxel_spacing)
         )
-        return grad_image, None, None, None, None, None, None
+
+        grad_ray = grad_do = grad_duv = None
+        if any(ctx.needs_input_grad[1:4]):
+            def _launch(ray_d, det_o, det_uv):
+                with torch.no_grad():
+                    return ParallelFootprintProjectorFunction.apply(
+                        image, ray_d, det_o, det_uv,
+                        num_detectors, detector_spacing, voxel_spacing)
+
+            grad_ray, grad_do, grad_duv = _fd_geometry_grads(
+                _launch, [ray_dir, det_origin, det_u_vec],
+                ctx.needs_input_grad[1:4], grad_sinogram,
+                [_FD_REL_EPS_VEC, _FD_REL_EPS_POS, _FD_REL_EPS_VEC])
+
+        return grad_image, grad_ray, grad_do, grad_duv, None, None, None
 
 
 class ParallelFootprintBackprojectorFunction(torch.autograd.Function):
@@ -189,13 +209,14 @@ class FanFootprintProjectorFunction(torch.autograd.Function):
             _DTYPE(detector_spacing), d_src, d_dc, d_du, cx, cy, _DTYPE(voxel_spacing)
         )
 
-        ctx.save_for_backward(src_pos, det_center, det_u_vec)
+        # image saved for the (optional) finite-difference geometry gradients.
+        ctx.save_for_backward(image, src_pos, det_center, det_u_vec)
         ctx.intermediate = (num_detectors, detector_spacing, Ny, Nx, voxel_spacing)
         return sinogram
 
     @staticmethod
     def backward(ctx, grad_sinogram):
-        src_pos, det_center, det_u_vec = ctx.saved_tensors
+        image, src_pos, det_center, det_u_vec = ctx.saved_tensors
         num_detectors, detector_spacing, Ny, Nx, voxel_spacing = ctx.intermediate
         device = DeviceManager.get_device(grad_sinogram)
         grad_sinogram = _to_f32_contig(DeviceManager.ensure_device(grad_sinogram, device))
@@ -219,7 +240,20 @@ class FanFootprintProjectorFunction(torch.autograd.Function):
             d_grad_sino, n_views, num_detectors, d_img_grad, Nx, Ny,
             _DTYPE(detector_spacing), d_src, d_dc, d_du, cx, cy, _DTYPE(voxel_spacing)
         )
-        return grad_image, None, None, None, None, None, None
+        grad_src = grad_dc = grad_duv = None
+        if any(ctx.needs_input_grad[1:4]):
+            def _launch(src_p, det_c, det_uv):
+                with torch.no_grad():
+                    return FanFootprintProjectorFunction.apply(
+                        image, src_p, det_c, det_uv,
+                        num_detectors, detector_spacing, voxel_spacing)
+
+            grad_src, grad_dc, grad_duv = _fd_geometry_grads(
+                _launch, [src_pos, det_center, det_u_vec],
+                ctx.needs_input_grad[1:4], grad_sinogram,
+                [_FD_REL_EPS_POS, _FD_REL_EPS_POS, _FD_REL_EPS_VEC])
+
+        return grad_image, grad_src, grad_dc, grad_duv, None, None, None
 
 
 class FanFootprintBackprojectorFunction(torch.autograd.Function):
@@ -318,13 +352,14 @@ class ConeFootprintProjectorFunction(torch.autograd.Function):
             cx, cy, cz, _DTYPE(voxel_spacing)
         )
 
-        ctx.save_for_backward(src_pos, det_center, det_u_vec, det_v_vec)
+        # volume saved for the (optional) finite-difference geometry gradients.
+        ctx.save_for_backward(volume, src_pos, det_center, det_u_vec, det_v_vec)
         ctx.intermediate = (D, H, W, det_u, det_v, du, dv, voxel_spacing)
         return sino
 
     @staticmethod
     def backward(ctx, grad_sino):
-        src_pos, det_center, det_u_vec, det_v_vec = ctx.saved_tensors
+        volume, src_pos, det_center, det_u_vec, det_v_vec = ctx.saved_tensors
         D, H, W, det_u, det_v, du, dv, voxel_spacing = ctx.intermediate
         device = DeviceManager.get_device(grad_sino)
         grad_sino = _to_f32_contig(DeviceManager.ensure_device(grad_sino, device))
@@ -352,7 +387,23 @@ class ConeFootprintProjectorFunction(torch.autograd.Function):
             cx, cy, cz, _DTYPE(voxel_spacing)
         )
         grad_volume = grad_vol_perm.permute(2, 1, 0).contiguous()  # (D, H, W)
-        return grad_volume, None, None, None, None, None, None, None, None, None
+        grad_src = grad_dc = grad_duv = grad_dvv = None
+        if any(ctx.needs_input_grad[1:5]):
+            # Finite-difference geometry VJPs of the footprint forward model
+            # (the separable footprint is piecewise-smooth in the geometry, so
+            # central differences give well-behaved smoothed gradients).
+            def _launch(src_p, det_c, det_uv, det_vv):
+                with torch.no_grad():
+                    return ConeFootprintProjectorFunction.apply(
+                        volume, src_p, det_c, det_uv, det_vv,
+                        det_u, det_v, du, dv, voxel_spacing)
+
+            grad_src, grad_dc, grad_duv, grad_dvv = _fd_geometry_grads(
+                _launch, [src_pos, det_center, det_u_vec, det_v_vec],
+                ctx.needs_input_grad[1:5], grad_sino,
+                [_FD_REL_EPS_POS, _FD_REL_EPS_POS, _FD_REL_EPS_VEC, _FD_REL_EPS_VEC])
+
+        return grad_volume, grad_src, grad_dc, grad_duv, grad_dvv, None, None, None, None, None
 
 
 class ConeFootprintBackprojectorFunction(torch.autograd.Function):
