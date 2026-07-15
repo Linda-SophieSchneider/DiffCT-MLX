@@ -9,13 +9,6 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [2.0.0] - 2026-07-10
-
-First stable release of the unified package. Includes everything in
-[2.0.0.dev0] below; on top of it, the MLX backend is now runtime-validated
-on Apple Silicon (the last open item of the unification) and the Torch
-backend gains trainable projector geometry.
-
 ### Added
 
 - **Analytic geometry gradients for the cone Siddon projector (CUDA)**:
@@ -41,6 +34,13 @@ backend gains trainable projector geometry.
   carries a quadrature-mismatch bias in the translation gradients. Use the
   default FD `src_pos` VJP on MLX until it is ported to match the CUDA
   kernel (see the FIXME in `diffct_mlx/backend/metal/kernels/cone_beam.py`).
+
+## [2.0.0] - 2026-07-10
+
+First stable release of the unified package. Includes everything in
+[2.0.0.dev0] below; on top of it, the MLX backend is now runtime-validated
+on Apple Silicon (the last open item of the unification) and the Torch
+backend gains trainable projector geometry.
 
 - **Trainable geometry on the Torch backend**: the Siddon projectors
   (parallel/fan/cone) return finite-difference VJPs for their per-view
