@@ -49,29 +49,27 @@ and the project follows [Semantic Versioning](https://semver.org/).
   earlier unpadded results; set `pad_factor=1` to reproduce legacy output.
   The legacy case constants remain valid for the synthetic unit-spacing cases.
 
-- **Analytic geometry gradients for the cone Siddon projector (CUDA)**:
+## [2.0.1] - 2026-07-15
+
+### Added
+
+- **Analytic geometry gradients for the cone Siddon projector (CUDA and
+  Metal)**:
   `_cone_3d_geometry_grad_kernel` computes closed-form per-view gradients
   for `src_pos`, `det_center`, `det_u_vec` and `det_v_vec` in a single
   kernel pass (endpoint derivatives of the trilinearly smoothed line
   integral, with the projected moment accumulated by the same segment
   quadrature as the gradient terms). Default for cone geometry gradients
-  (`DIFFCT_GEOMETRY_VJP=fd` forces finite differences); validated against
-  an exact torch-autograd `grid_sample` reference (cos > 0.998, norm ratio
-  within 1%) and ~4× faster than the FD path.
+  (`DIFFCT_GEOMETRY_VJP=fd` forces finite differences). The CUDA path is
+  validated against an exact torch-autograd `grid_sample` reference
+  (cos > 0.998, norm ratio within 1%) and is ~4× faster than FD; the Metal
+  port uses the same center-based sampling, projected-moment quadrature and
+  world/voxel unit conversion.
 - **Footprint forward projectors are geometry-trainable** (parallel, fan,
   cone): finite-difference VJPs for their geometry arrays, so the operator
   layer's default `projector_mode="footprint"` — and pipelines built on it,
   e.g. differentiable view-coverage objectives — receive source/detector
   gradients. Backprojectors remain data-only.
-
-### Known issues
-
-- The **Metal** analytic geometry kernel (`cone_3d_geometry_grad_kernel`,
-  `DIFFCT_GEOMETRY_VJP=1` on MLX) is stale: it still samples at integer-index
-  nodes (pre-d668ede convention) and its closed-form `-A/L` substitution
-  carries a quadrature-mismatch bias in the translation gradients. Use the
-  default FD `src_pos` VJP on MLX until it is ported to match the CUDA
-  kernel (see the FIXME in `diffct_mlx/backend/metal/kernels/cone_beam.py`).
 
 ## [2.0.0] - 2026-07-10
 
@@ -402,5 +400,6 @@ necessary for the arbitrary-trajectory kernel API:
   when the detector is not plane-aligned to the voxel axes) and will
   be tackled in a dedicated follow-up.
 
-[Unreleased]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/releases/tag/v2.0.0

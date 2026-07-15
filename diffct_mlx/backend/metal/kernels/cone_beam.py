@@ -818,27 +818,15 @@ cone_3d_footprint_backward_sparse_kernel = mx.fast.metal_kernel(
 # Siddon ray integral.
 #
 # Derivation (voxel-space parametrisation, λ = t/L where L = ray length):
-#   a_p = voxel_spacing * Σ_seg  μ(x(t_mid)) * seg_len
-#   ∂a_p/∂s_mm  = −d̂ · A/L + G1    (d̂ = unit ray dir, A = Σ μ*seg_len)
-#   ∂a_p/∂p_mm  = +d̂ · A/L + G2    (p = detector pixel world position)
+#   a_p = Σ_seg μ(x(t_mid)) * seg_len
+#   S  = Σ_seg λ_mid * seg_len * (∇μ(x(t_mid)) · d̂)
+#   ∂a_p/∂s_mm = (G1 + d̂*S) / voxel_spacing
+#   ∂a_p/∂p_mm = (G2 - d̂*S) / voxel_spacing
 #   G1 = Σ seg_len * (1−λ_mid) * ∇μ_vox(x_mid)
 #   G2 = Σ seg_len *    λ_mid  * ∇μ_vox(x_mid)
 # Chain rule then yields det_center / det_u_vec / det_v_vec gradients from
 # ∂a_p/∂p_mm via p = det_center + u_off_mm*u_vec + v_off_mm*v_vec.
 # ============================================================================
-
-# FIXME(Apple-side): this analytic geometry kernel is stale on two counts
-# after the 2026-07-10 cell-constant Siddon fix (d668ede):
-#   1. it still samples the volume trilinearly at integer-index NODES and its
-#      forward value no longer matches the fixed forward kernel;
-#   2. it substitutes the projected moment with the closed form -A/L, which
-#      cancels against the G terms with a DIFFERENT quadrature and leaves a
-#      systematic per-ray bias that dominates the translation gradients.
-# The CUDA port (diffct/kernels/cone_beam.py::_cone_3d_geometry_grad_kernel)
-# fixes both — center-based (k+0.5) trilinear sampling and a numerically
-# accumulated projected moment S = int lambda (grad_mu . d_hat) dt — and is
-# validated against an exact torch-autograd trilinear reference. Port those
-# two changes here before enabling DIFFCT_GEOMETRY_VJP=1 on MLX.
 _CONE_3D_GEOMETRY_GRAD_SOURCE = """
     uint iview = thread_position_in_grid.x;
     uint iu    = thread_position_in_grid.y;
@@ -933,9 +921,9 @@ _CONE_3D_GEOMETRY_GRAD_SOURCE = """
     if (t_min >= t_max) return;
 
     // === SIDDON TRAVERSAL WITH G1/G2 ACCUMULATORS ===
-    float A   = 0.0f;
     float G1x = 0.0f, G1y = 0.0f, G1z = 0.0f;
     float G2x = 0.0f, G2y = 0.0f, G2z = 0.0f;
+    float S   = 0.0f;
 
     float t = t_min;
     int ix = (int)metal::floor(src_x + t * dir_x + cx);
@@ -970,12 +958,17 @@ _CONE_3D_GEOMETRY_GRAD_SOURCE = """
                 float mid_y = src_y + t_mid * dir_y + cy;
                 float mid_z = src_z + t_mid * dir_z + cz;
 
-                int ix0 = (int)metal::floor(mid_x);
-                int iy0 = (int)metal::floor(mid_y);
-                int iz0 = (int)metal::floor(mid_z);
-                float dx = mid_x - (float)ix0;
-                float dy = mid_y - (float)iy0;
-                float dz = mid_z - (float)iz0;
+                // Voxel centers are at k + 0.5, so shift the continuous
+                // index before selecting the trilinear interpolation cell.
+                float fx = mid_x - 0.5f;
+                float fy = mid_y - 0.5f;
+                float fz = mid_z - 0.5f;
+                int ix0 = (int)metal::floor(fx);
+                int iy0 = (int)metal::floor(fy);
+                int iz0 = (int)metal::floor(fz);
+                float dx = fx - (float)ix0;
+                float dy = fy - (float)iy0;
+                float dz = fz - (float)iz0;
 
                 ix0 = metal::max(0, metal::min(ix0, Nx - 2));
                 iy0 = metal::max(0, metal::min(iy0, Ny - 2));
@@ -987,7 +980,8 @@ _CONE_3D_GEOMETRY_GRAD_SOURCE = """
 
                 int base = ix0 * yz_stride + iy0 * Nz + iz0;
 
-                // Trilinear voxel values (same as forward kernel)
+                // Trilinear voxel values for the canonical smooth extension
+                // of the cell-constant forward model.
                 float v000 = vol[base];
                 float v100 = vol[base + yz_stride];
                 float v010 = vol[base + Nz];
@@ -996,13 +990,6 @@ _CONE_3D_GEOMETRY_GRAD_SOURCE = """
                 float v101 = vol[base + yz_stride + 1];
                 float v011 = vol[base + Nz + 1];
                 float v111 = vol[base + yz_stride + Nz + 1];
-
-                float val = v000 * omdx*omdy*omdz + v100 * dx*omdy*omdz
-                          + v010 * omdx*dy*omdz   + v001 * omdx*omdy*dz
-                          + v110 * dx*dy*omdz      + v101 * dx*omdy*dz
-                          + v011 * omdx*dy*dz      + v111 * dx*dy*dz;
-
-                A += val * seg_len;
 
                 // Trilinear gradient of μ in kernel (voxel-index) space
                 float dmu_x = omdy*omdz*(v100-v000) + dy*omdz*(v110-v010)
@@ -1019,6 +1006,7 @@ _CONE_3D_GEOMETRY_GRAD_SOURCE = """
 
                 G1x += w1 * dmu_x;  G1y += w1 * dmu_y;  G1z += w1 * dmu_z;
                 G2x += w2 * dmu_x;  G2y += w2 * dmu_y;  G2z += w2 * dmu_z;
+                S += w2 * (dmu_x*dir_x + dmu_y*dir_y + dmu_z*dir_z);
             }
         }
 
@@ -1033,20 +1021,17 @@ _CONE_3D_GEOMETRY_GRAD_SOURCE = """
 
     // === ASSEMBLE GEOMETRY GRADIENTS ===
     //
-    // ∂a_p/∂s_mm  = −d̂ · A/L + G1   (source position, world mm)
-    // ∂a_p/∂p_mm  = +d̂ · A/L + G2   (detector pixel, world mm)
-    //
-    // d̂ = (dir_x, dir_y, dir_z) — same unit vector in voxel and world space
-    // (voxel_spacing cancels: d̂_vox = d̂_mm for uniform scaling)
-    float A_over_L = A * inv_len;
+    // ∂a_p/∂s_mm = (G1 + d̂*S) / voxel_spacing
+    // ∂a_p/∂p_mm = (G2 - d̂*S) / voxel_spacing
+    float inv_vs = 1.0f / voxel_spacing;
 
-    float grad_sx = g * (-dir_x * A_over_L + G1x);
-    float grad_sy = g * (-dir_y * A_over_L + G1y);
-    float grad_sz = g * (-dir_z * A_over_L + G1z);
+    float grad_sx = g * (G1x + dir_x*S) * inv_vs;
+    float grad_sy = g * (G1y + dir_y*S) * inv_vs;
+    float grad_sz = g * (G1z + dir_z*S) * inv_vs;
 
-    float grad_px = g * ( dir_x * A_over_L + G2x);
-    float grad_py = g * ( dir_y * A_over_L + G2y);
-    float grad_pz = g * ( dir_z * A_over_L + G2z);
+    float grad_px = g * (G2x - dir_x*S) * inv_vs;
+    float grad_py = g * (G2y - dir_y*S) * inv_vs;
+    float grad_pz = g * (G2z - dir_z*S) * inv_vs;
 
     // grad_src_pos (per view)
     atomic_fetch_add_explicit(&grad_src_pos[iview*3+0], grad_sx, memory_order_relaxed);

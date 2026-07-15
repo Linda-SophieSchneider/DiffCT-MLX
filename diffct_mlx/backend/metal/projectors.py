@@ -30,9 +30,11 @@ from .kernels import (
     cone_3d_geometry_grad_kernel,
 )
 
-# Set DIFFCT_GEOMETRY_VJP=1 to use the analytical geometry gradient kernel
-# instead of the finite-difference fallback for cone_forward.
-_GEOMETRY_VJP_ENABLED: bool = os.getenv("DIFFCT_GEOMETRY_VJP", "0") == "1"
+# The analytic cone geometry kernel is the default, matching the CUDA backend.
+# Keep the legacy boolean values working and accept the shared ``fd`` spelling
+# to force the finite-difference src_pos fallback.
+_GEOMETRY_VJP_MODE = os.getenv("DIFFCT_GEOMETRY_VJP", "analytic").strip().lower()
+_GEOMETRY_VJP_ENABLED: bool = _GEOMETRY_VJP_MODE not in {"0", "false", "off", "fd"}
 
 
 def _as_mx_float_array(value):
