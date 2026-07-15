@@ -92,6 +92,35 @@ evaluation**: `cone_backward_footprint(..., indices=idx)` computes only the give
 flattened `(D, H, W)` voxels and returns a 1-D vector (useful for masked / DART
 subproblems).
 
+### Quantitative FDK (amplitude-true reconstruction)
+
+The legacy case FDK path was a *synthetic-geometry calibration*, not physics:
+an unpadded DFT-bin ramp (circular-convolution wrap-around depresses large
+objects with an object-size-dependent bias — down to 0.40× at 75 % FOV
+coverage), the constant `π·SID/(2·SDD·N)` (only valid for `du = dv = voxel
+= 1`), and the Siddon adjoint (not an FDK backprojector). On measured data
+these stack to ~0.1–0.5× of the true attenuation.
+
+The quantitative path fixes all three: cosine pre-weights → per-view
+trapezoidal angular weights (actual source angles, non-uniform trajectories
+included) → zero-padded **physical** ramp (`|f|/du`, `pad_factor=2`) → the
+voxel-driven `(SID/U)²`-weighted FDK gather backprojector with its analytic
+`SDD/(2π·SID)` constant. Verified: a cylinder of known µ at real camera
+geometry (du 0.556 mm, voxel 0.278 mm, magnification 2, object filling 75 %
+of the FOV) reconstructs to **0.99×** the true µ (legacy path: 0.47×).
+
+```python
+case = dct.build_measured_cone_3d_case(cfg)   # supports_fdk=True on CUDA now
+vol_mu = dct.reconstruct_case_fdk(case)       # true attenuation units (1/mm)
+```
+
+All cone cases (synthetic, measured TIFF, npy) carry the quantitative
+operators (`case.fdk_weight` / `fdk_filter` / `fdk_back_project`); sinogram
+units are handled per source (measured −log data are physical; raw Siddon
+projector output is voxel-unit and rescaled by `voxel_spacing`). The ramp
+filter itself now accepts `pad_factor` and `sample_spacing`, and
+`FBPParameters`/`FDKParameters` default to `pad_factor=2`.
+
 ### Operators, solvers, regularizers, physics & simulation
 
 The `cuda` branch adds a composable, differentiable toolkit on top of the

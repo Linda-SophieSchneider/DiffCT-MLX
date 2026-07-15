@@ -44,7 +44,9 @@ def reconstruct_fbp(
         )
 
     if filter_projections is None:
-        filtered_sinogram = ramp_filter(weighted_sinogram, axis=params.filter_axis)
+        filtered_sinogram = ramp_filter(
+            weighted_sinogram, axis=params.filter_axis,
+            pad_factor=params.pad_factor, sample_spacing=params.detector_spacing)
     else:
         filtered_sinogram = _as_array(filter_projections(weighted_sinogram), dtype=params.dtype)
     if filtered_sinogram.shape != sinogram.shape:

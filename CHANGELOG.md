@@ -11,6 +11,31 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Quantitative FDK** (amplitude-true attenuation values) for all cone
+  cases, incl. measured data (`supports_fdk=True` on the torch backend) via
+  `reconstruct_case_fdk` and the new case fields `fdk_filter` /
+  `fdk_back_project`: cosine weights → per-view trapezoidal angular weights
+  (actual source angles) → zero-padded physical ramp (`|f|/du`) → voxel-driven
+  `(SID/U)²`-weighted FDK gather backprojection with the analytic
+  `SDD/(2π·SID)` constant. Sinogram units handled per source (measured −log
+  data are physical µ·mm; raw Siddon output is voxel-unit → ×`voxel_spacing`).
+  Verified on a known-µ cylinder at real camera geometry (du 0.556 mm, voxel
+  0.278 mm, magnification 2, 75 % FOV object): recovers 0.99× true µ where the
+  legacy calibrated path gives 0.47× (`tests/test_quantitative_fdk.py`).
+- `ramp_filter`/`ramp_filter_2d`/`ramp_filter_3d` accept `pad_factor`
+  (zero-padding against circular-convolution wrap-around — the unpadded ramp
+  biases objects by up to 0.40× at 75 % FOV coverage, object-size-DEPENDENT,
+  so no constant can compensate) and `sample_spacing` (physical `|f|/du`
+  scaling).
+
+### Changed
+
+- `FBPParameters`/`FDKParameters` gained `pad_factor` (default **2**) and
+  route their `detector_spacing` into the ramp's `sample_spacing`. Analytic
+  reconstructions therefore differ slightly (less interior depression) from
+  earlier unpadded results; set `pad_factor=1` to reproduce legacy output.
+  The legacy case constants remain valid for the synthetic unit-spacing cases.
+
 - **Analytic geometry gradients for the cone Siddon projector (CUDA)**:
   `_cone_3d_geometry_grad_kernel` computes closed-form per-view gradients
   for `src_pos`, `det_center`, `det_u_vec` and `det_v_vec` in a single

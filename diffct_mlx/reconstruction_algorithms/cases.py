@@ -91,6 +91,12 @@ class ReconstructionCase:
     fdk_normalization_scale: float | None = None
     fbp_weight: Callable[[Array], Array] | None = None
     fdk_weight: Callable[[Array], Array] | None = None
+    #: Quantitative FDK path (physical units): padded physical ramp incl.
+    #: per-view angular weights, and a voxel-driven (sid/U)^2-weighted
+    #: backprojector. None when the active backend lacks the analytical
+    #: helpers (e.g. MLX). Use :func:`reconstruct_case_fdk`.
+    fdk_filter: Callable[[Array], Array] | None = None
+    fdk_back_project: Callable[[Array], Array] | None = None
 
 
 @dataclass
@@ -513,6 +519,107 @@ def make_cone_3d_operators(
     return forward_single, back_single, back_project_all
 
 
+def _quantitative_fdk_operators(src_pos, det_center, det_u_vec, det_v_vec,
+                                volume_shape, detector_shape, du, dv,
+                                voxel_spacing, sinogram_scale=1.0):
+    """Build the quantitative FDK trio (cosine weight, filter, backprojector).
+
+    Physical-units pipeline: cosine pre-weights, per-view trapezoidal angular
+    weights (actual source angles — works for non-uniform trajectories),
+    zero-padded physical ramp (``|f|/du``), and the voxel-driven
+    ``(sid_n/U_n)^2``-weighted FDK gather backprojector with its analytical
+    ``sdd/(2*pi*sid)`` constant. The result is amplitude-calibrated: a
+    homogeneous object of attenuation ``mu`` (in 1/mm when the geometry is in
+    mm) reconstructs to ``mu`` without any case-specific normalization.
+
+    ``sinogram_scale`` converts the case's sinogram to PHYSICAL line integrals
+    (mu*mm): pass ``voxel_spacing`` for raw Siddon projector output (voxel-unit
+    integrals) and 1.0 for measured -log data, which is already physical.
+
+    Returns ``(fdk_weight, fdk_filter, fdk_back_project)`` or ``(None,)*3``
+    when the active backend lacks the analytical helpers (e.g. MLX).
+    """
+    from .. import analytical as _ana
+
+    needed = ("ramp_filter_1d", "cone_weighted_backproject",
+              "angular_integration_weights")
+    if any(getattr(_ana, name, None) is None for name in needed):
+        return None, None, None
+    import torch  # helpers only exist on the torch backend
+
+    src_t = _b.as_array(src_pos, dtype=_b.float32)
+    dc_t = _b.as_array(det_center, dtype=_b.float32)
+    duv_t = _b.as_array(det_u_vec, dtype=_b.float32)
+    dvv_t = _b.as_array(det_v_vec, dtype=_b.float32)
+
+    nz, ny, nx = (int(d) for d in volume_shape)
+    det_u, det_v = (int(d) for d in detector_shape)
+    du = float(du)
+    dv = float(dv)
+    voxel_spacing = float(voxel_spacing)
+    sinogram_scale = float(sinogram_scale)
+
+    # Cosine pre-weights from the actual mean source-detector distance.
+    sdd_mean = float(torch.linalg.norm(dc_t - src_t, dim=1).mean())
+    u_coords = (xp.arange(det_u) - det_u / 2) * du
+    v_coords = (xp.arange(det_v) - det_v / 2) * dv
+    cos_w = sdd_mean / xp.sqrt(
+        sdd_mean**2
+        + u_coords.reshape(1, det_u, 1) ** 2
+        + v_coords.reshape(1, 1, det_v) ** 2
+    )
+
+    # Per-view angular integration weights from the actual source angles
+    # (trapezoidal; handles non-uniform measured trajectories).
+    src_np = _b.to_numpy(src_t).astype(np.float64)
+    angles_np = np.unwrap(np.arctan2(src_np[:, 1], src_np[:, 0]))
+    angles = torch.as_tensor(angles_np, dtype=torch.float32, device=src_t.device)
+    ang_w = _ana.angular_integration_weights(angles, redundant_full_scan=True)
+    ang_w = ang_w.reshape(-1, 1, 1)
+
+    def fdk_weight(raw):
+        return raw * cos_w
+
+    def fdk_filter(weighted):
+        scaled = weighted * (ang_w * sinogram_scale)
+        return _ana.ramp_filter_1d(scaled, dim=1, sample_spacing=du, pad_factor=2)
+
+    def fdk_back_project(filtered):
+        return _ana.cone_weighted_backproject(
+            filtered, src_t, dc_t, duv_t, dvv_t,
+            nz, ny, nx, du, dv, voxel_spacing)
+
+    return fdk_weight, fdk_filter, fdk_back_project
+
+
+def reconstruct_case_fdk(case: ReconstructionCase, *, enforce_positivity: bool = True):
+    """FDK-reconstruct a case, preferring its quantitative path.
+
+    With ``case.fdk_back_project`` present (torch backend), runs the
+    amplitude-calibrated physical pipeline (see
+    :func:`_quantitative_fdk_operators`) — the volume is in true attenuation
+    units. Otherwise falls back to the legacy calibrated path (Siddon adjoint
+    + ``fdk_normalization_scale``), whose amplitude is only calibrated for the
+    synthetic unit-spacing setup.
+    """
+    from .fdk import FDKParameters, reconstruct_fdk
+
+    if case.fdk_back_project is not None:
+        params = FDKParameters(normalization_scale=1.0,
+                               enforce_positivity=enforce_positivity)
+        return reconstruct_fdk(
+            case.sinogram, case.fdk_back_project, params,
+            weight_projections=case.fdk_weight,
+            filter_projections=case.fdk_filter)
+    if not case.supports_fdk:
+        raise ValueError(f"case {case.name!r} does not support FDK")
+    params = FDKParameters(normalization_scale=case.fdk_normalization_scale,
+                           enforce_positivity=enforce_positivity)
+    return reconstruct_fdk(
+        case.sinogram, case.back_project_all, params,
+        weight_projections=case.fdk_weight)
+
+
 def build_parallel_2d_case(
     *,
     image_shape: tuple[int, int] = (96, 96),
@@ -676,6 +783,13 @@ def build_cone_3d_case(
     )
 
     normalization = (math.pi * sid) / (2.0 * sdd * num_views)
+    # Quantitative FDK path: the Siddon sinogram is in voxel-unit line
+    # integrals, so it is rescaled by voxel_spacing to physical mu*mm.
+    q_weight, q_filter, q_back = _quantitative_fdk_operators(
+        src_pos, det_center, det_u_vec, det_v_vec,
+        (nz, ny, nx), (det_u_count, det_v_count), du, dv, voxel_spacing,
+        sinogram_scale=voxel_spacing,
+    )
     return ReconstructionCase(
         name="Cone 3D",
         sinogram=sinogram,
@@ -690,7 +804,9 @@ def build_cone_3d_case(
         fbp_normalization_scale=normalization,
         fdk_normalization_scale=normalization,
         fbp_weight=cone_weight,
-        fdk_weight=cone_weight,
+        fdk_weight=q_weight if q_weight is not None else cone_weight,
+        fdk_filter=q_filter,
+        fdk_back_project=q_back,
     )
 
 
@@ -858,6 +974,16 @@ def build_measured_cone_3d_case(config: MeasuredConeDataConfig) -> Reconstructio
 
     reference = None if reference_np is None else xp.array(reference_np, dtype=xp.float32)
     sinogram = xp.array(measured_sino_np, dtype=xp.float32)
+    # Quantitative FDK: measured -log data are already physical line
+    # integrals (mu*mm), so no sinogram rescale. This is the ONLY FDK path
+    # for measured data — the legacy case constant is a synthetic-geometry
+    # calibration and does not transfer to real du/voxel/magnification.
+    q_weight, q_filter, q_back = _quantitative_fdk_operators(
+        src_pos, det_center, det_u_vec, det_v_vec,
+        config.volume_shape, (measured_det_u, measured_det_v),
+        measured_du, measured_dv, measured_voxel_spacing,
+        sinogram_scale=1.0,
+    )
     return ReconstructionCase(
         name="Measured Cone 3D",
         sinogram=sinogram,
@@ -867,6 +993,10 @@ def build_measured_cone_3d_case(config: MeasuredConeDataConfig) -> Reconstructio
         back_project_all=back_project_all,
         reference=reference,
         reference_title=reference_title,
+        supports_fdk=q_back is not None,
+        fdk_weight=q_weight,
+        fdk_filter=q_filter,
+        fdk_back_project=q_back,
         iterative_projection_subset_count=int(config.iterative_projection_subset_count),
         iterative_normalized_sart_relaxation=float(config.iterative_normalized_sart_relaxation),
         iterative_backprojection_scale=(
@@ -993,6 +1123,14 @@ def build_npy_cone_3d_case(config: NpyProjectionsConfig) -> ReconstructionCase:
 
     iterative_projection_weights = _trajectory_quadrature_weights(src_pos)
 
+    # Quantitative FDK: npy stacks are raw forward-projector output, i.e.
+    # voxel-unit line integrals -> rescale by voxel_spacing to physical mu*mm.
+    q_weight, q_filter, q_back = _quantitative_fdk_operators(
+        src_pos, det_center, det_u_vec, det_v_vec,
+        config.volume_shape, (det_u, det_v), du, dv,
+        float(config.voxel_spacing_mm),
+        sinogram_scale=float(config.voxel_spacing_mm),
+    )
     return ReconstructionCase(
         name="NPY Cone 3D",
         sinogram=xp.array(sino_np, dtype=xp.float32),
@@ -1000,6 +1138,10 @@ def build_npy_cone_3d_case(config: NpyProjectionsConfig) -> ReconstructionCase:
         forward_single=forward_single,
         back_single=back_single,
         back_project_all=back_project_all,
+        supports_fdk=q_back is not None,
+        fdk_weight=q_weight,
+        fdk_filter=q_filter,
+        fdk_back_project=q_back,
         pocs_iterative_update_method="normalized_sart",
         iterative_voxel_sensitivity_normalization=(
             str(config.projector_mode).strip().lower() == "footprint"
