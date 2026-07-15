@@ -1,8 +1,7 @@
 # diffct: Differentiable Computed Tomography Operators
 
 > [!NOTE]
-> **This is the `cuda` branch of [DiffCT-MLX](https://github.com/Linda-SophieSchneider/DiffCT-MLX), adapted from the original [diffct](https://github.com/sypsyp97) by Yipeng Sun (Apache-2.0).**
-> It is based on diffct's arbitrary-trajectory (`dev`) line, whose module layout and per-view projector convention match the MLX port. This branch hosts the unified **auto-backend** package `diffct_mlx` (MLX/Metal on Apple Silicon, Torch/numba-CUDA elsewhere) so the same code runs on both. Maintained by [Linda-Sophie Schneider](https://github.com/Linda-SophieSchneider).
+> **[DiffCT-MLX](https://github.com/Linda-SophieSchneider/DiffCT-MLX) — the unified auto-backend package `diffct_mlx`** (MLX/Metal on Apple Silicon, Torch/numba-CUDA elsewhere), so the same code runs on both. The Torch/CUDA engine is adapted from the original [diffct](https://github.com/sypsyp97) by Yipeng Sun (Apache-2.0), based on its arbitrary-trajectory (`dev`) line. Maintained by [Linda-Sophie Schneider](https://github.com/Linda-SophieSchneider).
 > See [ATTRIBUTION.md](ATTRIBUTION.md) for full provenance and license details.
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
@@ -280,23 +279,18 @@ to ~1e-6, 2-GPU == 1-GPU exact, 2048³ cone-FDK end-to-end with a bounded
 working set. This path is CUDA-only (it drives the numba-CUDA kernels
 directly).
 
-## 🔀 Branches
+## 🔀 Branches & releases
 
-### `main` — unified auto-backend package
-The unified `diffct_mlx` package described above: one API, two engines
-(Torch/numba-CUDA and MLX/Metal), auto-selected at import. This is the branch
-to use on every platform.
-
-### `cuda` — development line of the unified package
-Where the unification work happens before it lands on `main`; after a merge
-the two branches are identical.
+All development happens on **`main`** (the former `cuda` development branch
+has been merged and retired). Versioned releases are tagged and published to
+PyPI via CI (trusted publishing); `gh-pages` hosts the built documentation.
 
 Kernels take per-view ``(src_pos, det_center, det_u_vec[, det_v_vec])``
 arrays instead of closed-form ``sdd / sid / beta`` scalars, so **spiral,
 saddle, sinusoidal, laminography, or any user-supplied trajectory** works
 without touching the kernels — on both backends.
 
-⚠️ **Note:** not published to PyPI yet. If you find any bugs please
+If you find any bugs please
 [raise an issue](https://github.com/Linda-SophieSchneider/DiffCT-MLX/issues).
 
 ## ✨ Features
