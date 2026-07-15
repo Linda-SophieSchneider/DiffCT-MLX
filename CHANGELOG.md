@@ -28,6 +28,19 @@ and the project follows [Semantic Versioning](https://semver.org/).
   so no constant can compensate) and `sample_spacing` (physical `|f|/du`
   scaling).
 
+### Fixed
+
+- `simulate_scan` fed voxel-unit line integrals into the physical
+  intensity/beam-hardening chain (`exp(-p)`, polychromatic nonlinearity) —
+  silently wrong for `voxel_spacing != 1`. It now rescales by the operator's
+  voxel spacing (new `ProjectionOperator.voxel_spacing` metadata, propagated
+  by `.subset`; explicit `voxel_spacing=` override) and returns physical,
+  scanner-like sinograms. Unchanged at `voxel_spacing = 1`.
+- `ReconstructionCase.voxel_spacing` documents the unit contract: iterative
+  reconstruction of physical (measured) sinograms yields attenuation per
+  voxel — divide by `voxel_spacing` for 1/mm; the quantitative FDK path
+  returns 1/mm directly.
+
 ### Changed
 
 - `FBPParameters`/`FDKParameters` gained `pad_factor` (default **2**) and

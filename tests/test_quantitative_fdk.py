@@ -112,3 +112,36 @@ def test_reconstruct_case_fdk_quantitative_path():
     corr_den = float(xp.norm(rec - xp.mean(rec)) * xp.norm(ref - xp.mean(ref)))
     assert corr_num / corr_den > 0.9
     assert 0.85 < scale < 1.15, scale
+
+
+@pytest.mark.cuda
+def test_simulate_scan_uses_physical_line_integrals():
+    """The physics chain (exp(-p), beam hardening) needs PHYSICAL line
+    integrals; simulate_scan must rescale the voxel-unit projector output by
+    the operator's voxel_spacing (silently wrong at voxel_spacing != 1
+    before)."""
+    _skip_if_no_cuda()
+    from diffct_mlx.physics import spectra, apply_beam_hardening
+
+    n, vs = 48, 0.278
+    zz, yy, xx = torch.meshgrid(*[torch.arange(n, device=DEV, dtype=torch.float32)] * 3,
+                                indexing="ij")
+    r = torch.sqrt((xx - n / 2 + 0.5) ** 2 + (yy - n / 2 + 0.5) ** 2)
+    phantom = ((r <= 0.3 * n) & ((zz - n / 2 + 0.5).abs() <= 0.3 * n)).float() * 0.05
+
+    src, dc, duv, dvv = dct.circular_trajectory_3d(24, 150.0, 300.0)
+    A = dct.make_cone_3d_operator(src, dc, duv, dvv, volume_shape=(n, n, n),
+                                  detector_shape=(96, 96), du=0.556, dv=0.556,
+                                  voxel_spacing=vs)
+    assert abs(A.voxel_spacing - vs) < 1e-9          # metadata attached
+    assert abs(A.subset(slice(0, 5)).voxel_spacing - vs) < 1e-9
+
+    spec = spectra.preset("industrial_160kVp_Cu1mm")
+    mu_e = spectra.material_attenuation("Al", spec.energies)
+
+    sino = dct.simulate_scan(phantom, A, spectrum=spec, material_attenuation=mu_e,
+                             poisson=False)
+    # reference: the same physics applied to the explicitly physical integrals
+    p_phys = (A @ phantom) * vs
+    ref = apply_beam_hardening(p_phys, spec, mu_e)
+    assert float((sino - ref).abs().max()) < 1e-4

@@ -121,6 +121,16 @@ projector output is voxel-unit and rescaled by `voxel_spacing`). The ramp
 filter itself now accepts `pad_factor` and `sample_spacing`, and
 `FBPParameters`/`FDKParameters` default to `pad_factor=2`.
 
+> **Unit convention.** The projectors integrate in **voxel units**: physical
+> line integrals are `(A @ x) * voxel_spacing`. Operators built via
+> `make_*_operator` carry `A.voxel_spacing` as metadata, and the boundaries
+> where physical units matter handle the conversion automatically —
+> `simulate_scan` rescales before the `exp(-p)` / beam-hardening physics (and
+> returns physical, scanner-like sinograms), and the quantitative FDK path
+> encodes it per data source. One consequence to know: **iterative**
+> reconstruction of measured (physical) data converges to attenuation *per
+> voxel*; divide by `case.voxel_spacing` for µ in 1/mm.
+
 ### Operators, solvers, regularizers, physics & simulation
 
 The `cuda` branch adds a composable, differentiable toolkit on top of the

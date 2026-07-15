@@ -91,6 +91,12 @@ class ReconstructionCase:
     fdk_normalization_scale: float | None = None
     fbp_weight: Callable[[Array], Array] | None = None
     fdk_weight: Callable[[Array], Array] | None = None
+    #: Physical voxel pitch of the reconstruction grid (mm). UNIT NOTE: the
+    #: projectors integrate in voxel units, so iterative reconstruction of a
+    #: PHYSICAL sinogram (measured -log data) converges to attenuation *per
+    #: voxel*; divide the volume by ``voxel_spacing`` for mu in 1/mm. The
+    #: quantitative FDK path below already returns mu in 1/mm directly.
+    voxel_spacing: float = 1.0
     #: Quantitative FDK path (physical units): padded physical ramp incl.
     #: per-view angular weights, and a voxel-driven (sid/U)^2-weighted
     #: backprojector. None when the active backend lacks the analytical
@@ -803,6 +809,7 @@ def build_cone_3d_case(
         supports_fdk=True,
         fbp_normalization_scale=normalization,
         fdk_normalization_scale=normalization,
+        voxel_spacing=float(voxel_spacing),
         fbp_weight=cone_weight,
         fdk_weight=q_weight if q_weight is not None else cone_weight,
         fdk_filter=q_filter,
@@ -994,6 +1001,7 @@ def build_measured_cone_3d_case(config: MeasuredConeDataConfig) -> Reconstructio
         reference=reference,
         reference_title=reference_title,
         supports_fdk=q_back is not None,
+        voxel_spacing=float(measured_voxel_spacing),
         fdk_weight=q_weight,
         fdk_filter=q_filter,
         fdk_back_project=q_back,
@@ -1139,6 +1147,7 @@ def build_npy_cone_3d_case(config: NpyProjectionsConfig) -> ReconstructionCase:
         back_single=back_single,
         back_project_all=back_project_all,
         supports_fdk=q_back is not None,
+        voxel_spacing=float(config.voxel_spacing_mm),
         fdk_weight=q_weight,
         fdk_filter=q_filter,
         fdk_back_project=q_back,

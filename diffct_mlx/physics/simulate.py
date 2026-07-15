@@ -258,6 +258,7 @@ def simulate_scan(
     poisson: bool = True,
     seed: int = 0,
     return_counts: bool = False,
+    voxel_spacing: float | None = None,
 ):
     """Simulate a realistic scan: phantom -> (beam hardening) -> counts -> sinogram.
 
@@ -268,13 +269,25 @@ def simulate_scan(
     ring gain), then Poisson noise, then the negative-log brings it back to an
     attenuation sinogram ready for reconstruction.
 
+    The projectors return line integrals in VOXEL units; the physics
+    (``exp(-p)`` transmission, beam-hardening nonlinearity) needs PHYSICAL
+    line integrals, so the projection is rescaled by ``voxel_spacing`` first
+    (taken from the operator's metadata when not given). The returned
+    sinogram is therefore physical (mu*mm) — like real measured -log data —
+    and identical to previous behaviour at ``voxel_spacing = 1``.
+
     Returns the attenuation sinogram (default) or the raw photon counts
     (``return_counts=True``).
     """
     if float(I0) <= 0.0:
         raise ValueError(f"I0 (incident photon count) must be positive, got {I0!r}.")
+    if voxel_spacing is None:
+        voxel_spacing = float(getattr(operator, "voxel_spacing", 1.0))
+    if float(voxel_spacing) <= 0.0:
+        raise ValueError(f"voxel_spacing must be positive, got {voxel_spacing!r}.")
     x = xp.array(phantom, dtype=_b.float32)
-    p = operator @ x                                    # reference-energy line integrals
+    # reference-energy line integrals, rescaled to physical units (mu*mm)
+    p = (operator @ x) * float(voxel_spacing)
     if spectrum is not None and material_attenuation is not None:
         p = apply_beam_hardening(p, spectrum, material_attenuation, reference_energy)
 

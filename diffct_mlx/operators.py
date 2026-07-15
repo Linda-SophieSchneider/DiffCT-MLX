@@ -280,6 +280,7 @@ class ProjectionOperator(LinearOperator):
         n_views: int,
         beam: str | None = None,
         views: Any = None,
+        voxel_spacing: float = 1.0,
     ):
         self._forward_fn = forward_fn
         self._adjoint_fn = adjoint_fn
@@ -288,6 +289,11 @@ class ProjectionOperator(LinearOperator):
         self.n_views = int(n_views)
         self.beam = beam
         self._views = views
+        #: Physical voxel pitch of the domain grid. The projectors return line
+        #: integrals in VOXEL units; multiply ``A @ x`` by this to obtain
+        #: physical line integrals (mu*mm) — e.g. for comparison against
+        #: measured -log data or for the physics/simulation chain.
+        self.voxel_spacing = float(voxel_spacing)
 
     def _forward(self, x: Array) -> Array:
         return self._forward_fn(x, self._views)
@@ -316,6 +322,7 @@ class ProjectionOperator(LinearOperator):
             n_views=int(n),
             beam=self.beam,
             views=view_indices,
+            voxel_spacing=self.voxel_spacing,
         )
 
 
@@ -377,7 +384,7 @@ def make_parallel_2d_operator(
 
     return ProjectionOperator(
         fwd, adj, domain_shape=(ny, nx), range_shape=(n_views, num_detectors),
-        n_views=n_views, beam="parallel",
+        n_views=n_views, beam="parallel", voxel_spacing=voxel_spacing,
     )
 
 
@@ -414,7 +421,7 @@ def make_fan_2d_operator(
 
     return ProjectionOperator(
         fwd, adj, domain_shape=(ny, nx), range_shape=(n_views, num_detectors),
-        n_views=n_views, beam="fan",
+        n_views=n_views, beam="fan", voxel_spacing=voxel_spacing,
     )
 
 
@@ -457,5 +464,5 @@ def make_cone_3d_operator(
 
     return ProjectionOperator(
         fwd, adj, domain_shape=(nz, ny, nx), range_shape=(n_views, det_u_count, det_v_count),
-        n_views=n_views, beam="cone",
+        n_views=n_views, beam="cone", voxel_spacing=voxel_spacing,
     )
