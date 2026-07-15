@@ -9,6 +9,13 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-10
+
+First stable release of the unified package. Includes everything in
+[2.0.0.dev0] below; on top of it, the MLX backend is now runtime-validated
+on Apple Silicon (the last open item of the unification) and the Torch
+backend gains trainable projector geometry.
+
 ### Added
 
 - **Analytic geometry gradients for the cone Siddon projector (CUDA)**:
@@ -357,4 +364,5 @@ necessary for the arbitrary-trajectory kernel API:
   when the detector is not plane-aligned to the voxel axes) and will
   be tackled in a dedicated follow-up.
 
-[Unreleased]: https://github.com/sypsyp97/diffct/tree/dev
+[Unreleased]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/releases/tag/v2.0.0

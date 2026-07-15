@@ -199,7 +199,7 @@ from .tv_gradients import (
     awtv_gradient,
 )
 
-__version__ = "2.0.0.dev0"
+__version__ = "2.0.0"
 
 __all__ = [
     "backend",
