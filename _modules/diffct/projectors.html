@@ -91,6 +91,8 @@
     <span class="n">_grid_2d</span><span class="p">,</span>
     <span class="n">_grid_3d</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+
 <span class="kn">from</span><span class="w"> </span><span class="nn">.kernels</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">_parallel_2d_forward_kernel</span><span class="p">,</span>
     <span class="n">_parallel_2d_backward_kernel</span><span class="p">,</span>
@@ -98,6 +100,7 @@
     <span class="n">_fan_2d_backward_kernel</span><span class="p">,</span>
     <span class="n">_cone_3d_forward_kernel</span><span class="p">,</span>
     <span class="n">_cone_3d_backward_kernel</span><span class="p">,</span>
+    <span class="n">_cone_3d_geometry_grad_kernel</span><span class="p">,</span>
 <span class="p">)</span>
 
 
@@ -123,6 +126,11 @@
 <span class="c1"># --------------------------------------------------------------------------- #</span>
 <span class="n">_FD_REL_EPS_POS</span> <span class="o">=</span> <span class="mf">1e-3</span>   <span class="c1"># relative step for position-like arrays (src, det center)</span>
 <span class="n">_FD_REL_EPS_VEC</span> <span class="o">=</span> <span class="mf">1e-2</span>   <span class="c1"># relative step for direction-vector arrays</span>
+
+<span class="c1"># Cone geometry gradients: &quot;analytic&quot; (default — one closed-form kernel pass,</span>
+<span class="c1"># gradients for all four geometry arrays; see _cone_3d_geometry_grad_kernel)</span>
+<span class="c1"># or &quot;fd&quot; (finite differences of the forward kernel, 6 passes per array).</span>
+<span class="n">_GEOMETRY_VJP_MODE</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;DIFFCT_GEOMETRY_VJP&quot;</span><span class="p">,</span> <span class="s2">&quot;analytic&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_fd_eps</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">rel</span><span class="p">):</span>
@@ -1001,11 +1009,40 @@
 
         <span class="n">grad_vol</span> <span class="o">=</span> <span class="n">grad_vol_perm</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
 
-        <span class="c1"># Optional finite-difference geometry gradients (only when requested).</span>
+        <span class="c1"># Optional geometry gradients (only when requested).</span>
         <span class="n">grad_src</span> <span class="o">=</span> <span class="n">grad_dc</span> <span class="o">=</span> <span class="n">grad_duv</span> <span class="o">=</span> <span class="n">grad_dvv</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">5</span><span class="p">]):</span>
             <span class="n">volume_perm</span> <span class="o">=</span> <span class="n">volume</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
             <span class="n">d_vol</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">volume_perm</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">_GEOMETRY_VJP_MODE</span> <span class="o">!=</span> <span class="s2">&quot;fd&quot;</span><span class="p">:</span>
+                <span class="c1"># Analytic geometry gradients: one kernel pass yields all four</span>
+                <span class="c1"># arrays (per-ray closed form contracted with the cotangent).</span>
+                <span class="n">grad_src</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">src_pos</span><span class="p">)</span>
+                <span class="n">grad_dc</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">det_center</span><span class="p">)</span>
+                <span class="n">grad_duv</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">)</span>
+                <span class="n">grad_dvv</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">det_v_vec</span><span class="p">)</span>
+                <span class="n">_cone_3d_geometry_grad_kernel</span><span class="p">[</span><span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span><span class="p">,</span> <span class="n">numba_stream</span><span class="p">](</span>
+                    <span class="n">d_vol</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span>
+                    <span class="n">d_grad_sino</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">,</span>
+                    <span class="n">_DTYPE</span><span class="p">(</span><span class="n">du</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">dv</span><span class="p">),</span>
+                    <span class="n">d_src_pos_arr</span><span class="p">,</span> <span class="n">d_det_center_arr</span><span class="p">,</span> <span class="n">d_det_u_vec_arr</span><span class="p">,</span> <span class="n">d_det_v_vec_arr</span><span class="p">,</span>
+                    <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">cz</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">grad_src</span><span class="p">),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">grad_dc</span><span class="p">),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">grad_duv</span><span class="p">),</span>
+                    <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">grad_dvv</span><span class="p">),</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+                    <span class="n">grad_src</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">2</span><span class="p">]:</span>
+                    <span class="n">grad_dc</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">3</span><span class="p">]:</span>
+                    <span class="n">grad_duv</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">4</span><span class="p">]:</span>
+                    <span class="n">grad_dvv</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="k">return</span> <span class="p">(</span><span class="n">grad_vol</span><span class="p">,</span> <span class="n">grad_src</span><span class="p">,</span> <span class="n">grad_dc</span><span class="p">,</span> <span class="n">grad_duv</span><span class="p">,</span> <span class="n">grad_dvv</span><span class="p">,</span>
+                        <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 
             <span class="k">def</span><span class="w"> </span><span class="nf">_launch</span><span class="p">(</span><span class="n">src_p</span><span class="p">,</span> <span class="n">det_c</span><span class="p">,</span> <span class="n">det_uv</span><span class="p">,</span> <span class="n">det_vv</span><span class="p">):</span>
                 <span class="n">sino</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
