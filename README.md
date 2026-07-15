@@ -186,9 +186,10 @@ Semantics to know: the discrete forwards are piecewise-linear in the
 geometry, so all of these are *smoothed* gradients — descent-quality in
 practice (see the pose-recovery tests), but not second-order differentiable.
 Backprojectors remain data-only, and stochastic simulation ops
-(`add_poisson_noise`) are not differentiable. On MLX, the cone projector has
-an FD `src_pos` VJP by default; its analytic kernel
-(`DIFFCT_GEOMETRY_VJP=1`) is currently stale (see CHANGELOG known issues).
+(`add_poisson_noise`) are not differentiable. On MLX, cone Siddon uses the
+same analytic endpoint-gradient formulation by default, including gradients
+for all four geometry arrays. Set `DIFFCT_GEOMETRY_VJP=fd` for the legacy
+finite-difference `src_pos` fallback.
 
 **Recommended step-size parametrization for unrolled networks.** A free
 trainable step can wander into the divergent regime, where positivity clamps
