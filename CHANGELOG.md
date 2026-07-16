@@ -9,6 +9,19 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Known issues
+
+- The quantitative FDK path (`reconstruct_case_fdk`, `fdk_back_project`) is
+  **torch/CUDA-only**: it drives the vendored `cone_weighted_backproject`
+  gather kernel, which has no Metal counterpart yet. On MLX the cone cases
+  fall back to the legacy calibrated path (synthetic cases) or report
+  `supports_fdk=False` (measured/npy). Porting needs a Metal FDK gather
+  kernel with `(FOD/U)^2` weighting plus a `cone_weighted_backproject`
+  equivalent exposed through the backend's `analytical` module — same
+  structure as the CUDA one (`diffct/kernels/cone_beam.py::
+  _cone_3d_fdk_backproject_kernel`, wired via
+  `diffct_mlx/reconstruction_algorithms/cases.py::_quantitative_fdk_operators`).
+
 ### Notes
 
 - Acceptance tests hardened per the FDK review: object-size sweep
