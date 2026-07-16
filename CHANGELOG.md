@@ -9,6 +9,19 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Notes
+
+- Acceptance tests hardened per the FDK review: object-size sweep
+  (25/50/75 % FOV, amplitude 0.90–1.08×) and detector-pitch invariance
+  (du ∈ {1.0, 0.556, 0.278} mm within 4 % of each other). A proposed
+  du-free DFT-bin ramp (`|fftfreq|` without factor 2 and without
+  `sample_spacing`) was evaluated against these and rejected: it scales
+  the reconstruction by ~`du/2` (0.484/0.269/0.134× across the sweep —
+  invisible only at `du = 1`). The physical filtering carries
+  `Q = IFFT(FFT(g)·|f_k|)/du`; the quantitative path's
+  `sample_spacing`/constants implement exactly that and are
+  pitch-invariant (0.966–0.968× across the sweep).
+
 ## [2.1.0] - 2026-07-16
 
 ### Added

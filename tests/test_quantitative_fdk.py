@@ -145,3 +145,56 @@ def test_simulate_scan_uses_physical_line_integrals():
     p_phys = (A @ phantom) * vs
     ref = apply_beam_hardening(p_phys, spec, mu_e)
     assert float((sino - ref).abs().max()) < 1e-4
+
+
+@pytest.mark.cuda
+def test_quantitative_fdk_object_size_sweep():
+    """The wrap-around bias was object-size-DEPENDENT; the quantitative path
+    must stay amplitude-true across object sizes (25/50/75 % of the FOV)."""
+    _skip_if_no_cuda()
+    n, num_views, vs, du_ = 64, 120, 0.278, 0.556
+    det = 200
+    mu = 0.05
+    src, dc, duv, dvv = dct.circular_trajectory_3d(num_views, 300.0, 600.0)
+    zz, yy, xx = torch.meshgrid(*[torch.arange(n, device=DEV, dtype=torch.float32)] * 3,
+                                indexing="ij")
+    r = torch.sqrt((xx - n / 2 + 0.5) ** 2 + (yy - n / 2 + 0.5) ** 2)
+    zmask = (zz - n / 2 + 0.5).abs() <= 0.35 * n
+
+    for frac in (0.125, 0.25, 0.375):          # 25 / 50 / 75 % of the FOV width
+        cyl = ((r <= frac * n) & zmask).float() * mu
+        sino = dct.cone_forward(cyl, src, dc, duv, dvv, det, det, du_, du_, vs) * vs
+        qw, qf, qb = _quantitative_fdk_operators(
+            src, dc, duv, dvv, (n, n, n), (det, det), du_, du_, vs, sinogram_scale=1.0)
+        rec = qb(qf(qw(sino)))
+        interior = (r <= 0.6 * frac * n) & ((zz - n / 2 + 0.5).abs() <= 0.2 * n)
+        ratio = float(rec[interior].median()) / mu
+        assert 0.90 < ratio < 1.08, (frac, ratio)
+
+
+@pytest.mark.cuda
+def test_quantitative_fdk_detector_pitch_invariance():
+    """The reconstructed amplitude must not depend on the detector pitch
+    (a du-free DFT-bin ramp scales the result by ~du/2 — evaluated and
+    rejected; the physical ramp |f|/du plus the analytic constants is
+    pitch-invariant)."""
+    _skip_if_no_cuda()
+    n, num_views, vs, mu = 64, 120, 0.278, 0.05
+    zz, yy, xx = torch.meshgrid(*[torch.arange(n, device=DEV, dtype=torch.float32)] * 3,
+                                indexing="ij")
+    r = torch.sqrt((xx - n / 2 + 0.5) ** 2 + (yy - n / 2 + 0.5) ** 2)
+    cyl = ((r <= 0.375 * n) & ((zz - n / 2 + 0.5).abs() <= 0.35 * n)).float() * mu
+    src, dc, duv, dvv = dct.circular_trajectory_3d(num_views, 300.0, 600.0)
+    interior = (r <= 0.25 * n) & ((zz - n / 2 + 0.5).abs() <= 0.2 * n)
+
+    ratios = []
+    for du_ in (1.0, 0.556, 0.278):
+        det = int(n * vs * 2 / du_ * 1.35 / 2) * 2
+        sino = dct.cone_forward(cyl, src, dc, duv, dvv, det, det, du_, du_, vs) * vs
+        qw, qf, qb = _quantitative_fdk_operators(
+            src, dc, duv, dvv, (n, n, n), (det, det), du_, du_, vs, sinogram_scale=1.0)
+        rec = qb(qf(qw(sino)))
+        ratios.append(float(rec[interior].median()) / mu)
+
+    assert all(0.90 < x < 1.08 for x in ratios), ratios
+    assert max(ratios) - min(ratios) < 0.04, ratios     # pitch-invariant
