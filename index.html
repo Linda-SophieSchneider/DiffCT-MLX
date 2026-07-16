@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DiffCT-MLX: Differentiable CT — One API, Two Backends &mdash; DiffCT-MLX 2.0.1 documentation</title>
+  <title>DiffCT-MLX: Differentiable CT — One API, Two Backends &mdash; DiffCT-MLX 2.1.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f5cff4aa"></script>
+      <script src="_static/documentation_options.js?v=20623aea"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -99,12 +99,14 @@ forward/adjoint pairs for parallel-, fan- and cone-beam geometries,
 including a sparse cone backprojection for region-of-interest gradients.</p></li>
 <li><p><strong>Arbitrary trajectories:</strong> per-view source/detector arrays — circular,
 spiral (helical), saddle, sinusoidal, laminography, or fully custom.</p></li>
-<li><p><strong>Complete reconstruction stack:</strong> amplitude-calibrated FBP/FDK,
+<li><p><strong>Complete reconstruction stack:</strong> quantitative FDK in physical attenuation
+units for synthetic and measured cone-beam data, amplitude-calibrated FBP,
 SART/SIRT/normalized-SART, TV-/ASD-/AwTV-POCS, DART, plus a solver registry
 (<code class="docutils literal notranslate"><span class="pre">cgls</span></code>, <code class="docutils literal notranslate"><span class="pre">wls</span></code>/<code class="docutils literal notranslate"><span class="pre">rwls</span></code>, <code class="docutils literal notranslate"><span class="pre">pcg</span></code>, <code class="docutils literal notranslate"><span class="pre">mlem</span></code>/<code class="docutils literal notranslate"><span class="pre">osem</span></code>, <code class="docutils literal notranslate"><span class="pre">mltr</span></code>, …)
 over a composable <code class="docutils literal notranslate"><span class="pre">LinearOperator</span></code> algebra with functionals,
 regularizers and Plug-and-Play denoisers.</p></li>
-<li><p><strong>Physics &amp; simulation:</strong> GPU-native preprocessing (flat field, rings, bad
+<li><p><strong>Physics &amp; simulation:</strong> explicit voxel/physical line-integral conventions,
+GPU-native preprocessing (flat field, rings, bad
 pixels, beam hardening, deblur, scatter, MAR) and forward simulation with an
 embedded, physically-validated X-ray spectrum / material-attenuation
 library (40–225 kVp).</p></li>
@@ -170,16 +172,16 @@ on NVIDIA hardware; documented in the API reference.</p></li>
 </section>
 <section id="citation">
 <h2>Citation<a class="headerlink" href="#citation" title="Link to this heading"></a></h2>
-<p>If you build on the vendored CUDA engine, please also cite the upstream
-<code class="docutils literal notranslate"><span class="pre">diffct</span></code> project:</p>
-<div class="highlight-bibtex notranslate"><div class="highlight"><pre><span></span><span class="nc">@software</span><span class="p">{</span><span class="nl">DiffCT2025</span><span class="p">,</span>
-<span class="w">  </span><span class="na">author</span><span class="w">       </span><span class="p">=</span><span class="w"> </span><span class="s">{Yipeng Sun}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">title</span><span class="w">        </span><span class="p">=</span><span class="w"> </span><span class="s">{DiffCT: Differentiable Computed Tomography</span>
-<span class="s">                 Reconstruction with CUDA}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">year</span><span class="w">         </span><span class="p">=</span><span class="w"> </span><span class="m">2025</span><span class="p">,</span>
-<span class="w">  </span><span class="na">publisher</span><span class="w">    </span><span class="p">=</span><span class="w"> </span><span class="s">{Zenodo}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">doi</span><span class="w">          </span><span class="p">=</span><span class="w"> </span><span class="s">{10.5281/zenodo.14999333}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">url</span><span class="w">          </span><span class="p">=</span><span class="w"> </span><span class="s">{https://doi.org/10.5281/zenodo.14999333}</span>
+<p>If you use this library in your research, please cite:</p>
+<div class="highlight-bibtex notranslate"><div class="highlight"><pre><span></span><span class="nc">@article</span><span class="p">{</span><span class="nl">202605.1446</span><span class="p">,</span>
+<span class="w">  </span><span class="na">doi</span><span class="w">       </span><span class="p">=</span><span class="w"> </span><span class="s">{10.20944/preprints202605.1446.v1}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">url</span><span class="w">       </span><span class="p">=</span><span class="w"> </span><span class="s">{https://doi.org/10.20944/preprints202605.1446.v1}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">year</span><span class="w">      </span><span class="p">=</span><span class="w"> </span><span class="m">2026</span><span class="p">,</span>
+<span class="w">  </span><span class="na">month</span><span class="w">     </span><span class="p">=</span><span class="w"> </span><span class="s">{May}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">publisher</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Preprints}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">author</span><span class="w">    </span><span class="p">=</span><span class="w"> </span><span class="s">{Yipeng Sun and Linda-Sophie Schneider and Chengze Ye and Andreas Maier}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">title</span><span class="w">     </span><span class="p">=</span><span class="w"> </span><span class="s">{diffct: Differentiable CT Operators from Circular Orbits to Arbitrary Trajectories}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">journal</span><span class="w">   </span><span class="p">=</span><span class="w"> </span><span class="s">{Preprints}</span>
 <span class="p">}</span>
 </pre></div>
 </div>

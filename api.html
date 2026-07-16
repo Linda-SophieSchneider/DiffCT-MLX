@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API Reference &mdash; DiffCT-MLX 2.0.1 documentation</title>
+  <title>API Reference &mdash; DiffCT-MLX 2.1.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f5cff4aa"></script>
+      <script src="_static/documentation_options.js?v=20623aea"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -206,7 +206,8 @@ builders <code class="docutils literal notranslate"><span class="pre">make_paral
 <code class="docutils literal notranslate"><span class="pre">DictionarySparsity</span></code> and <code class="docutils literal notranslate"><span class="pre">RegularizerSequence</span></code> for Plug-and-Play priors.</p>
 <p class="rubric">Reconstruction (<code class="docutils literal notranslate"><span class="pre">diffct_mlx.reconstruction_algorithms</span></code>, re-exported at top level)</p>
 <p>Analytic: <code class="docutils literal notranslate"><span class="pre">reconstruct_fbp</span></code> / <code class="docutils literal notranslate"><span class="pre">reconstruct_fdk</span></code> (+ <code class="docutils literal notranslate"><span class="pre">FBPParameters</span></code> /
-<code class="docutils literal notranslate"><span class="pre">FDKParameters</span></code>). Iterative: <code class="docutils literal notranslate"><span class="pre">reconstruct_sart</span></code> / <code class="docutils literal notranslate"><span class="pre">reconstruct_sirt</span></code>
+<code class="docutils literal notranslate"><span class="pre">FDKParameters</span></code>) and <code class="docutils literal notranslate"><span class="pre">reconstruct_case_fdk</span></code> for a case’s quantitative
+physical FDK path. Iterative: <code class="docutils literal notranslate"><span class="pre">reconstruct_sart</span></code> / <code class="docutils literal notranslate"><span class="pre">reconstruct_sirt</span></code>
 (+ normalized SART), <code class="docutils literal notranslate"><span class="pre">reconstruct_tv_pocs</span></code> / <code class="docutils literal notranslate"><span class="pre">reconstruct_asd_pocs</span></code> /
 <code class="docutils literal notranslate"><span class="pre">reconstruct_awtv_pocs</span></code>, <code class="docutils literal notranslate"><span class="pre">reconstruct_dart</span></code>. Case builders bundling data +
 matched operators: <code class="docutils literal notranslate"><span class="pre">build_parallel_2d_case</span></code>, <code class="docutils literal notranslate"><span class="pre">build_fan_2d_case</span></code>,
@@ -215,6 +216,17 @@ matched operators: <code class="docutils literal notranslate"><span class="pre">
 <code class="docutils literal notranslate"><span class="pre">register_algorithm</span></code>, <code class="docutils literal notranslate"><span class="pre">list_algorithms</span></code> with <code class="docutils literal notranslate"><span class="pre">landweber</span></code>, <code class="docutils literal notranslate"><span class="pre">cgls</span></code>,
 <code class="docutils literal notranslate"><span class="pre">pcg</span></code>, <code class="docutils literal notranslate"><span class="pre">ls</span></code> / <code class="docutils literal notranslate"><span class="pre">wls</span></code> / <code class="docutils literal notranslate"><span class="pre">rls</span></code> / <code class="docutils literal notranslate"><span class="pre">rwls</span></code>, <code class="docutils literal notranslate"><span class="pre">dls</span></code> / <code class="docutils literal notranslate"><span class="pre">rdls</span></code>, <code class="docutils literal notranslate"><span class="pre">mlem</span></code> /
 <code class="docutils literal notranslate"><span class="pre">osem</span></code>, <code class="docutils literal notranslate"><span class="pre">mltr</span></code>.</p>
+<p class="rubric">Quantitative FDK and units</p>
+<p>Cone-beam cases expose <code class="docutils literal notranslate"><span class="pre">fdk_weight</span></code>, <code class="docutils literal notranslate"><span class="pre">fdk_filter</span></code> and
+<code class="docutils literal notranslate"><span class="pre">fdk_back_project</span></code> when the active backend provides the physical FDK gather
+path. <code class="docutils literal notranslate"><span class="pre">reconstruct_case_fdk(case)</span></code> combines cosine weighting, trapezoidal
+per-view angular weights, a zero-padded physical ramp and the voxel-driven
+<code class="docutils literal notranslate"><span class="pre">(SID/U)^2</span></code> backprojector; its result is attenuation in <code class="docutils literal notranslate"><span class="pre">1/mm</span></code>.</p>
+<p>Projectors themselves integrate in voxel units, so physical line integrals are
+<code class="docutils literal notranslate"><span class="pre">(A</span> <span class="pre">&#64;</span> <span class="pre">x)</span> <span class="pre">*</span> <span class="pre">A.voxel_spacing</span></code>. <code class="docutils literal notranslate"><span class="pre">simulate_scan</span></code> performs this conversion
+before transmission and beam-hardening physics. Iterative reconstruction of a
+physical measured sinogram returns attenuation per voxel; divide by
+<code class="docutils literal notranslate"><span class="pre">case.voxel_spacing</span></code> to obtain <code class="docutils literal notranslate"><span class="pre">1/mm</span></code>.</p>
 <p class="rubric">Physics &amp; simulation (<code class="docutils literal notranslate"><span class="pre">diffct_mlx.physics</span></code>)</p>
 <p>Corrections: <code class="docutils literal notranslate"><span class="pre">flat_field</span></code>, <code class="docutils literal notranslate"><span class="pre">ring_removal</span></code>, <code class="docutils literal notranslate"><span class="pre">bad_pixel_correction</span></code>,
 <code class="docutils literal notranslate"><span class="pre">beam_hardening_polynomial</span></code>, <code class="docutils literal notranslate"><span class="pre">detector_deblur</span></code>, <code class="docutils literal notranslate"><span class="pre">scatter_correction</span></code>,

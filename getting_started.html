@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Getting Started &mdash; DiffCT-MLX 2.0.1 documentation</title>
+  <title>Getting Started &mdash; DiffCT-MLX 2.1.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f5cff4aa"></script>
+      <script src="_static/documentation_options.js?v=20623aea"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -97,7 +97,13 @@ reconstruction with the unified <code class="docutils literal notranslate"><span
 </section>
 <section id="installation">
 <h2>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h2>
-<p>Install from source with the extra matching your platform:</p>
+<p>Install the release from PyPI with the extra matching your platform:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;diffct-mlx[cuda]&quot;</span><span class="w">   </span><span class="c1"># NVIDIA GPUs: Torch + numba-CUDA</span>
+<span class="c1"># or</span>
+pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;diffct-mlx[mlx]&quot;</span><span class="w">    </span><span class="c1"># Apple Silicon: MLX</span>
+</pre></div>
+</div>
+<p>For an editable development install, clone the repository:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/Linda-SophieSchneider/DiffCT-MLX.git
 <span class="nb">cd</span><span class="w"> </span>DiffCT-MLX
 pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[cuda]&quot;</span><span class="w">     </span><span class="c1"># NVIDIA GPUs: Torch + numba-CUDA</span>
@@ -153,9 +159,12 @@ out-of-core storage backend.</p>
 <ul class="simple">
 <li><p>The <strong>cases API</strong> (<code class="docutils literal notranslate"><span class="pre">build_parallel_2d_case</span></code>, <code class="docutils literal notranslate"><span class="pre">build_cone_3d_case</span></code>,
 <code class="docutils literal notranslate"><span class="pre">build_measured_cone_3d_case</span></code>, …) bundles simulated or measured data
-with matched forward/backprojectors and calibrated normalization constants.</p></li>
+with matched forward/backprojectors. For cone data,
+<code class="docutils literal notranslate"><span class="pre">dct.reconstruct_case_fdk(case)</span></code> selects the quantitative physical FDK
+path when available and returns attenuation in <code class="docutils literal notranslate"><span class="pre">1/mm</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">dct.simulate_scan</span></code> produces realistic polychromatic, noisy data from a
-phantom; <code class="docutils literal notranslate"><span class="pre">diffct_mlx.physics</span></code> corrects real measurements.</p></li>
+phantom in physical line-integral units; <code class="docutils literal notranslate"><span class="pre">diffct_mlx.physics</span></code> corrects
+real measurements.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx.orchestration</span></code> reconstructs volumes larger than GPU memory
 (and larger than host RAM) across multiple GPUs.</p></li>
 <li><p>Explore the <a class="reference internal" href="examples.html"><span class="doc">Examples</span></a> and the <a class="reference internal" href="api.html"><span class="doc">API Reference</span></a> reference.</p></li>
