@@ -9,6 +9,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-07-16
+
 ### Added
 
 - **Quantitative FDK** (amplitude-true attenuation values) for all cone
@@ -30,6 +32,9 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- PyPI publishing now triggers directly from `v*` tag pushes. GitHub suppresses
+  follow-up workflows for releases created with `GITHUB_TOKEN`, so the former
+  `release.published` trigger required a manual dispatch.
 - `simulate_scan` fed voxel-unit line integrals into the physical
   intensity/beam-hardening chain (`exp(-p)`, polychromatic nonlinearity) —
   silently wrong for `voxel_spacing != 1`. It now rescales by the operator's
@@ -43,6 +48,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `main` is the single development line; the redundant `cuda` branch has been
+  retired and the README no longer describes branch-specific APIs.
 - `FBPParameters`/`FDKParameters` gained `pad_factor` (default **2**) and
   route their `detector_spacing` into the ramp's `sample_spacing`. Analytic
   reconstructions therefore differ slightly (less interior depression) from
@@ -400,6 +407,7 @@ necessary for the arbitrary-trajectory kernel API:
   when the detector is not plane-aligned to the voxel axes) and will
   be tackled in a dedicated follow-up.
 
-[Unreleased]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/releases/tag/v2.0.0

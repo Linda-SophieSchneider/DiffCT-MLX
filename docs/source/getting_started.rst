@@ -17,7 +17,15 @@ Prerequisites
 Installation
 ------------
 
-Install from source with the extra matching your platform:
+Install the release from PyPI with the extra matching your platform:
+
+.. code-block:: bash
+
+   pip install "diffct-mlx[cuda]"   # NVIDIA GPUs: Torch + numba-CUDA
+   # or
+   pip install "diffct-mlx[mlx]"    # Apple Silicon: MLX
+
+For an editable development install, clone the repository:
 
 .. code-block:: bash
 
@@ -80,9 +88,12 @@ Where to go next
 
 - The **cases API** (``build_parallel_2d_case``, ``build_cone_3d_case``,
   ``build_measured_cone_3d_case``, ...) bundles simulated or measured data
-  with matched forward/backprojectors and calibrated normalization constants.
+  with matched forward/backprojectors. For cone data,
+  ``dct.reconstruct_case_fdk(case)`` selects the quantitative physical FDK
+  path when available and returns attenuation in ``1/mm``.
 - ``dct.simulate_scan`` produces realistic polychromatic, noisy data from a
-  phantom; ``diffct_mlx.physics`` corrects real measurements.
+  phantom in physical line-integral units; ``diffct_mlx.physics`` corrects
+  real measurements.
 - ``diffct_mlx.orchestration`` reconstructs volumes larger than GPU memory
   (and larger than host RAM) across multiple GPUs.
 - Explore the :doc:`examples` and the :doc:`api` reference.

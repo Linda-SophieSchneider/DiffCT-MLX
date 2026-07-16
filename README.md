@@ -22,13 +22,12 @@ custom). Built for optimization and deep-learning integration.
 [Linda-Sophie Schneider](https://github.com/Linda-SophieSchneider) at
 [Linda-SophieSchneider/DiffCT-MLX](https://github.com/Linda-SophieSchneider/DiffCT-MLX).
 
-## 🧭 Using this branch — the unified `diffct_mlx` API
+## 🧭 The unified `diffct_mlx` API
 
-This `cuda` branch adds **`diffct_mlx`**, a single API that auto-selects its
+**`diffct_mlx`** is a single API that auto-selects its
 compute backend at import — **Torch / numba-CUDA** on NVIDIA GPUs, **Apple MLX**
 on Apple Silicon — so the *same* script runs unchanged on both. It mirrors the
-public API of the [DiffCT-MLX `main`](https://github.com/Linda-SophieSchneider/DiffCT-MLX)
-(Apple) package name-for-name.
+same public API on both backends name-for-name.
 
 ```bash
 pip install "diffct-mlx[cuda]"   # NVIDIA GPUs (Torch + numba-CUDA)
@@ -54,11 +53,11 @@ reco = dct.reconstruct_fbp(
 
 **Parity & status.** FBP/FDK, SART/SIRT, TV-/ASD-/AwTV-POCS, DART, phantoms,
 trajectory generators and the measured-data helpers are all available and were
-verified on NVIDIA GPUs. The **MLX backend** is wired in
-(`diffct_mlx/backend/metal/` vendors the Metal kernels and `mx.custom_function`
-projectors; the `xp` namespace is attribute-identical to the torch one, pinned
-by a static parity test) — runtime validation on Apple-Silicon hardware is the
-remaining step.
+verified on NVIDIA GPUs. The **MLX backend** is runtime-validated on Apple
+Silicon; its vendored Metal kernels use `mx.custom_function` projectors and
+the same centered Siddon/geometry-gradient conventions as CUDA. The
+backend-neutral `xp` namespace is attribute-identical to the torch one, pinned
+by a static parity test.
 
 ### Projectors: Siddon vs. separable footprint
 
@@ -132,8 +131,8 @@ filter itself now accepts `pad_factor` and `sample_spacing`, and
 
 ### Operators, solvers, regularizers, physics & simulation
 
-The `cuda` branch adds a composable, differentiable toolkit on top of the
-projectors (all GPU-resident, verified on NVIDIA GPUs):
+The unified package provides a composable, differentiable toolkit on top of
+the projectors (all GPU-resident, verified on NVIDIA GPUs):
 
 - **Operators** (`diffct_mlx.operators`) — a `LinearOperator` algebra: build a
   projector as `A = dct.make_cone_3d_operator(...)`, then `A @ x`, `A.T @ y`,
@@ -452,7 +451,7 @@ pip install -e .
 ### Running the tests
 
 ```bash
-pytest tests/ -q                             # 97 tests, ~5 s
+pytest tests/ -q                             # core suite (backend-specific tests may skip)
 pytest tests/benchmarks/ --benchmark-only    # opt-in perf suite
 ```
 

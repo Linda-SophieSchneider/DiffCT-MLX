@@ -23,12 +23,14 @@ unchanged on both platforms. Override the automatic choice with the
   including a sparse cone backprojection for region-of-interest gradients.
 - **Arbitrary trajectories:** per-view source/detector arrays — circular,
   spiral (helical), saddle, sinusoidal, laminography, or fully custom.
-- **Complete reconstruction stack:** amplitude-calibrated FBP/FDK,
+- **Complete reconstruction stack:** quantitative FDK in physical attenuation
+  units for synthetic and measured cone-beam data, amplitude-calibrated FBP,
   SART/SIRT/normalized-SART, TV-/ASD-/AwTV-POCS, DART, plus a solver registry
   (``cgls``, ``wls``/``rwls``, ``pcg``, ``mlem``/``osem``, ``mltr``, ...)
   over a composable ``LinearOperator`` algebra with functionals,
   regularizers and Plug-and-Play denoisers.
-- **Physics & simulation:** GPU-native preprocessing (flat field, rings, bad
+- **Physics & simulation:** explicit voxel/physical line-integral conventions,
+  GPU-native preprocessing (flat field, rings, bad
   pixels, beam hardening, deblur, scatter, MAR) and forward simulation with an
   embedded, physically-validated X-ray spectrum / material-attenuation
   library (40–225 kVp).
@@ -65,19 +67,19 @@ User Guide
 Citation
 --------
 
-If you build on the vendored CUDA engine, please also cite the upstream
-``diffct`` project:
+If you use this library in your research, please cite:
 
 .. code-block:: bibtex
 
-   @software{DiffCT2025,
-     author       = {Yipeng Sun},
-     title        = {DiffCT: Differentiable Computed Tomography
-                    Reconstruction with CUDA},
-     year         = 2025,
-     publisher    = {Zenodo},
-     doi          = {10.5281/zenodo.14999333},
-     url          = {https://doi.org/10.5281/zenodo.14999333}
+   @article{202605.1446,
+     doi       = {10.20944/preprints202605.1446.v1},
+     url       = {https://doi.org/10.20944/preprints202605.1446.v1},
+     year      = 2026,
+     month     = {May},
+     publisher = {Preprints},
+     author    = {Yipeng Sun and Linda-Sophie Schneider and Chengze Ye and Andreas Maier},
+     title     = {diffct: Differentiable CT Operators from Circular Orbits to Arbitrary Trajectories},
+     journal   = {Preprints}
    }
 
 License

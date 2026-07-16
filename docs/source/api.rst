@@ -53,7 +53,8 @@ Objectives/regularizers/constraints: ``SquaredL2``, ``Tikhonov``, ``L1Norm``,
 .. rubric:: Reconstruction (``diffct_mlx.reconstruction_algorithms``, re-exported at top level)
 
 Analytic: ``reconstruct_fbp`` / ``reconstruct_fdk`` (+ ``FBPParameters`` /
-``FDKParameters``). Iterative: ``reconstruct_sart`` / ``reconstruct_sirt``
+``FDKParameters``) and ``reconstruct_case_fdk`` for a case's quantitative
+physical FDK path. Iterative: ``reconstruct_sart`` / ``reconstruct_sirt``
 (+ normalized SART), ``reconstruct_tv_pocs`` / ``reconstruct_asd_pocs`` /
 ``reconstruct_awtv_pocs``, ``reconstruct_dart``. Case builders bundling data +
 matched operators: ``build_parallel_2d_case``, ``build_fan_2d_case``,
@@ -62,6 +63,20 @@ matched operators: ``build_parallel_2d_case``, ``build_fan_2d_case``,
 ``register_algorithm``, ``list_algorithms`` with ``landweber``, ``cgls``,
 ``pcg``, ``ls`` / ``wls`` / ``rls`` / ``rwls``, ``dls`` / ``rdls``, ``mlem`` /
 ``osem``, ``mltr``.
+
+.. rubric:: Quantitative FDK and units
+
+Cone-beam cases expose ``fdk_weight``, ``fdk_filter`` and
+``fdk_back_project`` when the active backend provides the physical FDK gather
+path. ``reconstruct_case_fdk(case)`` combines cosine weighting, trapezoidal
+per-view angular weights, a zero-padded physical ramp and the voxel-driven
+``(SID/U)^2`` backprojector; its result is attenuation in ``1/mm``.
+
+Projectors themselves integrate in voxel units, so physical line integrals are
+``(A @ x) * A.voxel_spacing``. ``simulate_scan`` performs this conversion
+before transmission and beam-hardening physics. Iterative reconstruction of a
+physical measured sinogram returns attenuation per voxel; divide by
+``case.voxel_spacing`` to obtain ``1/mm``.
 
 .. rubric:: Physics & simulation (``diffct_mlx.physics``)
 
