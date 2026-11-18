@@ -460,7 +460,11 @@ _CONE_3D_FOOTPRINT_FORWARD_SOURCE = """
         float fp_u_hi = u0 + half_u;
         float fp_v_lo = v0 - half_v;
         float fp_v_hi = v0 + half_v;
-        float scaled_val = val * voxel_spacing;
+        // Mass-conserving footprint amplitude: voxel-unit line integral averaged over the
+        // detector cell, on the same scale as the Siddon projector.
+        float ray_len = metal::sqrt(rx * rx + ry * ry + rz * rz);
+        float amp = (voxel_spacing * voxel_spacing / (du * dv)) * t * t * ray_len * metal::abs(inv_denom);
+        float scaled_val = val * amp;
 
         for (int iu = iu_min; iu <= iu_max; ++iu) {
             float pixel_u = ((float)iu - center_u) * du;
@@ -617,6 +621,11 @@ _CONE_3D_FOOTPRINT_BACKWARD_SOURCE = """
         float fp_v_lo = v0 - half_v;
         float fp_v_hi = v0 + half_v;
 
+        // Mass-conserving footprint amplitude: voxel-unit line integral averaged over the
+        // detector cell, on the same scale as the Siddon projector.
+        float ray_len = metal::sqrt(rx * rx + ry * ry + rz * rz);
+        float amp = (voxel_spacing * voxel_spacing / (du * dv)) * t * t * ray_len * metal::abs(inv_denom);
+
         for (int iu = iu_min; iu <= iu_max; ++iu) {
             float pixel_u = ((float)iu - center_u) * du;
             float pixel_u_lo = pixel_u - 0.5f * du;
@@ -632,7 +641,7 @@ _CONE_3D_FOOTPRINT_BACKWARD_SOURCE = """
                 float overlap_v = metal::min(pixel_v_hi, fp_v_hi) - metal::max(pixel_v_lo, fp_v_lo);
                 if (overlap_v <= eps) continue;
                 float wv = overlap_v / width_v;
-                accum += sino[iview * n_u * n_v + iu * n_v + iv] * wu * wv * voxel_spacing;
+                accum += sino[iview * n_u * n_v + iu * n_v + iv] * wu * wv * amp;
             }
         }
     }
@@ -770,6 +779,11 @@ _CONE_3D_FOOTPRINT_BACKWARD_SPARSE_SOURCE = """
         float fp_v_lo = v0 - half_v;
         float fp_v_hi = v0 + half_v;
 
+        // Mass-conserving footprint amplitude: voxel-unit line integral averaged over the
+        // detector cell, on the same scale as the Siddon projector.
+        float ray_len = metal::sqrt(rx * rx + ry * ry + rz * rz);
+        float amp = (voxel_spacing * voxel_spacing / (du * dv)) * t * t * ray_len * metal::abs(inv_denom);
+
         for (int iu = iu_min; iu <= iu_max; ++iu) {
             float pixel_u = ((float)iu - center_u) * du;
             float pixel_u_lo = pixel_u - 0.5f * du;
@@ -785,7 +799,7 @@ _CONE_3D_FOOTPRINT_BACKWARD_SPARSE_SOURCE = """
                 float overlap_v = metal::min(pixel_v_hi, fp_v_hi) - metal::max(pixel_v_lo, fp_v_lo);
                 if (overlap_v <= eps) continue;
                 float wv = overlap_v / width_v;
-                accum += sino[iview * n_u * n_v + iu * n_v + iv] * wu * wv * voxel_spacing;
+                accum += sino[iview * n_u * n_v + iu * n_v + iv] * wu * wv * amp;
             }
         }
     }

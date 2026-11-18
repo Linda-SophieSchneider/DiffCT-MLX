@@ -76,9 +76,10 @@ def _fan_2d_footprint_forward_kernel(
         ray_len = math.sqrt(rx * rx + ry * ry)
         if ray_len <= eps:
             continue
-        dir_x = rx / ray_len
-        dir_y = ry / ray_len
-        l_phi = _ONE / max(max(abs(dir_x), abs(dir_y)), eps)
+        # Mass-conserving footprint amplitude: the output is a voxel-unit line integral
+        # averaged over the detector cell, on the same scale as the Siddon projector.
+        # (local magnification t, oblique detector incidence ray_len / |denom|).
+        amp = t * ray_len / (abs(denom) * det_spacing_vox)
 
         idet_min = int(math.floor(u0 / det_spacing_vox + center_u - support_u / det_spacing_vox))
         idet_max = int(math.ceil(u0 / det_spacing_vox + center_u + support_u / det_spacing_vox))
@@ -89,7 +90,7 @@ def _fan_2d_footprint_forward_kernel(
 
         fp_lo = u0 - half_u
         fp_hi = u0 + half_u
-        scaled_val = val * l_phi
+        scaled_val = val * amp
 
         for idet in range(idet_min, idet_max + 1):
             pixel_u = (np.float32(idet) - center_u) * det_spacing_vox
@@ -160,9 +161,10 @@ def _fan_2d_footprint_backward_kernel(
         ray_len = math.sqrt(rx * rx + ry * ry)
         if ray_len <= eps:
             continue
-        dir_x = rx / ray_len
-        dir_y = ry / ray_len
-        l_phi = _ONE / max(max(abs(dir_x), abs(dir_y)), eps)
+        # Mass-conserving footprint amplitude: the output is a voxel-unit line integral
+        # averaged over the detector cell, on the same scale as the Siddon projector.
+        # (local magnification t, oblique detector incidence ray_len / |denom|).
+        amp = t * ray_len / (abs(denom) * det_spacing_vox)
 
         idet_min = int(math.floor(u0 / det_spacing_vox + center_u - support_u / det_spacing_vox))
         idet_max = int(math.ceil(u0 / det_spacing_vox + center_u + support_u / det_spacing_vox))
@@ -182,6 +184,6 @@ def _fan_2d_footprint_backward_kernel(
             if overlap <= eps:
                 continue
             weight = overlap / width_u
-            accum += d_sino[iang, idet] * weight * l_phi
+            accum += d_sino[iang, idet] * weight * amp
 
     d_image[iy, ix] = accum

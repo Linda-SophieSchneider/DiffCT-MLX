@@ -9,6 +9,49 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-18
+
+### Fixed
+
+- **Footprint projectors return line integrals.** The separable-footprint
+  kernels (parallel, fan, cone; forward, adjoint and the sparse cone adjoint;
+  Metal and CUDA) distributed every voxel with weights that sum to one over
+  the detector cells it touches (`overlap / footprint_width`). The output was
+  therefore not a line integral: the cone sinogram scaled with
+  `(detector cell size at the isocentre / voxel size)**2` (0.21x for a 0.28 mm
+  cell on 0.6 mm voxels), and the parallel and fan sinograms carried an
+  additional view-angle factor `1 / max(|cos|, |sin|)` of up to 1.41x at 45
+  degrees plus the factor `detector cell / voxel`. The kernels now use a
+  mass-conserving amplitude (parallel: `1 / det_spacing_vox`; fan:
+  `t * |r| / (|r.n| * det_spacing_vox)`; cone:
+  `vs^2 * t^2 * |r| / (|r.n| * du * dv)` with local magnification `t`), so a
+  footprint sinogram is a voxel-unit line integral averaged over the detector
+  cell and agrees with the Siddon projector to within 1 % for any detector
+  spacing, voxel spacing and magnification
+  (`tests/test_footprint_amplitude.py`). The forward/adjoint pairs remain
+  exact adjoints.
+
+### Changed
+
+- **Numerical output of every `*_footprint` projector and of operators built
+  with `projector_mode="footprint"` (the default) changes** by the factors
+  above. Consequences:
+  - Sensitivity-normalised SART (`SARTParameters` default) is unaffected when
+    data and operator come from the same footprint pair. Reconstructing
+    line-integral data (Siddon simulation, measured data) with the footprint
+    pair now yields the correct amplitude; before, the built-in fan and cone
+    cases came out 1.4x and 2.4x too large.
+  - Physical noise or beam-hardening models applied to footprint sinograms
+    (`exp(-p)`) now see the correct attenuation.
+  - Unnormalised iterative updates (`voxel_sensitivity_normalization=False`)
+    need a `backprojection_scale`: the adjoint of ones is now
+    `(vs * t / du)^2` per view instead of one. The case default 0.215 remains
+    stable for the built-in cone case.
+  - Results that mixed footprint sinograms with absolute thresholds or fixed
+    step sizes tuned on 2.1.0 and earlier are not comparable across this
+    change.
+
+
 ### Known issues
 
 - The quantitative FDK path (`reconstruct_case_fdk`, `fdk_back_project`) is

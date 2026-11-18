@@ -333,9 +333,9 @@ _FAN_2D_FOOTPRINT_FORWARD_SOURCE = """
 
         float ray_len = metal::sqrt(rx * rx + ry * ry);
         if (ray_len <= eps) continue;
-        float dir_x = rx / ray_len;
-        float dir_y = ry / ray_len;
-        float l_phi = 1.0f / metal::max(metal::max(metal::abs(dir_x), metal::abs(dir_y)), eps);
+        // Mass-conserving footprint amplitude: voxel-unit line integral averaged over the
+        // detector cell, on the same scale as the Siddon projector.
+        float amp = t * ray_len / (metal::abs(denom) * det_spacing_vox);
 
         int idet_min = (int)metal::floor(u0 / det_spacing_vox + center_u - support_u / det_spacing_vox);
         int idet_max = (int)metal::ceil(u0 / det_spacing_vox + center_u + support_u / det_spacing_vox);
@@ -344,7 +344,7 @@ _FAN_2D_FOOTPRINT_FORWARD_SOURCE = """
 
         float fp_lo = u0 - half_u;
         float fp_hi = u0 + half_u;
-        float scaled_val = val * l_phi;
+        float scaled_val = val * amp;
 
         for (int idet = idet_min; idet <= idet_max; ++idet) {
             float pixel_u = ((float)idet - center_u) * det_spacing_vox;
@@ -431,9 +431,9 @@ _FAN_2D_FOOTPRINT_BACKWARD_SOURCE = """
 
         float ray_len = metal::sqrt(rx * rx + ry * ry);
         if (ray_len <= eps) continue;
-        float dir_x = rx / ray_len;
-        float dir_y = ry / ray_len;
-        float l_phi = 1.0f / metal::max(metal::max(metal::abs(dir_x), metal::abs(dir_y)), eps);
+        // Mass-conserving footprint amplitude: voxel-unit line integral averaged over the
+        // detector cell, on the same scale as the Siddon projector.
+        float amp = t * ray_len / (metal::abs(denom) * det_spacing_vox);
 
         int idet_min = (int)metal::floor(u0 / det_spacing_vox + center_u - support_u / det_spacing_vox);
         int idet_max = (int)metal::ceil(u0 / det_spacing_vox + center_u + support_u / det_spacing_vox);
@@ -450,7 +450,7 @@ _FAN_2D_FOOTPRINT_BACKWARD_SOURCE = """
             float overlap = metal::min(pixel_hi, fp_hi) - metal::max(pixel_lo, fp_lo);
             if (overlap <= eps) continue;
             float weight = overlap / width_u;
-            accum += sino[iang * n_det + idet] * weight * l_phi;
+            accum += sino[iang * n_det + idet] * weight * amp;
         }
     }
 

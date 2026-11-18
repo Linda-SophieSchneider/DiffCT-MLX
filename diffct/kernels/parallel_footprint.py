@@ -37,7 +37,6 @@ def _parallel_2d_footprint_forward_kernel(
     u_vec_x = d_det_u_vec[iang, 0]
     u_vec_y = d_det_u_vec[iang, 1]
 
-    l_phi = _ONE / max(max(abs(dir_x), abs(dir_y)), eps)
     half_u = _HALF * (abs(u_vec_x) + abs(u_vec_y))
     half_u = max(half_u, _HALF * det_spacing_vox)
     width_u = max(half_u + half_u, det_spacing_vox)
@@ -63,7 +62,9 @@ def _parallel_2d_footprint_forward_kernel(
 
         fp_lo = u0 - half_u
         fp_hi = u0 + half_u
-        scaled_val = val * l_phi
+        # Mass-conserving footprint amplitude: the output is a voxel-unit line integral
+        # averaged over the detector cell, on the same scale as the Siddon projector.
+        scaled_val = val / det_spacing_vox
 
         for idet in range(idet_min, idet_max + 1):
             pixel_u = (np.float32(idet) - center_u) * det_spacing_vox
@@ -102,7 +103,6 @@ def _parallel_2d_footprint_backward_kernel(
         u_vec_x = d_det_u_vec[iang, 0]
         u_vec_y = d_det_u_vec[iang, 1]
 
-        l_phi = _ONE / max(max(abs(dir_x), abs(dir_y)), eps)
         half_u = _HALF * (abs(u_vec_x) + abs(u_vec_y))
         half_u = max(half_u, _HALF * det_spacing_vox)
         width_u = max(half_u + half_u, det_spacing_vox)
@@ -130,6 +130,6 @@ def _parallel_2d_footprint_backward_kernel(
             if overlap <= eps:
                 continue
             weight = overlap / width_u
-            accum += d_sino[iang, idet] * weight * l_phi
+            accum += d_sino[iang, idet] * weight / det_spacing_vox
 
     d_image[iy, ix] = accum

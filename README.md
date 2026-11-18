@@ -120,7 +120,10 @@ filter itself now accepts `pad_factor` and `sample_spacing`, and
 `FBPParameters`/`FDKParameters` default to `pad_factor=2`.
 
 > **Unit convention.** The projectors integrate in **voxel units**: physical
-> line integrals are `(A @ x) * voxel_spacing`. Operators built via
+> line integrals are `(A @ x) * voxel_spacing`. This holds for both projector
+> modes: since 2.2.0 the footprint kernels are mass-conserving and agree with
+> the Siddon kernels in amplitude (earlier versions scaled footprint output
+> with the detector-cell-to-voxel size ratio). Operators built via
 > `make_*_operator` carry `A.voxel_spacing` as metadata, and the boundaries
 > where physical units matter handle the conversion automatically —
 > `simulate_scan` rescales before the `exp(-p)` / beam-hardening physics (and

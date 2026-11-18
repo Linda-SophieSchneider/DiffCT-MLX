@@ -118,7 +118,12 @@ def _cone_3d_footprint_forward_kernel(
         fp_u_hi = u0 + half_u
         fp_v_lo = v0 - half_v
         fp_v_hi = v0 + half_v
-        scaled_val = val * voxel_spacing
+        # Mass-conserving footprint amplitude: the output is a voxel-unit line integral
+        # averaged over the detector cell, on the same scale as the Siddon projector.
+        # A voxel of volume vs^3 spreads over (vs * t)^2 * ray_len / |denom| of detector area.
+        ray_len = math.sqrt(rx * rx + ry * ry + rz * rz)
+        amp = (voxel_spacing * voxel_spacing / (du * dv)) * t * t * ray_len * abs(inv_denom)
+        scaled_val = val * amp
 
         for iu in range(iu_min, iu_max + 1):
             pixel_u = (np.float32(iu) - center_u) * du
@@ -235,6 +240,12 @@ def _cone_3d_footprint_backward_kernel(
         fp_v_lo = v0 - half_v
         fp_v_hi = v0 + half_v
 
+        # Mass-conserving footprint amplitude: the output is a voxel-unit line integral
+        # averaged over the detector cell, on the same scale as the Siddon projector.
+        # A voxel of volume vs^3 spreads over (vs * t)^2 * ray_len / |denom| of detector area.
+        ray_len = math.sqrt(rx * rx + ry * ry + rz * rz)
+        amp = (voxel_spacing * voxel_spacing / (du * dv)) * t * t * ray_len * abs(inv_denom)
+
         for iu in range(iu_min, iu_max + 1):
             pixel_u = (np.float32(iu) - center_u) * du
             overlap_u = min(pixel_u + _HALF * du, fp_u_hi) - max(pixel_u - _HALF * du, fp_u_lo)
@@ -247,7 +258,7 @@ def _cone_3d_footprint_backward_kernel(
                 if overlap_v <= eps:
                     continue
                 wv = overlap_v / width_v
-                accum += d_sino[iview, iu, iv] * wu * wv * voxel_spacing
+                accum += d_sino[iview, iu, iv] * wu * wv * amp
 
     d_vol[ix, iy, iz] = accum
 
@@ -359,6 +370,12 @@ def _cone_3d_footprint_backward_sparse_kernel(
         fp_v_lo = v0 - half_v
         fp_v_hi = v0 + half_v
 
+        # Mass-conserving footprint amplitude: the output is a voxel-unit line integral
+        # averaged over the detector cell, on the same scale as the Siddon projector.
+        # A voxel of volume vs^3 spreads over (vs * t)^2 * ray_len / |denom| of detector area.
+        ray_len = math.sqrt(rx * rx + ry * ry + rz * rz)
+        amp = (voxel_spacing * voxel_spacing / (du * dv)) * t * t * ray_len * abs(inv_denom)
+
         for iu in range(iu_min, iu_max + 1):
             pixel_u = (np.float32(iu) - center_u) * du
             overlap_u = min(pixel_u + _HALF * du, fp_u_hi) - max(pixel_u - _HALF * du, fp_u_lo)
@@ -371,6 +388,6 @@ def _cone_3d_footprint_backward_sparse_kernel(
                 if overlap_v <= eps:
                     continue
                 wv = overlap_v / width_v
-                accum += d_sino[iview, iu, iv] * wu * wv * voxel_spacing
+                accum += d_sino[iview, iu, iv] * wu * wv * amp
 
     d_out[isample] = accum

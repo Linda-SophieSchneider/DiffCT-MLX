@@ -274,7 +274,6 @@ _PARALLEL_2D_FOOTPRINT_FORWARD_SOURCE = """
     float u_vec_x = det_u_vec[iang * 2 + 0];
     float u_vec_y = det_u_vec[iang * 2 + 1];
 
-    float l_phi = 1.0f / metal::max(metal::max(metal::abs(dir_x), metal::abs(dir_y)), eps);
     float half_u = 0.5f * (metal::abs(u_vec_x) + metal::abs(u_vec_y));
     half_u = metal::max(half_u, 0.5f * det_spacing_vox);
     float width_u = metal::max(2.0f * half_u, det_spacing_vox);
@@ -297,7 +296,9 @@ _PARALLEL_2D_FOOTPRINT_FORWARD_SOURCE = """
 
         float fp_lo = u0 - half_u;
         float fp_hi = u0 + half_u;
-        float scaled_val = val * l_phi;
+        // Mass-conserving footprint amplitude: voxel-unit line integral averaged over the
+        // detector cell, on the same scale as the Siddon projector.
+        float scaled_val = val / det_spacing_vox;
 
         for (int idet = idet_min; idet <= idet_max; ++idet) {
             float pixel_u = ((float)idet - center_u) * det_spacing_vox;
@@ -352,7 +353,6 @@ _PARALLEL_2D_FOOTPRINT_BACKWARD_SOURCE = """
         float u_vec_x = det_u_vec[iang * 2 + 0];
         float u_vec_y = det_u_vec[iang * 2 + 1];
 
-        float l_phi = 1.0f / metal::max(metal::max(metal::abs(dir_x), metal::abs(dir_y)), eps);
         float half_u = 0.5f * (metal::abs(u_vec_x) + metal::abs(u_vec_y));
         half_u = metal::max(half_u, 0.5f * det_spacing_vox);
         float width_u = metal::max(2.0f * half_u, det_spacing_vox);
@@ -377,7 +377,7 @@ _PARALLEL_2D_FOOTPRINT_BACKWARD_SOURCE = """
             float overlap = metal::min(pixel_hi, fp_hi) - metal::max(pixel_lo, fp_lo);
             if (overlap <= eps) continue;
             float weight = overlap / width_u;
-            accum += sino[iang * n_det + idet] * weight * l_phi;
+            accum += sino[iang * n_det + idet] * weight / det_spacing_vox;
         }
     }
 
