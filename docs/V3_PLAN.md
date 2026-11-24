@@ -43,7 +43,7 @@ Branch `v3`. Status markers: [x] done, [~] in progress, [ ] open.
    engine's finite-difference helper until an analytic VJP exists.
 4. [x] Rewire `diffct_mlx/backend/_torch.py` to the engine. Delete the old
    top-level `diffct/` package and `tests/` that import it, or port them.
-5. [ ] Switch the Metal kernels (Siddon, footprint, FDK gathers) to the
+5. [x] Switch the Metal kernels (Siddon, footprint, FDK gathers) to the
    upstream conventions. Flip the defaults in `diffct_mlx.conventions`,
    `operators.py` and `cases.py`. Remove the voxel-unit conversions in
    `simulate_scan`, the case builders and the quantitative FDK path.
@@ -66,8 +66,14 @@ Branch `v3`. Status markers: [x] done, [~] in progress, [ ] open.
 - Not run on CUDA yet: native footprint path, out-of-core FDK gather,
   `tests/engine` CUDA tests. Next: a full run on Alex.
 - MLX suite unchanged (36 pass; 2 old `test_xp_*` failures).
-- Backend parity is broken until step 5: Torch is centred + physical, MLX
-  still uses the kernel convention.
+- Step 5 done: MLX and the Torch engine agree to < 2e-4 (forward and
+  backprojection, all beams) and to < 1e-3 in the cone geometry gradient,
+  after porting the engine's exact VJP to Metal (the old Metal kernel
+  differentiated a trilinear model and was wrong since 2.0).
+
+## Open issues
+
+- Fan/parallel geometry gradients on MLX (the engine has exact VJPs for them).
 
 ## Open questions
 

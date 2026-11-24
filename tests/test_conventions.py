@@ -3,8 +3,9 @@
 The kernels place detector pixel i at ``(i - N/2)·du`` and return line
 integrals in voxel units (the upstream diffct conventions). DiffCT-MLX 1.x and
 scanner geometry files use ``(i - (N-1)/2)·du`` and physical line integrals.
-These tests pin the opt-in ``detector_convention="centered"`` and
-``line_integrals="physical"`` options against exact analytic line integrals,
+Since 3.0 the kernels use ``detector_convention="centered"`` and
+``line_integrals="physical"``; ``"legacy"`` and ``"voxel"`` reproduce 2.x.
+These tests pin both against exact analytic line integrals,
 adjointness and the simulation chain.
 
 Backend-neutral: runs on MLX (Apple Silicon) and torch/CUDA alike.
@@ -57,9 +58,11 @@ def test_kernel_detector_center_shift_and_validation():
     c = np.zeros((2, 3), np.float32)
     u = np.tile(np.array([1.0, 0.0, 0.0], np.float32), (2, 1))
     v = np.tile(np.array([0.0, 0.0, 1.0], np.float32), (2, 1))
-    out = dct.kernel_detector_center(c, u, 0.4, v, 0.6, convention="centered")
-    np.testing.assert_allclose(out, [[0.2, 0.0, 0.3]] * 2, atol=1e-7)
-    assert dct.kernel_detector_center(c, u, 0.4, convention="kernel") is c
+    out = dct.kernel_detector_center(c, u, 0.4, v, 0.6, convention="legacy")
+    np.testing.assert_allclose(out, [[-0.2, 0.0, -0.3]] * 2, atol=1e-7)
+    alias = dct.kernel_detector_center(c, u, 0.4, v, 0.6, convention="kernel")  # 2.3 name
+    np.testing.assert_allclose(alias, out, atol=0)
+    assert dct.kernel_detector_center(c, u, 0.4, convention="centered") is c
     with pytest.raises(ValueError):
         dct.kernel_detector_center(c, u, 0.4, convention="centre")
     with pytest.raises(ValueError):
@@ -83,7 +86,7 @@ def test_parallel_centered_matches_analytic_chords(mode):
     exact = 2.0 * np.sqrt(np.clip(_R**2 - t_sym**2, 0.0, None))
 
     errs = {}
-    for conv in ("kernel", "centered"):
+    for conv in ("legacy", "centered"):
         A = dct.make_parallel_2d_operator(
             rd, do, uv, image_shape=(_N, _N), num_detectors=n_det, detector_spacing=du,
             projector_mode=mode, detector_convention=conv,
@@ -93,7 +96,7 @@ def test_parallel_centered_matches_analytic_chords(mode):
         if conv == "centered":
             # a centred object projects mirror-symmetric about (N-1)/2
             np.testing.assert_allclose(sino, sino[:, ::-1], atol=0.05 * exact.max())
-    assert errs["centered"] < 0.6 * errs["kernel"], errs
+    assert errs["centered"] < 0.6 * errs["legacy"], errs
 
 
 def test_cone_centered_centroid_and_analytic_profile():
@@ -101,7 +104,7 @@ def test_cone_centered_centroid_and_analytic_profile():
     n_u, n_v, du, dv = 72, 70, 1.1, 1.3
     src, dc, uv, vv = _cone_geometry()
     vol = _centered_sphere_3d()
-    for conv, expected in (("kernel", (n_u / 2, n_v / 2)), ("centered", ((n_u - 1) / 2, (n_v - 1) / 2))):
+    for conv, expected in (("legacy", (n_u / 2, n_v / 2)), ("centered", ((n_u - 1) / 2, (n_v - 1) / 2))):
         A = dct.make_cone_3d_operator(
             src, dc, uv, vv, volume_shape=(_N, _N, _N), detector_shape=(n_u, n_v),
             du=du, dv=dv, projector_mode="footprint", detector_convention=conv,

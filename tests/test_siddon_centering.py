@@ -6,7 +6,7 @@ traversed cell — effectively shifting the volume by half a voxel per axis
 against the footprint kernels and the standardized convention (cell k spans
 ``[k - c, k + 1 - c)``, center at ``k + 0.5 - c``). A correct projector maps
 a perfectly centered object to a view-independent sinogram centered at
-``n_det / 2``; the broken kernels oscillated by up to ±1.24 px with the view
+``(n_det - 1) / 2`` (``n_det / 2`` before 3.0); the broken kernels oscillated by up to ±1.24 px with the view
 angle. Also pins the removed stray ``voxel_spacing`` factor that made the
 Metal cone forward/backward pair non-adjoint for ``voxel_spacing != 1``.
 
@@ -70,7 +70,7 @@ def test_parallel_siddon_centered_disk_projects_centered():
     rd, do, du = dct.circular_trajectory_2d_parallel(8, start_angle=_START)
     sino = _b.to_numpy(dct.parallel_forward(img, rd, do, du, _NDET, 1.0))
     cents = _detector_centroids(sino, axis=1)
-    assert max(abs(c - _NDET / 2) for c in cents) < 0.1
+    assert max(abs(c - (_NDET - 1) / 2) for c in cents) < 0.1
     assert max(cents) - min(cents) < 0.1
 
 
@@ -80,7 +80,7 @@ def test_fan_siddon_centered_disk_projects_centered():
     src, det_c, det_u = dct.circular_trajectory_2d_fan(8, 400.0, 700.0, start_angle=_START)
     sino = _b.to_numpy(dct.fan_forward(img, src, det_c, det_u, _NDET, 1.0))
     cents = _detector_centroids(sino, axis=1)
-    assert max(abs(c - _NDET / 2) for c in cents) < 0.1
+    assert max(abs(c - (_NDET - 1) / 2) for c in cents) < 0.1
     assert max(cents) - min(cents) < 0.1
 
 
@@ -93,7 +93,7 @@ def test_cone_siddon_centered_sphere_projects_centered():
     )
     for axis in (1, 2):
         cents = _detector_centroids(sino, axis=axis)
-        assert max(abs(c - _NDET / 2) for c in cents) < 0.1
+        assert max(abs(c - (_NDET - 1) / 2) for c in cents) < 0.1
         assert max(cents) - min(cents) < 0.1
 
 

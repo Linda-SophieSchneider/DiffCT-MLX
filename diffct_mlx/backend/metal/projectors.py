@@ -153,7 +153,7 @@ def _parallel_forward_impl(image, ray_dir, det_origin, det_u_vec,
         grid=grid,
         threadgroup=tg,
     )
-    return outputs[0]
+    return outputs[0] * float(voxel_spacing)
 
 
 def _parallel_backward_impl(sinogram, ray_dir, det_origin, det_u_vec,
@@ -191,7 +191,7 @@ def _parallel_backward_impl(sinogram, ray_dir, det_origin, det_u_vec,
         threadgroup=tg,
         init_value=0,
     )
-    return outputs[0]
+    return outputs[0] * float(voxel_spacing)
 
 
 def _parallel_forward_footprint_impl(image, ray_dir, det_origin, det_u_vec,
@@ -228,7 +228,7 @@ def _parallel_forward_footprint_impl(image, ray_dir, det_origin, det_u_vec,
         threadgroup=tg,
         init_value=0,
     )
-    return outputs[0]
+    return outputs[0] * float(voxel_spacing)
 
 
 def _parallel_backward_footprint_impl(sinogram, ray_dir, det_origin, det_u_vec,
@@ -263,7 +263,7 @@ def _parallel_backward_footprint_impl(sinogram, ray_dir, det_origin, det_u_vec,
         grid=grid,
         threadgroup=tg,
     )
-    return outputs[0]
+    return outputs[0] * float(voxel_spacing)
 
 
 @mx.custom_function
@@ -465,7 +465,7 @@ def _fan_forward_impl(image, src_pos, det_center, det_u_vec,
         grid=grid,
         threadgroup=tg,
     )
-    return outputs[0]
+    return outputs[0] * float(voxel_spacing)
 
 
 def _fan_backward_impl(sinogram, src_pos, det_center, det_u_vec,
@@ -495,7 +495,7 @@ def _fan_backward_impl(sinogram, src_pos, det_center, det_u_vec,
         threadgroup=tg,
         init_value=0,
     )
-    return outputs[0]
+    return outputs[0] * float(voxel_spacing)
 
 
 def _fan_forward_footprint_impl(image, src_pos, det_center, det_u_vec,
@@ -532,7 +532,7 @@ def _fan_forward_footprint_impl(image, src_pos, det_center, det_u_vec,
         threadgroup=tg,
         init_value=0,
     )
-    return outputs[0]
+    return outputs[0] * float(voxel_spacing)
 
 
 def _fan_backward_footprint_impl(sinogram, src_pos, det_center, det_u_vec,
@@ -567,7 +567,7 @@ def _fan_backward_footprint_impl(sinogram, src_pos, det_center, det_u_vec,
         grid=grid,
         threadgroup=tg,
     )
-    return outputs[0]
+    return outputs[0] * float(voxel_spacing)
 
 
 @mx.custom_function
@@ -850,7 +850,7 @@ def _cone_forward_impl(volume, src_pos, det_center, det_u_vec, det_v_vec,
         grid=grid,
         threadgroup=tg,
     )
-    return outputs[0]
+    return outputs[0] * float(voxel_spacing)
 
 
 def _cone_backward_impl(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
@@ -897,14 +897,17 @@ def _cone_backward_impl(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
 
     # Permute WHD → DHW
     vol = mx.transpose(outputs[0], axes=(2, 1, 0))
-    return mx.array(vol)
+    return mx.array(vol) * float(voxel_spacing)
 
 
 def _cone_geometry_grad_impl(
     volume, cotangent, src_pos, det_center, det_u_vec, det_v_vec,
     det_u, det_v, du, dv, voxel_spacing=1.0
 ):
-    """Analytical VJP of cone_forward w.r.t. src_pos, det_center, det_u_vec, det_v_vec.
+    """Exact VJP of cone_forward w.r.t. src_pos, det_center, det_u_vec, det_v_vec.
+
+    Face-crossing derivative of the cell-constant Siddon model (the engine's
+    algorithm), consistent with the forward kernel.
 
     Returns
     -------
@@ -945,6 +948,7 @@ def _cone_geometry_grad_impl(
         threadgroup=tg,
         init_value=0,
     )
+    # The kernel returns derivatives of the physical projection directly.
     return outputs[0], outputs[1], outputs[2], outputs[3]
 
 
@@ -993,7 +997,7 @@ def _cone_forward_footprint_impl(volume, src_pos, det_center, det_u_vec, det_v_v
         threadgroup=tg,
         init_value=0,
     )
-    return outputs[0]
+    return outputs[0] * float(voxel_spacing)
 
 
 def _cone_backward_footprint_impl(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
@@ -1053,7 +1057,7 @@ def _cone_backward_footprint_impl(sinogram, src_pos, det_center, det_u_vec, det_
             grid=grid,
             threadgroup=tg,
         )
-        return outputs[0]
+        return outputs[0] * float(voxel_spacing)
 
     grid, tg = _grid_3d(Nx, Ny, Nz)
 
@@ -1066,7 +1070,7 @@ def _cone_backward_footprint_impl(sinogram, src_pos, det_center, det_u_vec, det_
     )
 
     vol = mx.transpose(outputs[0], axes=(2, 1, 0))
-    return mx.array(vol)
+    return mx.array(vol) * float(voxel_spacing)
 
 
 @mx.custom_function

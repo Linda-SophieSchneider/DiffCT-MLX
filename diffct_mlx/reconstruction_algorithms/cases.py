@@ -92,11 +92,10 @@ class ReconstructionCase:
     fdk_normalization_scale: float | None = None
     fbp_weight: Callable[[Array], Array] | None = None
     fdk_weight: Callable[[Array], Array] | None = None
-    #: Physical voxel pitch of the reconstruction grid (mm). UNIT NOTE: the
-    #: projectors integrate in voxel units, so iterative reconstruction of a
-    #: PHYSICAL sinogram (measured -log data) converges to attenuation *per
-    #: voxel*; divide the volume by ``voxel_spacing`` for mu in 1/mm. The
-    #: quantitative FDK path below already returns mu in 1/mm directly.
+    #: Physical voxel pitch of the reconstruction grid (mm). The projectors
+    #: return physical line integrals, so iterative reconstruction of a
+    #: physical sinogram (measured -log data) yields mu in 1/mm, like the
+    #: quantitative FDK path below.
     voxel_spacing: float = 1.0
     #: Quantitative FDK path (physical units): padded physical ramp incl.
     #: per-view angular weights, and a voxel-driven (sid/U)^2-weighted
@@ -130,6 +129,10 @@ class MeasuredConeDataConfig:
     air_border_px: int = 16
     subtract_air_baseline: bool = True
     air_baseline_percentile: float = 50.0
+    #: Units of the stored line integrals: ``"physical"`` (mu*mm; projector
+    #: output since 3.0, measured -log data) or ``"voxel"`` (raw projector
+    #: output of DiffCT-MLX 2.x, converted with ``voxel_spacing_mm`` on load).
+    projection_units: str = "physical"
     measured_fov_margin_mm: float = 8.0
     use_leap_fov_support_mask: bool = True
     support_mask_sensitivity_threshold_ratio: float = 1e-3
@@ -286,15 +289,15 @@ def make_parallel_2d_operators(
     detector_spacing: float = 1.0,
     voxel_spacing: float = 1.0,
     projector_mode: str = "footprint",
-    detector_convention: str = "kernel",
-    line_integrals: str = "voxel",
+    detector_convention: str = "centered",
+    line_integrals: str = "physical",
 ) -> tuple[Callable[[Array, int], Array], Callable[[Array, int], Array], Callable[[Array], Array]]:
     """Create single-view and all-view parallel-beam projector wrappers.
 
     ``detector_convention`` and ``line_integrals`` select the detector-pixel
     and line-integral conventions; see
     :func:`diffct_mlx.operators.make_cone_3d_operator` and
-    :mod:`diffct_mlx.conventions`. Defaults keep the kernel-native behaviour.
+    :mod:`diffct_mlx.conventions`. Defaults are the kernel-native conventions (centered, physical).
     """
     det_origin = kernel_detector_center(
         det_origin, det_u_vec, detector_spacing, convention=detector_convention)
@@ -383,15 +386,15 @@ def make_fan_2d_operators(
     detector_spacing: float = 1.0,
     voxel_spacing: float = 1.0,
     projector_mode: str = "footprint",
-    detector_convention: str = "kernel",
-    line_integrals: str = "voxel",
+    detector_convention: str = "centered",
+    line_integrals: str = "physical",
 ) -> tuple[Callable[[Array, int], Array], Callable[[Array, int], Array], Callable[[Array], Array]]:
     """Create single-view and all-view fan-beam projector wrappers.
 
     ``detector_convention`` and ``line_integrals`` select the detector-pixel
     and line-integral conventions; see
     :func:`diffct_mlx.operators.make_cone_3d_operator` and
-    :mod:`diffct_mlx.conventions`. Defaults keep the kernel-native behaviour.
+    :mod:`diffct_mlx.conventions`. Defaults are the kernel-native conventions (centered, physical).
     """
     det_center = kernel_detector_center(
         det_center, det_u_vec, detector_spacing, convention=detector_convention)
@@ -482,15 +485,15 @@ def make_cone_3d_operators(
     dv: float = 1.0,
     voxel_spacing: float = 1.0,
     projector_mode: str = "footprint",
-    detector_convention: str = "kernel",
-    line_integrals: str = "voxel",
+    detector_convention: str = "centered",
+    line_integrals: str = "physical",
 ) -> tuple[Callable[[Array, int], Array], Callable[[Array, int], Array], Callable[[Array], Array]]:
     """Create single-view and all-view cone-beam projector wrappers.
 
     ``detector_convention`` and ``line_integrals`` select the detector-pixel
     and line-integral conventions; see
     :func:`diffct_mlx.operators.make_cone_3d_operator` and
-    :mod:`diffct_mlx.conventions`. Defaults keep the kernel-native behaviour.
+    :mod:`diffct_mlx.conventions`. Defaults are the kernel-native conventions (centered, physical).
     """
     det_center = kernel_detector_center(
         det_center, det_u_vec, du, det_v_vec, dv, convention=detector_convention)
@@ -598,9 +601,9 @@ def _quantitative_fdk_operators(src_pos, det_center, det_u_vec, det_v_vec,
     homogeneous object of attenuation ``mu`` (in 1/mm when the geometry is in
     mm) reconstructs to ``mu`` without any case-specific normalization.
 
-    ``sinogram_scale`` converts the case's sinogram to PHYSICAL line integrals
-    (mu*mm): pass ``voxel_spacing`` for raw Siddon projector output (voxel-unit
-    integrals) and 1.0 for measured -log data, which is already physical.
+    ``sinogram_scale`` converts the case's sinogram to physical line integrals
+    (mu*mm). Projector output and measured -log data are physical (1.0); pass
+    ``voxel_spacing`` only for voxel-unit data from DiffCT-MLX 2.x.
 
     Returns ``(fdk_weight, fdk_filter, fdk_back_project)`` or ``(None,)*3``
     when the active backend lacks the analytical helpers (e.g. MLX).
@@ -627,8 +630,8 @@ def _quantitative_fdk_operators(src_pos, det_center, det_u_vec, det_v_vec,
 
     # Cosine pre-weights from the actual mean source-detector distance.
     sdd_mean = float(torch.linalg.norm(dc_t - src_t, dim=1).mean())
-    u_coords = (xp.arange(det_u) - det_u / 2) * du
-    v_coords = (xp.arange(det_v) - det_v / 2) * dv
+    u_coords = (xp.arange(det_u) - (det_u - 1) / 2) * du
+    v_coords = (xp.arange(det_v) - (det_v - 1) / 2) * dv
     cos_w = sdd_mean / xp.sqrt(
         sdd_mean**2
         + u_coords.reshape(1, det_u, 1) ** 2
@@ -849,12 +852,11 @@ def build_cone_3d_case(
     )
 
     normalization = (math.pi * sid) / (2.0 * sdd * num_views)
-    # Quantitative FDK path: the Siddon sinogram is in voxel-unit line
-    # integrals, so it is rescaled by voxel_spacing to physical mu*mm.
+    # Quantitative FDK path: the Siddon sinogram is already physical (mu*mm).
     q_weight, q_filter, q_back = _quantitative_fdk_operators(
         src_pos, det_center, det_u_vec, det_v_vec,
         (nz, ny, nx), (det_u_count, det_v_count), du, dv, voxel_spacing,
-        sinogram_scale=voxel_spacing,
+        sinogram_scale=1.0,
     )
     return ReconstructionCase(
         name="Cone 3D",
@@ -1137,6 +1139,11 @@ def build_npy_cone_3d_case(config: NpyProjectionsConfig) -> ReconstructionCase:
 
     sino_np = np.load(Path(config.projections_npy_path), allow_pickle=False).astype(np.float32)
     n_views = sino_np.shape[0]
+    units = str(config.projection_units).strip().lower()
+    if units == "voxel":
+        sino_np = sino_np * np.float32(config.voxel_spacing_mm)
+    elif units != "physical":
+        raise ValueError(f"projection_units must be 'physical' or 'voxel', got {config.projection_units!r}")
 
     if config.subtract_air_baseline:
         border_px = max(0, int(config.air_border_px))
@@ -1191,13 +1198,12 @@ def build_npy_cone_3d_case(config: NpyProjectionsConfig) -> ReconstructionCase:
 
     iterative_projection_weights = _trajectory_quadrature_weights(src_pos)
 
-    # Quantitative FDK: npy stacks are raw forward-projector output, i.e.
-    # voxel-unit line integrals -> rescale by voxel_spacing to physical mu*mm.
+    # Quantitative FDK: the stack was converted to physical mu*mm on load.
     q_weight, q_filter, q_back = _quantitative_fdk_operators(
         src_pos, det_center, det_u_vec, det_v_vec,
         config.volume_shape, (det_u, det_v), du, dv,
         float(config.voxel_spacing_mm),
-        sinogram_scale=float(config.voxel_spacing_mm),
+        sinogram_scale=1.0,
     )
     return ReconstructionCase(
         name="NPY Cone 3D",

@@ -116,7 +116,7 @@ def _v_bins_of_points(P, geom: ConeGeom, dv, n_v):
         t = num[None, :] / denom
     Q = S[None, :, :] + t[..., None] * PS            # (K,V,3)
     v0 = np.einsum("kvc,vc->kv", Q - C[None, :, :], Vv)   # signed distance along v
-    v_bin = v0 / dv + n_v * 0.5
+    v_bin = v0 / dv + (n_v - 1) * 0.5
     v_bin[np.abs(denom) < _EPS] = np.nan
     return v_bin
 

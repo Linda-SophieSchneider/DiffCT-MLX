@@ -33,6 +33,39 @@ Work towards 3.0.0 on branch `v3`; see `docs/V3_PLAN.md`.
 - The vendored diffct `dev` engine (top-level `diffct/`) and its tests. The
   upstream tests in `tests/engine/` replace them.
 
+### Changed (3.0 conventions)
+
+- **Both backends use the upstream diffct conventions.** The Metal Siddon,
+  footprint and cone geometry-gradient kernels place detector pixel `i` at
+  `(i − (N−1)/2)·du` and return physical line integrals (µ·length); their
+  adjoints and geometry gradients scale alike. The MLX analytical helpers
+  (rebinning, Parker fan angles, quantitative FDK cosine weights,
+  out-of-core shadow ranges) use the same grid. MLX and the Torch engine
+  agree to < 2e-4 relative L2 in forward and backprojection
+  (`tests/test_backend_parity.py`).
+- `detector_convention` defaults to `"centered"` and `line_integrals` to
+  `"physical"`. `"legacy"` (2.3 alias `"kernel"`) and `"voxel"` reproduce
+  2.x results. `kernel_detector_center(..., convention="legacy")` shifts by
+  `−du/2·u − dv/2·v`.
+- Iterative reconstruction of physical data returns µ in 1/mm. The
+  synthetic and npy cone cases feed the quantitative FDK with
+  `sinogram_scale=1.0`. `NpyProjectionsConfig.projection_units="voxel"`
+  converts stacks written by 2.x. `simulate_scan` treats operators without
+  unit metadata as physical.
+
+### Fixed (3.0)
+
+- **Cone geometry gradient on Metal.** The analytic kernel differentiated a
+  trilinear-interpolated volume, while the forward kernel has been
+  cell-constant Siddon since 2.0, so `src_pos`, `det_center`, `det_u_vec`
+  and `det_v_vec` gradients were off by about 100 % (already in 2.3.0). The
+  kernel now ports the engine's exact face-crossing VJP with the forward's
+  traversal. It matches the engine's float64 gradient to < 1e-3 relative
+  (standard, detector-inside-volume and distant-source geometries) and
+  finite differences at eps = 1e-5. Rays that lie exactly in a voxel face
+  plane are not differentiable there; both backends then return one
+  one-sided derivative.
+
 ### Fixed
 
 Kernel and analytical fixes of upstream diffct 2.0 to 2.5, ported into the

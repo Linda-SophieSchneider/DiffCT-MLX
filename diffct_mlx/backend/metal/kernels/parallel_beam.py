@@ -55,7 +55,7 @@ _PARALLEL_2D_FORWARD_SOURCE = """
     float u_vec_x = det_u_vec[iang * 2 + 0];
     float u_vec_y = det_u_vec[iang * 2 + 1];
 
-    float u_offset = ((float)idet - (float)n_det * 0.5f) * det_spacing / voxel_spacing;
+    float u_offset = ((float)idet - ((float)n_det - 1.0f) * 0.5f) * det_spacing / voxel_spacing;
 
     float pnt_x = det_ox + u_offset * u_vec_x;
     float pnt_y = det_oy + u_offset * u_vec_y;
@@ -186,7 +186,7 @@ _PARALLEL_2D_BACKWARD_SOURCE = """
     float u_vec_x = det_u_vec[iang * 2 + 0];
     float u_vec_y = det_u_vec[iang * 2 + 1];
 
-    float u_offset = ((float)idet - (float)n_det * 0.5f) * det_spacing / voxel_spacing;
+    float u_offset = ((float)idet - ((float)n_det - 1.0f) * 0.5f) * det_spacing / voxel_spacing;
 
     float pnt_x = det_ox + u_offset * u_vec_x;
     float pnt_y = det_oy + u_offset * u_vec_y;
@@ -285,7 +285,7 @@ _PARALLEL_2D_FOOTPRINT_FORWARD_SOURCE = """
 
     float eps = """ + _EPSILON_STR + """;
     float det_spacing_vox = det_spacing / voxel_spacing;
-    float center_u = (float)n_det * 0.5f;
+    float center_u = ((float)n_det - 1.0f) * 0.5f;
 
     float dir_x = ray_dir[iang * 2 + 0];
     float dir_y = ray_dir[iang * 2 + 1];
@@ -316,7 +316,7 @@ _PARALLEL_2D_FOOTPRINT_FORWARD_SOURCE = """
 
         float fp_lo = u0 - half_u;
         float fp_hi = u0 + half_u;
-        // Mass-conserving footprint amplitude: voxel-unit line integral averaged over the
+        // Mass-conserving footprint amplitude (wrapper scales by voxel_spacing): line integral averaged over the
         // detector cell, on the same scale as the Siddon projector.
         float scaled_val = val / det_spacing_vox;
 
@@ -359,7 +359,7 @@ _PARALLEL_2D_FOOTPRINT_BACKWARD_SOURCE = """
 
     float eps = """ + _EPSILON_STR + """;
     float det_spacing_vox = det_spacing / voxel_spacing;
-    float center_u = (float)n_det * 0.5f;
+    float center_u = ((float)n_det - 1.0f) * 0.5f;
     float px = ((float)ix + 0.5f) - cx;
     float py = ((float)iy + 0.5f) - cy;
 

@@ -43,9 +43,9 @@ __all__ = [
 # ---------------------------------------------------------------------------
 def detector_fan_angles(num_detectors: int, detector_spacing: float, sdd: float):
     """Per-detector fan angles ``gamma_k = atan(u_k / sdd)`` for a flat detector."""
-    # (k - n/2)*spacing is the package-wide detector-grid convention (the same
-    # one the projector kernels and diffct.analytical use).
-    u = (xp.arange(num_detectors) - num_detectors / 2.0) * float(detector_spacing)
+    # (k - (n-1)/2)*spacing is the package-wide detector-grid convention (the
+    # same one the projector kernels and the engine's analytical helpers use).
+    u = (xp.arange(num_detectors) - (num_detectors - 1) / 2.0) * float(detector_spacing)
     return xp.arctan(u / float(sdd))
 
 
@@ -143,7 +143,7 @@ def offset_detector_weights(num_detectors: int, detector_spacing: float, offset:
     ``|offset|``). Weights ramp 0->1 across the overlap so that a full 360deg
     weighted backprojection reconstructs the doubled FOV without a seam.
     """
-    u = (xp.arange(num_detectors) - num_detectors / 2.0) * float(detector_spacing) - float(offset)
+    u = (xp.arange(num_detectors) - (num_detectors - 1) / 2.0) * float(detector_spacing) - float(offset)
     if overlap is None or overlap <= 0:
         overlap = max(abs(float(offset)), float(detector_spacing))
     t = xp.clip(u / float(overlap), -1.0, 1.0)
@@ -298,7 +298,7 @@ def fan_to_parallel(sinogram, *, sid: float, sdd: float, detector_spacing: float
     """
     sino = xp.array(sinogram, dtype=_b.float32)
     n_views, n_det = int(sino.shape[0]), int(sino.shape[1])
-    center = n_det / 2.0
+    center = (n_det - 1) / 2.0
 
     beta_np = np.asarray(_b.to_numpy(source_angles), dtype=np.float64).ravel()
     if beta_np.size < 2:
@@ -319,7 +319,7 @@ def fan_to_parallel(sinogram, *, sid: float, sdd: float, detector_spacing: float
         s_max = sid * math.sin(math.atan(center * detector_spacing / sdd))
         n_pos = int(num_out_positions or n_det)
         spacing = (2.0 * s_max / (n_pos - 1)) if n_pos > 1 else 0.0
-        positions = (xp.arange(n_pos) - n_pos / 2.0) * spacing
+        positions = (xp.arange(n_pos) - (n_pos - 1) / 2.0) * spacing
     else:
         positions = xp.array(_b.to_numpy(out_positions).astype(np.float32))
         n_pos = int(positions.shape[0])
@@ -351,10 +351,10 @@ def curved_to_flat(sinogram, *, sdd: float, det_spacing_angle: float, flat_spaci
     sino = xp.array(sinogram, dtype=_b.float32)
     n_det = int(sino.shape[axis])
     n_out = int(num_out or n_det)
-    center = n_det / 2.0
+    center = (n_det - 1) / 2.0
     if flat_spacing is None:
         flat_spacing = sdd * det_spacing_angle               # match central pixel size
-    u = (xp.arange(n_out) - n_out / 2.0) * float(flat_spacing)
+    u = (xp.arange(n_out) - (n_out - 1) / 2.0) * float(flat_spacing)
     src_index = xp.arctan(u / float(sdd)) / float(det_spacing_angle) + center
     return _interp_detector(sino, src_index, axis=axis)
 
@@ -365,10 +365,10 @@ def flat_to_curved(sinogram, *, sdd: float, flat_spacing: float, det_spacing_ang
     sino = xp.array(sinogram, dtype=_b.float32)
     n_det = int(sino.shape[axis])
     n_out = int(num_out or n_det)
-    center = n_det / 2.0
+    center = (n_det - 1) / 2.0
     if det_spacing_angle is None:
         det_spacing_angle = math.atan(flat_spacing / sdd)
-    gamma = (xp.arange(n_out) - n_out / 2.0) * float(det_spacing_angle)
+    gamma = (xp.arange(n_out) - (n_out - 1) / 2.0) * float(det_spacing_angle)
     u = float(sdd) * xp.sin(gamma) / xp.cos(gamma)           # sdd * tan(gamma)
     src_index = u / float(flat_spacing) + center
     return _interp_detector(sino, src_index, axis=axis)

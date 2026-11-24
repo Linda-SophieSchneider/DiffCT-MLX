@@ -269,13 +269,12 @@ def simulate_scan(
     ring gain), then Poisson noise, then the negative-log brings it back to an
     attenuation sinogram ready for reconstruction.
 
-    The projectors return line integrals in VOXEL units; the physics
-    (``exp(-p)`` transmission, beam-hardening nonlinearity) needs PHYSICAL
-    line integrals, so the projection is rescaled by ``voxel_spacing`` first
-    (taken from the operator's metadata when not given; an operator built
-    with ``line_integrals="physical"`` is used as is). The returned
-    sinogram is therefore physical (mu*mm) — like real measured -log data —
-    and identical to previous behaviour at ``voxel_spacing = 1``.
+    The physics (``exp(-p)`` transmission, beam-hardening nonlinearity) needs
+    physical line integrals. Operators carry their units: the default
+    (``line_integrals="physical"``) is used as is, a ``"voxel"`` operator is
+    rescaled by its voxel spacing first. ``voxel_spacing=`` overrides that
+    factor for operators without metadata. The returned sinogram is physical
+    (mu*mm), like real measured -log data.
 
     Returns the attenuation sinogram (default) or the raw photon counts
     (``return_counts=True``).
@@ -283,11 +282,9 @@ def simulate_scan(
     if float(I0) <= 0.0:
         raise ValueError(f"I0 (incident photon count) must be positive, got {I0!r}.")
     if voxel_spacing is None:
-        # operator metadata: voxel-unit operators need * voxel_spacing,
-        # operators built with line_integrals="physical" are already mu*mm
-        voxel_spacing = getattr(operator, "to_physical", None)
-        if voxel_spacing is None:
-            voxel_spacing = float(getattr(operator, "voxel_spacing", 1.0))
+        # operator metadata: physical operators are used as is (1.0),
+        # "voxel" operators need * voxel_spacing; projectors are physical.
+        voxel_spacing = float(getattr(operator, "to_physical", 1.0))
     if float(voxel_spacing) <= 0.0:
         raise ValueError(f"voxel_spacing must be positive, got {voxel_spacing!r}.")
     x = xp.array(phantom, dtype=_b.float32)

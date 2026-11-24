@@ -8,7 +8,14 @@ METAL = ROOT / "diffct_mlx" / "backend" / "metal"
 
 
 def test_analytic_geometry_kernel_matches_cuda_conventions():
-    """Pin the CUDA-validated endpoint-gradient formula in Metal source."""
+    """Pin the exact face-crossing VJP of the cell-constant Siddon model.
+
+    Before 3.0 the Metal kernel differentiated a trilinear-interpolated volume
+    (``f = mid - 0.5`` cells, ``G1/G2`` quadrature) while the forward kernel is
+    cell-constant, and the gradients were off by ~100 %. The kernel now ports
+    the engine's ``_cone_3d_geometry_vjp_kernel``; numerical agreement is
+    pinned in ``tests/test_backend_parity.py``.
+    """
     kernel_text = (METAL / "kernels" / "cone_beam.py").read_text()
     projector_text = (METAL / "projectors.py").read_text()
 
@@ -16,17 +23,20 @@ def test_analytic_geometry_kernel_matches_cuda_conventions():
     end = kernel_text.index('"""\n\ncone_3d_geometry_grad_kernel', start)
     source = kernel_text[start:end]
 
-    # Trilinear interpolation is centered on voxel centers, not index nodes.
+    # No interpolated-volume model.
     for axis in "xyz":
-        assert f"float f{axis} = mid_{axis} - 0.5f;" in source
+        assert f"float f{axis} = mid_{axis} - 0.5f;" not in source
+    assert "G1x" not in source and "dmu_x" not in source
 
-    # Accumulate the projected moment with the same quadrature as G1/G2;
-    # never reintroduce the biased closed-form A/L substitution.
-    assert "S += w2 * (dmu_x*dir_x + dmu_y*dir_y + dmu_z*dir_z);" in source
-    assert "A_over_L" not in source
-    assert "float inv_vs = 1.0f / voxel_spacing;" in source
-    assert "G1x + dir_x*S" in source
-    assert "G2x - dir_x*S" in source
+    # Face coefficients c = f_before - f_after, tau derivatives (tau-1)/D, -tau/D.
+    assert "float c = first ? -f : (f_prev - f);" in source
+    assert "float da = c * (entry_tau_m1 + dtau);" in source
+    assert "float db = -c * (entry_tau + dtau);" in source
+    # Length term with S = accum / |D|.
+    assert "float S = accum * inv_len;" in source
+    assert "ga_x -= S * dir_x;" in source and "gb_x += S * dir_x;" in source
+    # Same segment clipping as the forward kernel.
+    assert "bool from_src =" in source and "ent_axis" in source and "ex_axis" in source
 
     # Analytic is the cross-backend default; fd and legacy false-like values
     # continue to select the compatibility fallback.

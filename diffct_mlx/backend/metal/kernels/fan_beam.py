@@ -50,7 +50,7 @@ _FAN_2D_FORWARD_SOURCE = """
     float u_vec_x = det_u_vec[iang * 2 + 0];
     float u_vec_y = det_u_vec[iang * 2 + 1];
 
-    float u_offset = ((float)idet - (float)n_det * 0.5f) * det_spacing / voxel_spacing;
+    float u_offset = ((float)idet - ((float)n_det - 1.0f) * 0.5f) * det_spacing / voxel_spacing;
 
     float det_x = det_cx + u_offset * u_vec_x;
     float det_y = det_cy + u_offset * u_vec_y;
@@ -195,7 +195,7 @@ _FAN_2D_BACKWARD_SOURCE = """
     float u_vec_x = det_u_vec[iang * 2 + 0];
     float u_vec_y = det_u_vec[iang * 2 + 1];
 
-    float u_offset = ((float)idet - (float)n_det * 0.5f) * det_spacing / voxel_spacing;
+    float u_offset = ((float)idet - ((float)n_det - 1.0f) * 0.5f) * det_spacing / voxel_spacing;
 
     float det_x = det_cx + u_offset * u_vec_x;
     float det_y = det_cy + u_offset * u_vec_y;
@@ -310,7 +310,7 @@ _FAN_2D_FOOTPRINT_FORWARD_SOURCE = """
 
     float eps = """ + _EPSILON_STR + """;
     float det_spacing_vox = det_spacing / voxel_spacing;
-    float center_u = (float)n_det * 0.5f;
+    float center_u = ((float)n_det - 1.0f) * 0.5f;
 
     float src_x = src_pos[iang * 2 + 0] / voxel_spacing;
     float src_y = src_pos[iang * 2 + 1] / voxel_spacing;
@@ -358,7 +358,7 @@ _FAN_2D_FOOTPRINT_FORWARD_SOURCE = """
 
         float ray_len = metal::sqrt(rx * rx + ry * ry);
         if (ray_len <= eps) continue;
-        // Mass-conserving footprint amplitude: voxel-unit line integral averaged over the
+        // Mass-conserving footprint amplitude (wrapper scales by voxel_spacing): line integral averaged over the
         // detector cell, on the same scale as the Siddon projector.
         float amp = t * ray_len / (metal::abs(denom) * det_spacing_vox);
 
@@ -410,7 +410,7 @@ _FAN_2D_FOOTPRINT_BACKWARD_SOURCE = """
 
     float eps = """ + _EPSILON_STR + """;
     float det_spacing_vox = det_spacing / voxel_spacing;
-    float center_u = (float)n_det * 0.5f;
+    float center_u = ((float)n_det - 1.0f) * 0.5f;
     float px = ((float)ix + 0.5f) - cx;
     float py = ((float)iy + 0.5f) - cy;
 
@@ -456,7 +456,7 @@ _FAN_2D_FOOTPRINT_BACKWARD_SOURCE = """
 
         float ray_len = metal::sqrt(rx * rx + ry * ry);
         if (ray_len <= eps) continue;
-        // Mass-conserving footprint amplitude: voxel-unit line integral averaged over the
+        // Mass-conserving footprint amplitude (wrapper scales by voxel_spacing): line integral averaged over the
         // detector cell, on the same scale as the Siddon projector.
         float amp = t * ray_len / (metal::abs(denom) * det_spacing_vox);
 

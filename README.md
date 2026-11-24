@@ -114,34 +114,21 @@ vol_mu = dct.reconstruct_case_fdk(case)       # true attenuation units (1/mm)
 
 All cone cases (synthetic, measured TIFF, npy) carry the quantitative
 operators (`case.fdk_weight` / `fdk_filter` / `fdk_back_project`); sinogram
-units are handled per source (measured −log data are physical; raw Siddon
-projector output is voxel-unit and rescaled by `voxel_spacing`). The ramp
+units are physical for every source (measured −log data and projector
+output alike). The ramp
 filter itself now accepts `pad_factor` and `sample_spacing`, and
 `FBPParameters`/`FDKParameters` default to `pad_factor=2`.
 
-> **Unit convention.** The projectors integrate in **voxel units**: physical
-> line integrals are `(A @ x) * voxel_spacing`. This holds for both projector
-> modes: since 2.2.0 the footprint kernels are mass-conserving and agree with
-> the Siddon kernels in amplitude (earlier versions scaled footprint output
-> with the detector-cell-to-voxel size ratio). Operators built via
-> `make_*_operator` carry `A.voxel_spacing` as metadata, and the boundaries
-> where physical units matter handle the conversion automatically —
-> `simulate_scan` rescales before the `exp(-p)` / beam-hardening physics (and
-> returns physical, scanner-like sinograms), and the quantitative FDK path
-> encodes it per data source. One consequence to know: **iterative**
-> reconstruction of measured (physical) data converges to attenuation *per
-> voxel*; divide by `case.voxel_spacing` for µ in 1/mm.
->
-> **Detector convention.** The kernels place detector pixel `i` at
-> `det_center + (i − N/2)·du` (the diffct `dev` line they come from), half a
-> pixel off the geometric panel centre. Upstream diffct ≥ 2.0, DiffCT-MLX 1.x
-> and scanner geometry files use `(i − (N−1)/2)·du` and physical line
-> integrals. To work in that convention, build operators with
-> `detector_convention="centered", line_integrals="physical"`
-> (`make_*_operator` and `make_*_operators`); `A.T` scales alike and stays
-> the exact adjoint, and reconstructions then come out in 1/mm. For direct
-> projector or FBP/FDK calls, `dct.kernel_detector_center(...)` converts a
-> panel-centre `det_center` (shift by `+du/2·u + dv/2·v`).
+> **Conventions (3.0).** Both backends follow upstream diffct ≥ 2.0. Detector
+> pixel `i` sits at `det_center + (i − (N−1)/2)·du`, so `det_center` is the
+> geometric panel centre, and projections are physical line integrals
+> (µ·length in the unit of the geometry). Iterative reconstruction of
+> physical data therefore returns µ in 1/mm, like the quantitative FDK path.
+> DiffCT-MLX 2.x placed pixel `i` at `(i − N/2)·du` and integrated in voxel
+> units. To reproduce 2.x results, build operators with
+> `detector_convention="legacy", line_integrals="voxel"`; for direct projector
+> or FBP/FDK calls, `dct.kernel_detector_center(..., convention="legacy")`
+> converts `det_center`.
 
 ### Operators, solvers, regularizers, physics & simulation
 

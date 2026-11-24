@@ -282,7 +282,7 @@ class ProjectionOperator(LinearOperator):
         beam: str | None = None,
         views: Any = None,
         voxel_spacing: float = 1.0,
-        line_integrals: str = "voxel",
+        line_integrals: str = "physical",
     ):
         self._forward_fn = forward_fn
         self._adjoint_fn = adjoint_fn
@@ -293,8 +293,8 @@ class ProjectionOperator(LinearOperator):
         self._views = views
         #: Physical voxel pitch of the domain grid.
         self.voxel_spacing = float(voxel_spacing)
-        #: Units of ``A @ x``: ``"voxel"`` (kernel native; multiply by
-        #: ``voxel_spacing`` for mu*mm) or ``"physical"`` (already mu*mm).
+        #: Units of ``A @ x``: ``"physical"`` (mu*mm, kernel native) or
+        #: ``"voxel"`` (2.x convention; multiply by ``voxel_spacing`` for mu*mm).
         self.line_integrals = _check(line_integrals, LINE_INTEGRAL_UNITS, "line_integrals")
 
     @property
@@ -373,18 +373,18 @@ def make_parallel_2d_operator(
     detector_spacing: float = 1.0,
     voxel_spacing: float = 1.0,
     projector_mode: str = "footprint",
-    detector_convention: str = "kernel",
-    line_integrals: str = "voxel",
+    detector_convention: str = "centered",
+    line_integrals: str = "physical",
 ) -> ProjectionOperator:
     """Build an all-view parallel-beam :class:`ProjectionOperator`.
 
-    ``detector_convention`` selects how ``det_center`` is read: ``"kernel"``
-    (default, kernel native: pixel ``i`` at ``(i - N/2)·du``) or ``"centered"``
-    (``det_center`` is the geometric panel centre: pixel ``i`` at
-    ``(i - (N-1)/2)·du``, as in scanner geometry files, upstream diffct >= 2.0
-    and DiffCT-MLX 1.x). ``line_integrals`` selects the units of ``A @ x``:
-    ``"voxel"`` (default) or ``"physical"`` (times ``voxel_spacing``, as in
-    upstream diffct >= 2.0 and DiffCT-MLX 1.x). ``A.T`` is scaled alike, so it stays the exact adjoint.
+    ``detector_convention`` selects how ``det_center`` is read: ``"centered"``
+    (default, kernel native: ``det_center`` is the geometric panel centre and
+    pixel ``i`` sits at ``(i - (N-1)/2)·du``) or ``"legacy"`` (pixel ``i`` at
+    ``(i - N/2)·du``, as in DiffCT-MLX 2.x). ``line_integrals`` selects the
+    units of ``A @ x``: ``"physical"`` (default, mu·length) or ``"voxel"``
+    (divided by ``voxel_spacing``, as in DiffCT-MLX 2.x). ``A.T`` is scaled
+    alike, so it stays the exact adjoint.
     See :mod:`diffct_mlx.conventions`.
     """
     ny, nx = image_shape
@@ -425,18 +425,18 @@ def make_fan_2d_operator(
     detector_spacing: float = 1.0,
     voxel_spacing: float = 1.0,
     projector_mode: str = "footprint",
-    detector_convention: str = "kernel",
-    line_integrals: str = "voxel",
+    detector_convention: str = "centered",
+    line_integrals: str = "physical",
 ) -> ProjectionOperator:
     """Build an all-view fan-beam :class:`ProjectionOperator`.
 
-    ``detector_convention`` selects how ``det_center`` is read: ``"kernel"``
-    (default, kernel native: pixel ``i`` at ``(i - N/2)·du``) or ``"centered"``
-    (``det_center`` is the geometric panel centre: pixel ``i`` at
-    ``(i - (N-1)/2)·du``, as in scanner geometry files, upstream diffct >= 2.0
-    and DiffCT-MLX 1.x). ``line_integrals`` selects the units of ``A @ x``:
-    ``"voxel"`` (default) or ``"physical"`` (times ``voxel_spacing``, as in
-    upstream diffct >= 2.0 and DiffCT-MLX 1.x). ``A.T`` is scaled alike, so it stays the exact adjoint.
+    ``detector_convention`` selects how ``det_center`` is read: ``"centered"``
+    (default, kernel native: ``det_center`` is the geometric panel centre and
+    pixel ``i`` sits at ``(i - (N-1)/2)·du``) or ``"legacy"`` (pixel ``i`` at
+    ``(i - N/2)·du``, as in DiffCT-MLX 2.x). ``line_integrals`` selects the
+    units of ``A @ x``: ``"physical"`` (default, mu·length) or ``"voxel"``
+    (divided by ``voxel_spacing``, as in DiffCT-MLX 2.x). ``A.T`` is scaled
+    alike, so it stays the exact adjoint.
     See :mod:`diffct_mlx.conventions`.
     """
     ny, nx = image_shape
@@ -479,18 +479,18 @@ def make_cone_3d_operator(
     dv: float = 1.0,
     voxel_spacing: float = 1.0,
     projector_mode: str = "footprint",
-    detector_convention: str = "kernel",
-    line_integrals: str = "voxel",
+    detector_convention: str = "centered",
+    line_integrals: str = "physical",
 ) -> ProjectionOperator:
     """Build an all-view cone-beam :class:`ProjectionOperator`.
 
-    ``detector_convention`` selects how ``det_center`` is read: ``"kernel"``
-    (default, kernel native: pixel ``i`` at ``(i - N/2)·du``) or ``"centered"``
-    (``det_center`` is the geometric panel centre: pixel ``i`` at
-    ``(i - (N-1)/2)·du``, as in scanner geometry files, upstream diffct >= 2.0
-    and DiffCT-MLX 1.x). ``line_integrals`` selects the units of ``A @ x``:
-    ``"voxel"`` (default) or ``"physical"`` (times ``voxel_spacing``, as in
-    upstream diffct >= 2.0 and DiffCT-MLX 1.x). ``A.T`` is scaled alike, so it stays the exact adjoint.
+    ``detector_convention`` selects how ``det_center`` is read: ``"centered"``
+    (default, kernel native: ``det_center`` is the geometric panel centre and
+    pixel ``i`` sits at ``(i - (N-1)/2)·du``) or ``"legacy"`` (pixel ``i`` at
+    ``(i - N/2)·du``, as in DiffCT-MLX 2.x). ``line_integrals`` selects the
+    units of ``A @ x``: ``"physical"`` (default, mu·length) or ``"voxel"``
+    (divided by ``voxel_spacing``, as in DiffCT-MLX 2.x). ``A.T`` is scaled
+    alike, so it stays the exact adjoint.
     See :mod:`diffct_mlx.conventions`.
     """
     nz, ny, nx = volume_shape
