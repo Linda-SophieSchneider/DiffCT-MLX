@@ -9,6 +9,30 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Work towards 3.0.0 on branch `v3`; see `docs/V3_PLAN.md`.
+
+### Changed
+
+- The Torch backend runs on upstream diffct 2.5.2, vendored as
+  `diffct_mlx.engine`. It brings exact geometry gradients, the portable
+  PyTorch backend (CPU, Apple MPS, ROCm; `precision="float64"`), the chunked
+  `Projector`, per-axis voxel spacing, `parallel3d`, detector surfaces,
+  solvers and all upstream kernel fixes since 2.0. Siddon calls on CPU or
+  MPS tensors now run on the portable backend instead of failing.
+- The footprint CUDA kernels follow the upstream conventions: detector cell
+  `k` at `(k − (N−1)/2)·pitch` and physical line integrals. The MLX/Metal
+  backend has not switched yet.
+- Out-of-core FDK (`gather`) uses per-view `sdd/(2π·sid)` constants and the
+  fitted isocenter, as the engine's `cone_weighted_backproject` does.
+- The wheel no longer installs a top-level `diffct` package.
+  `requires-python` is now `>=3.10`. New extra `[torch]` installs the
+  portable engine without numba-cuda.
+
+### Removed
+
+- The vendored diffct `dev` engine (top-level `diffct/`) and its tests. The
+  upstream tests in `tests/engine/` replace them.
+
 ## [2.3.0] - 2026-11-25
 
 ### Added

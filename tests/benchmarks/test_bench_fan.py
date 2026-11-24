@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from diffct import (
+from diffct_mlx.engine import (
     FanBackprojectorFunction,
     FanProjectorFunction,
     angular_integration_weights,

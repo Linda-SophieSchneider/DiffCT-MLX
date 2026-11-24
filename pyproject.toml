@@ -7,7 +7,7 @@ name = "diffct-mlx"
 version = "2.3.0"
 description = "Differentiable computed tomography with an auto-selecting backend (Torch/CUDA or Apple MLX)"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     {name = "Linda-Sophie Schneider", email = "linda-sophie.schneider@fau.de"},
 ]
@@ -31,7 +31,9 @@ dependencies = [
 
 [project.optional-dependencies]
 # numba-cuda calls np.row_stack, which numpy 2.5 removed (upstream diffct pins it too)
-cuda = ["torch", "numba-cuda", "numpy<2.5"]
+cuda = ["torch", "numba", "numba-cuda", "numpy<2.5"]
+# Portable PyTorch engine only (CPU, Apple MPS, ROCm); no native CUDA kernels
+torch = ["torch", "numba", "numpy<2.5"]
 mlx = ["mlx"]
 zarr = ["zarr>=3"]         # optional chunked+compressed out-of-core store
 
@@ -39,10 +41,10 @@ zarr = ["zarr>=3"]         # optional chunked+compressed out-of-core store
 Homepage = "https://github.com/Linda-SophieSchneider/DiffCT-MLX"
 Upstream = "https://github.com/sypsyp97/diffct"
 
-# This branch ships two importable packages:
-#   * diffct       — the Torch/numba-CUDA engine (adapted from the upstream diffct dev line)
-#   * diffct_mlx   — the unified, auto-backend API (dispatches to Torch/CUDA or MLX)
+# One importable package. The Torch / numba-CUDA engine lives in
+# diffct_mlx.engine (vendored from upstream diffct 2.5.2, see ATTRIBUTION.md),
+# so installing diffct-mlx never shadows the PyPI package ``diffct``.
 [tool.hatch.build.targets.wheel]
-packages = ["diffct", "diffct_mlx"]
+packages = ["diffct_mlx"]
 # Ship the embedded, offline-generated spectrum/attenuation library (binary data).
 artifacts = ["diffct_mlx/physics/data/*.npz"]

@@ -27,7 +27,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from diffct import (
+from diffct_mlx.engine import (
     ParallelProjectorFunction,
     circular_trajectory_2d_parallel,
     ramp_filter_1d,

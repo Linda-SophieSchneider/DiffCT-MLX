@@ -1,4 +1,4 @@
-"""Utility script to visualise trajectory generators from diffct.geometry.
+"""Utility script to visualise trajectory generators from diffct_mlx.engine.geometry.
 
 This script provides a command-line interface to plot individual trajectories,
 and when invoked without arguments it generates a gallery of common trajectories

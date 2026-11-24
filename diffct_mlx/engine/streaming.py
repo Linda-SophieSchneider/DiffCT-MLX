@@ -1,0 +1,178 @@
+"""Store validation and the bounded staging seam shared by tensor execution."""
+
+import numpy as np
+import torch
+from contextlib import contextmanager
+from pathlib import Path
+
+from .distribution import control_status
+from .storage import TensorStore, NpyStore
+
+
+def _store_rounds(items, partition):
+    """Keep exhausted parent ranks at the error gates of active subgroups."""
+    if partition.world_size == 1:
+        yield from items
+        return
+    items = iter(items)
+    while True:
+        item = next(items, None)
+        active, = control_status((int(item is not None),),
+                                 process_group=partition.process_group,
+                                 world_size=partition.world_size)
+        if not active:
+            return
+        yield item
+
+
+@contextmanager
+def _store_phase(partition):
+    """Agree local I/O failures before the next subgroup collective or return."""
+    error = None
+    try:
+        yield
+    except Exception as caught:
+        error = caught
+    if partition.world_size == 1:
+        if error is not None:
+            raise error
+    else:
+        partition.preflight(error)
+
+
+def _backing_store(value):
+    """Inspect delegated store metadata without reading numerical blocks."""
+    seen = set()
+    while id(value) not in seen:
+        seen.add(id(value))
+        nested = getattr(value, "store", None)
+        if nested is None:
+            break
+        value = nested
+    return value
+
+
+def _backing_tensor(value):
+    value = _backing_store(value)
+    return value if isinstance(value, torch.Tensor) else getattr(value, "tensor", None)
+
+
+def _as_store(value):
+    if isinstance(value, torch.Tensor):
+        return TensorStore(value)
+    if not all(hasattr(value, name) for name in ("shape", "dtype", "read", "write", "flush")):
+        raise TypeError("input/output must be a tensor or block store")
+    return value
+
+
+def _tensor_span(tensor):
+    if tensor.numel() == 0:
+        return None
+    start = tensor.data_ptr()
+    stop = start + (1 + sum((size - 1) * stride for size, stride in zip(tensor.shape, tensor.stride()))) * tensor.element_size()
+    return start, stop
+
+
+def _tensor_metadata(tensor, base=None, offset=0):
+    # These read-only byte views are only passed to shares_memory, which
+    # examines addresses/strides without dereferencing data. They model each
+    # element's bytes regardless of dtype or device; no tensor data is copied.
+    if base is None:
+        base = np.empty(1, dtype=np.uint8)
+    head = np.lib.stride_tricks.as_strided(
+        base, shape=(offset + 1,), strides=(1,), writeable=False,
+    )[offset:]
+    return np.lib.stride_tricks.as_strided(
+        head, shape=(*tensor.shape, tensor.element_size()),
+        strides=(*(stride * tensor.element_size() for stride in tensor.stride()), 1),
+        writeable=False,
+    )
+
+
+def _shares_memory(first, second):
+    try:
+        # Bound the exact integer-stride solver; reject uncertain exotic
+        # layouts rather than risk aliasing or an unbounded metadata search.
+        return np.shares_memory(first, second, max_work=1000)
+    except getattr(np, "exceptions", np).TooHardError as error:
+        raise ValueError("Cannot prove tensor stores do not overlap") from error
+
+
+def _tensor_internal_overlap(tensor):
+    if tensor.numel() == 0:
+        return False
+    extent = 1
+    for stride, size in sorted((stride, size) for size, stride in zip(tensor.shape, tensor.stride())
+                               if size > 1):
+        if stride == 0:
+            return True
+        if stride < extent:
+            break
+        extent += (size - 1) * stride
+    else:
+        return False
+
+    array = _tensor_metadata(tensor)
+    for axis, size in enumerate(tensor.shape):
+        if size > 1:
+            first, rest = [slice(None)] * array.ndim, [slice(None)] * array.ndim
+            first[axis], rest[axis] = slice(0, 1), slice(1, None)
+            # Any equal-address pair can be shifted along this axis until
+            # one index is zero, preserving the other coordinates and bounds.
+            if _shares_memory(array[tuple(first)], array[tuple(rest)]):
+                return True
+    return False
+
+
+def _tensor_overlap(first, second):
+    if first.device != second.device:
+        return False
+    if first.device.type == "mps":
+        # MPS tensors are allocator-backed and cannot wrap external memory,
+        # so distinct storages are distinct allocations. Cross-allocation
+        # data_ptr differences are not meaningful on MPS, so only views of
+        # one storage reach the stride solver, where offsets stay valid.
+        if first.untyped_storage() is not second.untyped_storage():
+            return False
+    a, b = _tensor_span(first), _tensor_span(second)
+    if a is None or b is None or max(a[0], b[0]) >= min(a[1], b[1]):
+        return False
+    base = np.empty(1, dtype=np.uint8)
+    origin = min(a[0], b[0])
+    return _shares_memory(_tensor_metadata(first, base, a[0] - origin),
+                          _tensor_metadata(second, base, b[0] - origin))
+
+
+def _validate_stores(projector, source, output, is_project):
+    if source is output:
+        raise ValueError("input and output stores must have distinct backing data")
+    if torch.is_grad_enabled():
+        for value in (source, output):
+            tensor = _backing_tensor(value)
+            if isinstance(tensor, torch.Tensor) and tensor.requires_grad:
+                raise ValueError("into methods are numerical; detach autograd inputs and outputs")
+    source, output = _as_store(source), _as_store(output)
+    expected_input = projector.volume_shape if is_project else projector.projection_shape
+    expected_output = projector.projection_shape if is_project else projector.volume_shape
+    if tuple(source.shape) != expected_input or tuple(output.shape) != expected_output:
+        raise ValueError("input/output store shape does not match the projector")
+    dtype = getattr(projector, "dtype", torch.float32)
+    if source.dtype not in (torch.float32, torch.float64) or output.dtype != dtype:
+        raise TypeError(f"input must be floating point and output dtype must be {dtype}")
+    if not getattr(output, "writable", True) or not getattr(_backing_store(output), "writable", True):
+        raise PermissionError("output store is read-only")
+    source_tensor, output_tensor = _backing_tensor(source), _backing_tensor(output)
+    if isinstance(output_tensor, torch.Tensor) and _tensor_internal_overlap(output_tensor):
+        raise ValueError("output tensor store has internal overlap")
+    if isinstance(source_tensor, torch.Tensor) and isinstance(output_tensor, torch.Tensor):
+        if _tensor_overlap(source_tensor, output_tensor):
+            raise ValueError("input and output tensor stores overlap")
+    source_backing, output_backing = _backing_store(source), _backing_store(output)
+    if source_backing is output_backing:
+        raise ValueError("input and output stores must have distinct backing data")
+    source_path, output_path = getattr(source_backing, "path", None), getattr(output_backing, "path", None)
+    if source_path is not None and output_path is not None:
+        first, second = Path(source_path), Path(output_path)
+        if first.is_file() and second.is_file() and first.samefile(second):
+            raise ValueError("input and output NpyStore paths alias")
+    return source, output

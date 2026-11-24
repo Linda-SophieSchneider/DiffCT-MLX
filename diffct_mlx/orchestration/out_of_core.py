@@ -31,15 +31,15 @@ import numpy as np
 import torch
 
 try:
-    from diffct.footprint import (
+    from ..engine.footprint import (
         ConeFootprintProjectorFunction,
         ConeFootprintBackprojectorFunction,
     )
-    from diffct.projectors import ConeBackprojectorFunction
+    from ..engine.projectors import ConeBackprojectorFunction
 except ImportError as _exc:  # pragma: no cover - torch/numba missing (e.g. MLX)
     raise ImportError(
         "diffct_mlx.orchestration requires the Torch/CUDA backend (it drives "
-        "the vendored numba-CUDA cone kernels directly); it is not available "
+        "the engine's numba-CUDA cone kernels directly); it is not available "
         "on the MLX backend."
     ) from _exc
 
@@ -50,10 +50,10 @@ _BACKWARD_FUNCS = {
     "footprint": ConeFootprintBackprojectorFunction,
     "siddon": ConeBackprojectorFunction,
 }
-from diffct.kernels import _cone_3d_fdk_backproject_kernel
-from diffct.utils import _grid_3d, TorchCUDABridge, _get_numba_external_stream_for
-from diffct.constants import _DTYPE
-from diffct.analytical import _cone_mean_sid_sdd
+from ..engine import kernels as _K
+from ..engine.utils import _grid_3d, TorchCUDABridge, _get_numba_external_stream_for
+from ..engine.constants import _DTYPE
+from ..engine.analytical import _analytical_geometry
 
 _EPS = 1e-8
 #: Extra detector rows / volume slices added to every shadow range so the finite
@@ -683,13 +683,15 @@ def chunked_cone_forward(volume, geom: ConeGeom, det_u, det_v,
     return _flush(out)
 
 
-def _fdk_gather_slab(filtered_dev, geom_tensors, D, z0, z1, H, W, du, dv, vs):
+def _fdk_gather_slab(filtered_dev, geom_tensors, D, z0, z1, H, W, du, dv, vs, isocenter):
     """Run the distance-weighted FDK gather kernel for one z-slab on the current GPU.
 
     Uses ``cz = D/2 - z0`` (no geometry shift) so sub-voxels land at their true
     world-z; distance weighting and scale therefore stay consistent across slabs.
     ``geom_tensors`` = (src, det_center, det_u_vec, det_v_vec) torch tensors on
-    this device (kept alive by the caller). Returns an *unscaled* (z1-z0, H, W).
+    this device (kept alive by the caller). ``filtered_dev`` already carries the
+    per-view ``sdd_n / (2 pi sid_n)`` constant; ``isocenter`` is physical (mm).
+    Returns the (z1-z0, H, W) slab.
     """
     src_t, dc_t, du_t, dv_t = geom_tensors
     n_views, n_u, n_v = filtered_dev.shape
@@ -697,7 +699,7 @@ def _fdk_gather_slab(filtered_dev, geom_tensors, D, z0, z1, H, W, du, dv, vs):
     reco_perm = torch.zeros((Nx, Ny, Nz), dtype=torch.float32, device=filtered_dev.device)
     grid, tpb = _grid_3d(Nz, Ny, Nx)
     stream = _get_numba_external_stream_for(torch.cuda.current_stream())
-    _cone_3d_fdk_backproject_kernel[grid, tpb, stream](
+    _K._cone_3d_fdk_backproject_kernel[grid, tpb, stream](
         TorchCUDABridge.tensor_to_cuda_array(filtered_dev), n_views, n_u, n_v,
         TorchCUDABridge.tensor_to_cuda_array(reco_perm), Nx, Ny, Nz,
         _DTYPE(du), _DTYPE(dv),
@@ -706,6 +708,7 @@ def _fdk_gather_slab(filtered_dev, geom_tensors, D, z0, z1, H, W, du, dv, vs):
         TorchCUDABridge.tensor_to_cuda_array(du_t),
         TorchCUDABridge.tensor_to_cuda_array(dv_t),
         _DTYPE(W * 0.5), _DTYPE(H * 0.5), _DTYPE(D * 0.5 - z0), _DTYPE(vs),
+        *(_DTYPE(value / vs) for value in isocenter),
     )
     return reco_perm.permute(2, 1, 0).contiguous()
 
@@ -764,10 +767,15 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
         gpus_ = _resolve_gpus(gpus)
         n_views, n_u, n_v = filtered.shape
         step = _auto_max_slices(D, H, W, n_views, n_u, n_v, gpus_, max_slices)
-        st, sd = _cone_mean_sid_sdd(
-            torch.as_tensor(geom.src_pos), torch.as_tensor(geom.det_center),
-            torch.as_tensor(geom.det_u_vec), torch.as_tensor(geom.det_v_vec))
-        fdk_scale = sd / (2.0 * np.pi * st)
+        # Per-view analytical constant sdd_n / (2 pi sid_n) and the orbit's
+        # isocenter, exactly as the engine's cone_weighted_backproject.
+        g64 = [torch.as_tensor(np.asarray(a), dtype=torch.float64)
+               for a in (geom.src_pos, geom.det_center, geom.det_u_vec, geom.det_v_vec)]
+        iso, sid_n, sdd_n = _analytical_geometry(
+            g64[0], g64[1], torch.cross(g64[2], g64[3], dim=1), None)
+        view_scale = (sdd_n / (2.0 * np.pi * sid_n)).to(torch.float32).view(-1, 1, 1)
+        isocenter = [float(v) for v in iso.tolist()]
+        fdk_scale = 1.0
         out = _resolve_output(out, (D, H, W), "fdk_vol", work_dir, ram_budget)
         # The gather kernel needs the WHOLE filtered sinogram on-device: upload
         # it once per GPU and reuse across slabs (it must fit in VRAM — use
@@ -785,13 +793,13 @@ def chunked_cone_fdk(sinogram, geom: ConeGeom, D, H, W,
                     cached = dev_cache.get(dev)
                     if cached is None:
                         cached = (
-                            _to_dev(filtered, dev),
+                            _to_dev(filtered, dev) * view_scale.to(dev),
                             (_to_dev(geom.src_pos, dev), _to_dev(geom.det_center, dev),
                              _to_dev(geom.det_u_vec, dev), _to_dev(geom.det_v_vec, dev)))
                         dev_cache[dev] = cached
                 filt_dev, geom_tensors = cached
                 slab = _fdk_gather_slab(filt_dev, geom_tensors, D, z0, z1, H, W,
-                                        du, dv, voxel_spacing)
+                                        du, dv, voxel_spacing, isocenter)
                 result = _post(slab.detach().cpu().numpy(), extra=fdk_scale)
                 with write_lock:
                     out[z0:z1] = result

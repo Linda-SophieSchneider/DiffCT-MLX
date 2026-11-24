@@ -12,7 +12,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from diffct import ConeProjectorFunction, circular_trajectory_3d
+from diffct_mlx.engine import ConeProjectorFunction, circular_trajectory_3d
 
 def shepp_logan_3d(shape):
     zz, yy, xx = np.mgrid[:shape[0], :shape[1], :shape[2]]

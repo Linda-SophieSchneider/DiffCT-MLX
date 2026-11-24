@@ -133,7 +133,7 @@ def test_parker_weights_match_vendored_reference():
     """rebinning.parker_weights had a factor-2 feathering error."""
     _skip_if_no_cuda()
     from diffct_mlx.rebinning import parker_weights, detector_fan_angles
-    from diffct.analytical import parker_weights as parker_ref
+    from diffct_mlx.engine.analytical import parker_weights as parker_ref
 
     sdd, spacing, nd, nv = 600.0, 1.0, 128, 300
     gam = detector_fan_angles(nd, spacing, sdd)

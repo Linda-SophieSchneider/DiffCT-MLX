@@ -1,18 +1,25 @@
 """Torch / CUDA backend.
 
-Thin adapter over the upstream ``diffct`` (dev-line) package: it re-exports the
-numba-CUDA autograd projectors as plain functional operators with the unified
-signatures, exposes the ``geometry`` and ``analytical`` submodules, and provides
-:data:`xp` — an MLX-``core``-shaped array namespace implemented on top of torch
-so the higher-level reconstruction layer is written once for both backends.
+Thin adapter over :mod:`diffct_mlx.engine` (the vendored upstream diffct 2.5
+engine plus the DiffCT-MLX footprint kernels). It re-exports the projectors as
+plain functional operators with the unified signatures, exposes the
+``geometry`` and ``analytical`` submodules, and provides :data:`xp`, an
+MLX-``core``-shaped array namespace on top of torch, so the higher-level
+reconstruction layer is written once for both backends.
+
+Siddon projections run on the native numba-CUDA kernels for CUDA tensors and on
+the engine's portable PyTorch backend for CPU and Apple MPS tensors. The
+footprint projectors are CUDA-only.
 """
 
+import functools
 from types import SimpleNamespace
 
 import numpy as _np
 import torch
 
-from diffct import (
+from .. import engine as _engine
+from ..engine import (
     ParallelProjectorFunction,
     ParallelBackprojectorFunction,
     FanProjectorFunction,
@@ -20,8 +27,9 @@ from diffct import (
     ConeProjectorFunction,
     ConeBackprojectorFunction,
 )
-from diffct import geometry, analytical  # noqa: F401  (re-exported)
-from diffct.footprint import (
+from ..engine import geometry as _engine_geometry
+from ..engine import analytical  # noqa: F401  (re-exported)
+from ..engine.footprint import (
     ParallelFootprintProjectorFunction,
     ParallelFootprintBackprojectorFunction,
     FanFootprintProjectorFunction,
@@ -49,6 +57,25 @@ def set_default_device(device):
 
 def get_default_device():
     return _DEFAULT_DEVICE
+
+
+# --- Geometry: engine generators, defaulting to the backend's device --------
+
+def _with_default_device(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if "device" not in kwargs:
+            kwargs["device"] = _DEFAULT_DEVICE
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+geometry = SimpleNamespace(**{
+    name: (_with_default_device(getattr(_engine_geometry, name))
+           if name.endswith(("_2d", "_3d", "_fan", "_parallel")) else getattr(_engine_geometry, name))
+    for name in dir(_engine_geometry)
+    if not name.startswith("_") and callable(getattr(_engine_geometry, name))
+})
 
 
 # --- Conversions ------------------------------------------------------------
@@ -287,9 +314,27 @@ xp = SimpleNamespace(
 
 
 # --- Functional line-based projectors (unified signatures) ------------------
+# CUDA tensors: native autograd Functions (exact geometry gradients).
+# CPU / MPS tensors: the engine's portable PyTorch Projector.
+
+def _is_native(x):
+    return isinstance(x, torch.Tensor) and x.is_cuda
+
+
+def _portable(beam, x, trajectory, volume_shape, detector_shape, detector_spacing,
+              voxel_spacing, adjoint):
+    projector = _engine.Projector(
+        tuple(trajectory), tuple(volume_shape), tuple(detector_shape), beam=beam,
+        detector_spacing=detector_spacing, voxel_spacing=voxel_spacing, backend="torch",
+    )
+    return projector.backproject(x) if adjoint else projector(x)
+
 
 def parallel_forward(image, ray_dir, det_origin, det_u_vec,
                      num_detectors=128, detector_spacing=1.0, voxel_spacing=1.0):
+    if not _is_native(image):
+        return _portable("parallel", image, (ray_dir, det_origin, det_u_vec), image.shape,
+                         (num_detectors,), detector_spacing, voxel_spacing, adjoint=False)
     return ParallelProjectorFunction.apply(
         image, ray_dir, det_origin, det_u_vec,
         num_detectors, detector_spacing, voxel_spacing)
@@ -297,6 +342,9 @@ def parallel_forward(image, ray_dir, det_origin, det_u_vec,
 
 def parallel_backward(sinogram, ray_dir, det_origin, det_u_vec,
                       detector_spacing=1.0, H=128, W=128, voxel_spacing=1.0):
+    if not _is_native(sinogram):
+        return _portable("parallel", sinogram, (ray_dir, det_origin, det_u_vec), (H, W),
+                         (sinogram.shape[-1],), detector_spacing, voxel_spacing, adjoint=True)
     return ParallelBackprojectorFunction.apply(
         sinogram, ray_dir, det_origin, det_u_vec,
         detector_spacing, H, W, voxel_spacing)
@@ -304,6 +352,9 @@ def parallel_backward(sinogram, ray_dir, det_origin, det_u_vec,
 
 def fan_forward(image, src_pos, det_center, det_u_vec,
                 num_detectors=128, detector_spacing=1.0, voxel_spacing=1.0):
+    if not _is_native(image):
+        return _portable("fan", image, (src_pos, det_center, det_u_vec), image.shape,
+                         (num_detectors,), detector_spacing, voxel_spacing, adjoint=False)
     return FanProjectorFunction.apply(
         image, src_pos, det_center, det_u_vec,
         num_detectors, detector_spacing, voxel_spacing)
@@ -311,6 +362,9 @@ def fan_forward(image, src_pos, det_center, det_u_vec,
 
 def fan_backward(sinogram, src_pos, det_center, det_u_vec,
                  detector_spacing=1.0, H=128, W=128, voxel_spacing=1.0):
+    if not _is_native(sinogram):
+        return _portable("fan", sinogram, (src_pos, det_center, det_u_vec), (H, W),
+                         (sinogram.shape[-1],), detector_spacing, voxel_spacing, adjoint=True)
     return FanBackprojectorFunction.apply(
         sinogram, src_pos, det_center, det_u_vec,
         detector_spacing, H, W, voxel_spacing)
@@ -318,6 +372,9 @@ def fan_backward(sinogram, src_pos, det_center, det_u_vec,
 
 def cone_forward(volume, src_pos, det_center, det_u_vec, det_v_vec,
                  det_u=128, det_v=128, du=1.0, dv=1.0, voxel_spacing=1.0):
+    if not _is_native(volume):
+        return _portable("cone", volume, (src_pos, det_center, det_u_vec, det_v_vec), volume.shape,
+                         (det_u, det_v), (du, dv), voxel_spacing, adjoint=False)
     return ConeProjectorFunction.apply(
         volume, src_pos, det_center, det_u_vec, det_v_vec,
         det_u, det_v, du, dv, voxel_spacing)
@@ -325,6 +382,9 @@ def cone_forward(volume, src_pos, det_center, det_u_vec, det_v_vec,
 
 def cone_backward(sinogram, src_pos, det_center, det_u_vec, det_v_vec,
                   D=128, H=128, W=128, du=1.0, dv=1.0, voxel_spacing=1.0):
+    if not _is_native(sinogram):
+        return _portable("cone", sinogram, (src_pos, det_center, det_u_vec, det_v_vec), (D, H, W),
+                         tuple(sinogram.shape[-2:]), (du, dv), voxel_spacing, adjoint=True)
     return ConeBackprojectorFunction.apply(
         sinogram, src_pos, det_center, det_u_vec, det_v_vec,
         D, H, W, du, dv, voxel_spacing)

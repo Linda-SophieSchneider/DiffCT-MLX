@@ -12,8 +12,8 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from diffct import sinusoidal_trajectory_2d_parallel, custom_trajectory_2d_parallel
-from diffct import ParallelProjectorFunction
+from diffct_mlx.engine import sinusoidal_trajectory_2d_parallel, custom_trajectory_2d_parallel
+from diffct_mlx.engine import ParallelProjectorFunction
 
 
 def custom_wobble_trajectory_rays(angles):

@@ -10,8 +10,8 @@ This `cuda` branch of **DiffCT-MLX** is **adapted from the original
 | **Upstream project** | [diffct](https://github.com/sypsyp97/diffct) |
 | **Original author** | Yipeng Sun (<yipeng.sun@fau.de>) |
 | **License** | Apache License 2.0 — see [LICENSE](LICENSE) |
-| **Imported from** | upstream `dev` branch (arbitrary-trajectory line), v1.3.3.dev0, commit `cb516cf` |
-| **Import date** | 2026-07-06 |
+| **Imported from** | upstream `main`, v2.5.2, commit `982610e` (DiffCT-MLX 3.0, as `diffct_mlx.engine`) |
+| **Import date** | 2026-11-25 (first import: `dev` v1.3.3.dev0, commit `cb516cf`, 2026-07-06, as top-level `diffct`; retired in 3.0) |
 | **Maintained here by** | Linda-Sophie Schneider (<linda-sophie.schneider@fau.de>) |
 
 The `dev` branch was chosen as the basis (rather than `main`) because its
@@ -29,6 +29,23 @@ match the DiffCT-MLX port, enabling a shared public API across backends.
 
 This mirrors the historical relationship in which diffct's former `apple`
 branch became the standalone DiffCT-MLX repository.
+
+## Engine in DiffCT-MLX 3.0
+
+From 3.0 the Torch / numba-CUDA engine is upstream diffct 2.5.2, vendored as
+`diffct_mlx/engine/` with upstream's `LICENSE` and `NOTICE` next to it. It is
+maintained here, independently of upstream releases; upstream fixes are merged
+by hand. The internal name ends a clash with the PyPI package `diffct`: up to
+2.x the DiffCT-MLX wheel installed its own top-level `diffct`.
+
+Changes against upstream 2.5.2:
+
+- `differentiable.py` (a deprecated import shim) is removed.
+- DiffCT-MLX extensions, as new files: separable-footprint projectors
+  (`footprint.py`, `kernels/*_footprint.py`), registered in `kernels/__init__.py`.
+- Upstream tests run from `tests/engine/` against `diffct_mlx.engine`; upstream
+  example helpers they need are in `tests/engine/_upstream/`, and upstream's
+  user documentation is in `docs/engine/`.
 
 ## Notice of changes (Apache-2.0 §4)
 

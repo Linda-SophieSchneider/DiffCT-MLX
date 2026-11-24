@@ -1,0 +1,296 @@
+"""Shared helpers for the reconstruction examples: phantom, scan, FDK, CGLS."""
+
+import math
+import os
+
+import numpy as np
+import torch
+import torch.distributed as dist
+
+from diffct_mlx.engine import (
+    circular_trajectory_3d,
+    fdk as reconstruct_fdk,
+    saddle_trajectory_3d,
+    sinusoidal_trajectory_3d,
+    spiral_trajectory_3d,
+)
+
+TRAJECTORIES = ("circular", "helical", "saddle", "sinusoidal")
+
+
+def shepp_logan_3d(n):
+    """3D Shepp-Logan phantom on an n^3 grid, sampled at voxel centres, values in [0, 1]."""
+    ellipsoids = np.array([
+        # x, y, z, a, b, c, phi, value
+        [0, 0, 0, 0.69, 0.92, 0.81, 0, 1.0],
+        [0, -0.0184, 0, 0.6624, 0.874, 0.78, 0, -0.8],
+        [0.22, 0, 0, 0.11, 0.31, 0.22, -math.pi / 10, -0.2],
+        [-0.22, 0, 0, 0.16, 0.41, 0.28, math.pi / 10, -0.2],
+        [0, 0.35, -0.15, 0.21, 0.25, 0.41, 0, 0.1],
+        [0, 0.10, 0.25, 0.046, 0.046, 0.05, 0, 0.1],
+        [0, -0.10, 0.25, 0.046, 0.046, 0.05, 0, 0.1],
+        [-0.08, -0.605, 0, 0.046, 0.023, 0.05, 0, 0.1],
+        [0, -0.605, 0, 0.023, 0.023, 0.02, 0, 0.1],
+        [0.06, -0.605, 0, 0.023, 0.046, 0.02, 0, 0.1],
+    ], dtype=np.float32)
+    axis = (np.arange(n, dtype=np.float32) + 0.5 - n / 2) / (n / 2)
+    zz, yy, xx = np.meshgrid(axis, axis, axis, indexing="ij")
+    phantom = np.zeros((n, n, n), dtype=np.float32)
+    for x0, y0, z0, a, b, c, phi, value in ellipsoids:
+        xc, yc, zc = xx - x0, yy - y0, zz - z0
+        xp = math.cos(phi) * xc - math.sin(phi) * yc
+        yp = math.sin(phi) * xc + math.cos(phi) * yc
+        phantom += value * ((xp / a) ** 2 + (yp / b) ** 2 + (zc / c) ** 2 <= 1.0)
+    return np.clip(phantom, 0.0, 1.0)
+
+
+class Scan:
+    """Cone-beam scan for an n^3 volume with unit voxels.
+
+    The source is 2.5 n from the isocentre and the detector 1.5 n beyond it
+    (magnification 1.6). A detector pitch of 0.8 samples the isocentre every
+    0.5 voxel, fine enough that FDK resolution is set by the volume grid.
+    """
+
+    def __init__(self, n, views=360):
+        self.n = n
+        self.views = views
+        self.sid = 2.5 * n
+        self.sdd = 4.0 * n
+        self.pitch = 0.8
+        self.detector = (3 * n, 2 * n)
+
+    def trajectory(self, name):
+        n, views, sid, sdd = self.n, self.views, self.sid, self.sdd
+        if name == "circular":
+            return circular_trajectory_3d(views, sid, sdd, device="cpu")
+        if name == "helical":
+            return spiral_trajectory_3d(views, sid, sdd, z_range=0.3 * n, n_turns=1.0, device="cpu")
+        if name == "saddle":
+            return saddle_trajectory_3d(views, sid, sdd, z_amplitude=0.15 * n,
+                                        radial_amplitude=0.1 * sid, device="cpu")
+        if name == "sinusoidal":
+            return sinusoidal_trajectory_3d(views, sid, sdd, amplitude=0.15 * n, frequency=2.0, device="cpu")
+        raise ValueError(f"unknown trajectory {name!r}; choose from {TRAJECTORIES}")
+
+
+def fdk(scan, sinogram, trajectory, window="shepp-logan"):
+    """FDK reconstruction of a full ``(views, U, V)`` sinogram on its device.
+
+    FDK is designed for the circular orbit and is approximate away from its
+    central plane; for other trajectories the approximation is coarser. ``window`` trades noise against sharpness: "ram-lak" keeps
+    all frequencies, "hann" is the smoothest.
+    """
+    device = sinogram.device
+    angles = torch.linspace(0.0, 2 * math.pi, scan.views + 1, device=device)[:-1]
+    n = scan.n
+    return reconstruct_fdk(sinogram, trajectory, (n, n, n), angles,
+                           detector_spacing=scan.pitch, window=window,
+                           isocenter=(0, 0, 0)).clamp_min(0)
+
+
+@torch.no_grad()
+def cgls(operator, measurements, iterations):
+    """Conjugate gradient least squares for ``min ||A x - y||``.
+
+    Norms respect the projector's view or spatial ownership. FP64 norm work
+    is block bounded on the state device. CUDA state is admitted only when all
+    x/s/p/r/q states and the native pipeline fit; otherwise state stays on CPU.
+    The example assigns a tensor-free capacity report to ``last_solver_stats``.
+    """
+    try:
+        from _block_cgls import _copy_blocks, _count, _norm, _solver_capacity
+    except ModuleNotFoundError as error:
+        if error.name != "_block_cgls":
+            raise
+        from examples._block_cgls import _copy_blocks, _count, _norm, _solver_capacity
+    from diffct_mlx.engine import TensorStore
+
+    iterations = _count(iterations, "iterations")
+    source = TensorStore(measurements)
+    elements = 1048576
+    report = _solver_capacity(operator, source, elements, measurements.device)
+    device = measurements.device
+    fallback = (device.type == "cuda" and report["gpu_budget_bytes"] is not None
+                and (report["estimated_gpu_bytes"] > report["gpu_budget_bytes"]
+                     or report["largest_cuda_allocation_bytes"] > report["allocation_limit"]
+                     or report["estimated_reserved_bytes"] > report["reservation_budget_bytes"]))
+    if operator.world_size > 1:
+        # Agree before the CPU replan issues its own collectives.
+        group = operator.process_group
+        control_device = (torch.device("cuda", torch.cuda.current_device())
+                          if dist.get_backend(group) == "nccl" else torch.device("cpu"))
+        agreement = torch.tensor(int(fallback), dtype=torch.int64, device=control_device)
+        dist.all_reduce(agreement, op=dist.ReduceOp.MAX, group=group)
+        fallback = bool(agreement.item())
+        del agreement
+    if fallback:
+        device = torch.device("cpu")
+        report = _solver_capacity(operator, source, elements, device)
+    report["state_backend"] = device.type
+    operator.last_solver_stats = report
+    x = torch.zeros(operator.volume_shape, dtype=torch.float32, device=device)
+    r = torch.empty(operator.projection_shape, dtype=torch.float32, device=device)
+    _copy_blocks(source, TensorStore(r), elements)
+    s = torch.empty_like(x)
+    p = torch.empty_like(x)
+    q = torch.empty_like(r)
+    operator.backproject_into(r, s)
+    p.copy_(s)
+    gamma = _norm(operator, TensorStore(s), "volume", elements)
+    for _ in range(iterations):
+        operator.project_into(p, q)
+        qq = _norm(operator, TensorStore(q), "rays", elements)
+        if gamma == 0 or qq == 0:
+            break
+        alpha = gamma / qq
+        x.add_(p, alpha=alpha)
+        r.add_(q, alpha=-alpha)
+        operator.backproject_into(r, s)
+        gamma_new = _norm(operator, TensorStore(s), "volume", elements)
+        p.mul_(gamma_new / gamma).add_(s)
+        gamma = gamma_new
+    return x
+
+
+def sirt(operator, measurements, iterations):
+    """SIRT with nonnegativity: x += C A^T R (y - A x), R = 1/(A 1), C = 1/(A^T 1).
+
+    R lives on the rank's view shard and C on the replicated volume, so the
+    update needs no extra communication in distributed mode.
+    """
+    ones = torch.ones(operator.volume_shape, device=measurements.device)
+    row = operator.project(ones)
+    row_inverse = torch.where(row > 0, 1.0 / row, torch.zeros_like(row))
+    column = operator.backproject(torch.ones_like(measurements))
+    column_inverse = torch.where(column > 0, 1.0 / column, torch.zeros_like(column))
+    x = torch.zeros_like(ones)
+    for _ in range(iterations):
+        residual = (measurements - operator.project(x)) * row_inverse
+        x = (x + column_inverse * operator.backproject(residual)).clamp_min(0)
+    return x
+
+
+def total_variation(x, eps=1e-6):
+    """Isotropic total variation of a 3D volume (mean over voxels)."""
+    dz = x[1:, :-1, :-1] - x[:-1, :-1, :-1]
+    dy = x[:-1, 1:, :-1] - x[:-1, :-1, :-1]
+    dx = x[:-1, :-1, 1:] - x[:-1, :-1, :-1]
+    return torch.sqrt(dx * dx + dy * dy + dz * dz + eps).mean()
+
+
+def tv_reconstruction(operator, measurements, iterations, weight=1.0, lr=0.1):
+    """Nonnegative least squares with a TV penalty, solved by Adam through autograd.
+
+    The data term is half the mean squared residual over all rays.
+    The TV term averages smoothed gradient magnitudes from adjacent voxel values.
+    These voxel differences are not divided by voxel spacing.
+    Averaging removes direct scaling with ray and voxel counts, but does not make
+    ``weight`` independent of geometry, resolution, voxel spacing or data scale.
+    Choose the weight for the scan and the volume scale.
+    Every rank adds the full TV term. The projector sums the data gradient over ranks.
+    Each rank computes the same TV gradient; do not divide it by the number of ranks.
+    """
+    rays = torch.tensor(float(measurements.numel()), device=measurements.device)
+    if operator.world_size > 1:
+        dist.all_reduce(rays, group=operator.process_group)
+    x = torch.zeros(operator.volume_shape, device=measurements.device, requires_grad=True)
+    optimizer = torch.optim.Adam([x], lr=lr)
+    for _ in range(iterations):
+        optimizer.zero_grad()
+        data = 0.5 * (operator.project(x) - measurements).square().sum() / rays
+        loss = data + weight * total_variation(x)
+        loss.backward()
+        optimizer.step()
+        with torch.no_grad():
+            x.clamp_(min=0)
+    return x.detach()
+
+
+def psnr(reconstruction, truth):
+    """Peak signal-to-noise ratio in dB for images with peak value 1."""
+    if reconstruction.device == truth.device:
+        mse = torch.mean((reconstruction - truth) ** 2).item()
+    else:
+        from diffct_mlx.engine.pipeline import _fragments
+
+        reconstruction, truth = torch.broadcast_tensors(reconstruction, truth)
+        squared_error = 0.0
+        for selected in _fragments(tuple(truth.shape), 1048576):
+            difference = reconstruction[selected].detach().to(device="cpu", dtype=torch.float64)
+            reference = truth[selected].detach().to(device="cpu", dtype=torch.float64)
+            squared_error += (difference - reference).square().sum().item()
+        mse = squared_error / truth.numel() if truth.numel() else math.nan
+    if mse == 0:
+        return math.inf
+    return 10 * math.log10(1.0 / mse)
+
+
+def init_process():
+    """Use the GPU of this process; start NCCL when launched by torchrun."""
+    if not torch.cuda.is_available():
+        raise RuntimeError("These examples need a CUDA GPU")
+    device = torch.device("cuda", int(os.environ.get("LOCAL_RANK", "0")))
+    torch.cuda.set_device(device)
+    distributed = int(os.environ.get("WORLD_SIZE", "1")) > 1
+    if distributed:
+        dist.init_process_group("nccl", device_id=device)
+    return distributed, device
+
+
+def synchronize(distributed):
+    torch.cuda.synchronize()
+    if distributed:
+        dist.barrier()
+
+
+def central_section(volume, section):
+    """Central axial ``(H, W)`` or coronal ``(D, W)`` slice in array order.
+
+    Display with an upper origin to preserve the measured detector's row order.
+    """
+    if section == "axial":
+        return volume[volume.shape[0] // 2]
+    if section == "coronal":
+        return volume[:, volume.shape[1] // 2]
+    raise ValueError(f"unknown section {section!r}; choose 'axial' or 'coronal'")
+
+
+def save_slices(path, panels, title, vmax=0.4, sections=("axial",)):
+    """Save images (2D) or central slices (3D) as a grid; skipped without matplotlib.
+
+    Each panel is ``(label, tensor)`` and fills one column; a 3D tensor gets one
+    row per entry of ``sections``. Labels may have a second line after ``\\n``.
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib is not installed; skipping", path)
+        return
+    background, ink, muted = "#111418", "#ECEAE6", "#9AA3AD"
+    rows = len(sections)
+    fig, axes = plt.subplots(rows, len(panels), figsize=(2.7 * len(panels), 2.7 * rows + 0.9),
+                             squeeze=False, facecolor=background)
+    for column, (label, volume) in enumerate(panels):
+        for row in range(rows):
+            image = central_section(volume, sections[row]) if volume.ndim == 3 else volume
+            ax = axes[row, column]
+            ax.imshow(image.detach().cpu().numpy(), cmap="gray", vmin=0.0, vmax=vmax, origin="upper")
+            ax.set_xticks([])
+            ax.set_yticks([])
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+            if column == 0 and rows > 1:
+                ax.set_ylabel(sections[row], color=muted, fontsize=10)
+        name, _, detail = label.partition("\n")
+        axes[0, column].set_title(name, color=ink, fontsize=11, pad=16 if detail else 6)
+        if detail:
+            axes[0, column].text(0.5, 1.02, detail, transform=axes[0, column].transAxes,
+                                 ha="center", va="bottom", color=muted, fontsize=9.5)
+    fig.suptitle(title, color=ink, fontsize=12, x=0.012, ha="left")
+    fig.tight_layout(rect=(0, 0, 1, 0.97), w_pad=0.4, h_pad=0.4)
+    fig.savefig(path, dpi=200, facecolor=background)
+    plt.close(fig)
+    print("saved", path)

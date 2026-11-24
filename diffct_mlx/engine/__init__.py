@@ -1,0 +1,121 @@
+# diffct/__init__.py
+"""Torch / numba-CUDA engine of DiffCT-MLX.
+
+Vendored from upstream diffct 2.5.2 (https://github.com/sypsyp97/diffct,
+commit 982610e, Apache-2.0, Copyright 2025 Yipeng Sun; see LICENSE and NOTICE
+in this directory). Maintained in DiffCT-MLX under an internal name so that it
+does not clash with the PyPI package ``diffct``. Changes against upstream are
+tracked in the DiffCT-MLX git history.
+
+Original module docstring:
+
+diffct - Differentiable CT Reconstruction Package.
+
+A GPU-accelerated, differentiable computed tomography (CT) forward and backward
+projection library built with PyTorch and Numba CUDA.
+"""
+
+from .projectors import (
+    ParallelProjectorFunction,
+    ParallelBackprojectorFunction,
+    FanProjectorFunction,
+    FanBackprojectorFunction,
+    ConeProjectorFunction,
+    ConeBackprojectorFunction,
+)
+
+from .operators import Projector
+from .storage import TensorStore, NpyStore
+from .surfaces import ParameterizedSurface
+from .reconstruction import (
+    fbp,
+    fdk,
+    fbp_into,
+    fdk_into,
+    helical_fdk,
+    helical_view_weights,
+    helical_weighted_backproject,
+)
+
+from .solvers import SolverResult, cgls, sirt, tv_reconstruction, cgls_into, total_variation
+
+from .geometry import (
+    transform_trajectory,
+    circular_trajectory_3d_parallel,
+    circular_trajectory_3d,
+    random_trajectory_3d,
+    spiral_trajectory_3d,
+    sinusoidal_trajectory_3d,
+    saddle_trajectory_3d,
+    custom_trajectory_3d,
+    circular_trajectory_2d_fan,
+    sinusoidal_trajectory_2d_fan,
+    custom_trajectory_2d_fan,
+    circular_trajectory_2d_parallel,
+    sinusoidal_trajectory_2d_parallel,
+    custom_trajectory_2d_parallel,
+)
+
+from .analytical import (
+    detector_coordinates_1d,
+    angular_integration_weights,
+    fan_cosine_weights,
+    cone_cosine_weights,
+    parker_weights,
+    ramp_filter_1d,
+    parallel_weighted_backproject,
+    fan_weighted_backproject,
+    cone_weighted_backproject,
+)
+
+
+__version__ = '2.5.2'
+
+__all__ = [
+    'Projector',
+    'TensorStore',
+    'NpyStore',
+    'ParameterizedSurface',
+    'fbp',
+    'fdk',
+    'fbp_into',
+    'fdk_into',
+    'SolverResult',
+    'cgls',
+    'sirt',
+    'tv_reconstruction',
+    'cgls_into',
+    'total_variation',
+    'helical_fdk',
+    'helical_view_weights',
+    'helical_weighted_backproject',
+    'ParallelProjectorFunction',
+    'ParallelBackprojectorFunction',
+    'FanProjectorFunction',
+    'FanBackprojectorFunction',
+    'ConeProjectorFunction',
+    'ConeBackprojectorFunction',
+    'transform_trajectory',
+    'circular_trajectory_3d_parallel',
+    'circular_trajectory_3d',
+    'random_trajectory_3d',
+    'spiral_trajectory_3d',
+    'sinusoidal_trajectory_3d',
+    'saddle_trajectory_3d',
+    'custom_trajectory_3d',
+    'circular_trajectory_2d_fan',
+    'sinusoidal_trajectory_2d_fan',
+    'custom_trajectory_2d_fan',
+    'circular_trajectory_2d_parallel',
+    'sinusoidal_trajectory_2d_parallel',
+    'custom_trajectory_2d_parallel',
+    'detector_coordinates_1d',
+    'angular_integration_weights',
+    'fan_cosine_weights',
+    'cone_cosine_weights',
+    'parker_weights',
+    'ramp_filter_1d',
+    'parallel_weighted_backproject',
+    'fan_weighted_backproject',
+    'cone_weighted_backproject',
+]

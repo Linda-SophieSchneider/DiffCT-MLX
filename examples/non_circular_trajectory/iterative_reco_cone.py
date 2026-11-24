@@ -12,8 +12,8 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from diffct import ConeProjectorFunction
-from diffct import (spiral_trajectory_3d, sinusoidal_trajectory_3d,
+from diffct_mlx.engine import ConeProjectorFunction
+from diffct_mlx.engine import (spiral_trajectory_3d, sinusoidal_trajectory_3d,
                     saddle_trajectory_3d, custom_trajectory_3d)
 
 def custom_figure8_trajectory(angles, sid):

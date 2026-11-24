@@ -144,7 +144,7 @@ def test_geometry_gradients_exact_contraction():
     (same eps, same column perturbation) exactly — pins the implementation.
     """
     _skip_if_no_cuda()
-    from diffct.projectors import _fd_eps, _FD_REL_EPS_POS
+    from diffct_mlx.engine.projectors import _fd_eps, _FD_REL_EPS_POS
     src, dc, du_, dv_ = _geo_3d()
     zz, yy, xx = torch.meshgrid(*[torch.arange(24, device=DEV, dtype=torch.float32)] * 3,
                                 indexing="ij")
