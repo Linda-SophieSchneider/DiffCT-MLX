@@ -9,6 +9,66 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Kernel and analytical fixes ported from upstream diffct 2.0.0 to 2.5.2 into
+the Metal kernels in `diffct_mlx/backend/metal/kernels/` and the MLX-side
+analytical code. The vendored CUDA engine in `diffct/` is unchanged, because
+it will be replaced by upstream diffct 2.5.2. The detector-cell convention
+`(k - N/2) * du` and the voxel units of the Metal kernels do not change.
+Regression tests are in `tests/test_upstream_kernel_fixes.py`. They use the
+public API and do not depend on the detector-cell convention or on voxel
+versus physical units.
+
+### Fixed
+
+- **Fan and cone rays integrate only from the source to the detector pixel.**
+  The Metal Siddon forward, backward and cone geometry-gradient kernels clamp
+  the ray parameter to the source-detector segment. Before, a source or
+  detector inside the volume gave the full-line integral through the volume.
+- **Distant sources no longer drift.** Fan and cone ray setup measures the ray
+  parameter from the endpoint nearer the volume centre, and the traversal
+  restarts at the volume entry point. Before, a source 1e4 voxels away gave
+  relative errors of 3e-3 and a source 1e6 voxels away errors of 0.1.
+- **Ray pieces of any positive length count.** The Siddon kernels skipped
+  pieces of length up to 1e-6 voxels, so a projection jumped when a ray
+  started or stopped clipping a voxel corner. They now skip only pieces of
+  length 0, and a projection is a continuous function of the geometry.
+- **Axis-parallel threshold.** A direction component counts as
+  axis-parallel only below 1e-20 instead of 1e-6. With the old limit a ray
+  that grazed a grid line stayed in the neighbouring row, and a ray with a
+  small lateral component outside the volume bounds was dropped. The
+  traversal parameter never moves backwards, so a nearly axis-parallel ray
+  whose entry cell rounds to the wrong side of a grid line is not counted
+  twice. The kernels keep the finite 1e30 sentinel in place of infinity,
+  which fast math may assume never occurs.
+- **2D parallel kernels normalize `ray_dir`.** A non-unit ray direction
+  scaled every line integral of the forward and adjoint parallel projectors
+  (upstream #79).
+- **Cone geometry gradient with the detector inside the volume.** With the
+  clamped segment, moving the detector pixel along the ray changes the
+  integrated length. The gradient kernel adds this `mu(p)` boundary term and
+  weights each sample by its distance from the source.
+- **Parker weights.** `diffct_mlx.rebinning.parker_weights` uses the
+  generalized Parker taper with half-width `max(gamma_max, (range - pi)/2)`,
+  so scans longer than a minimal short scan keep their overscan views and
+  every detector still integrates to `pi`. Before, views past
+  `pi + 2*gamma_max` got zero weight. A full turn returns ones, decided from
+  the acquired angles alone and not from the fan width.
+- **Discrete Ram-Lak filter.** The MLX analytical ramp filter
+  (`ramp_filter`, `ramp_filter_2d`, `ramp_filter_3d`) uses the transform of
+  the finite Ram-Lak kernel, `h[0] = 1/2` and `h[k] = -2/(pi*k)^2` for odd
+  `k`, in place of the sampled `2*|f|`. The scale at Nyquist is unchanged.
+  The sampled ramp removed the small positive DC response of the finite
+  kernel and biased the low frequencies of finite projections.
+- **`custom_trajectory_3d` rejects non-finite sources** on MLX with a
+  `ValueError`. It already rejected a source at the isocenter.
+
+### Not ported
+
+Upstream's per-view SID/SDD in the FBP/FDK constant, wrapped short-scan
+angular weights (#77) and FP64 angular weights have no MLX counterpart. The
+MLX analytical pipeline uses a scalar angular normalization, and Metal has no
+FP64. They arrive for the CUDA backend with upstream 2.5.2.
+
 ## [2.2.0] - 2026-11-18
 
 ### Fixed

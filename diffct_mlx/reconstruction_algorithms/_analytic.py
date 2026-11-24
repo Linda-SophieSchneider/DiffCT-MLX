@@ -67,8 +67,30 @@ def default_angular_normalization(num_views: int) -> float:
     return math.pi / float(num_views)
 
 
+def _ram_lak_response(n_pad, sample_spacing=1.0):
+    """DFT of the finite discrete Ram-Lak kernel in the ``2*|f|`` convention.
+
+    The impulse response is ``h[0] = 1/2``, ``h[k] = -2/(pi*k)**2`` for odd
+    ``k`` and zero for nonzero even ``k``. This is Kak and Slaney, chapter 3,
+    equation 61, scaled by 2 to match the ``2*|fftfreq|`` ramp used here. At
+    Nyquist the response equals the sampled ramp. At DC it keeps the small
+    positive value of the finite kernel, where the sampled ``2*|f|`` ramp
+    forces zero and biases the low frequencies of finite projections. Lags
+    wrap, so the kernel is symmetric for even and odd ``n_pad``. Returns a
+    float32 numpy array of length ``n_pad``, scaled by ``1/sample_spacing``.
+    """
+    lags = np.arange(n_pad)
+    lags = np.minimum(lags, n_pad - lags)
+    impulse = np.zeros(n_pad, dtype=np.float64)
+    impulse[0] = 0.5
+    odd = lags % 2 == 1
+    impulse[odd] = -2.0 / (math.pi * lags[odd]) ** 2
+    response = np.real(np.fft.fft(impulse)) / float(sample_spacing)
+    return response.astype(np.float32)
+
+
 def _ramp_numpy(sino_np, axis, pad_factor=1, sample_spacing=1.0):
-    """CPU reference ramp filter (``2*|fftfreq|/sample_spacing`` convention).
+    """CPU reference ramp filter (discrete Ram-Lak, ``2*|f|/sample_spacing`` scale).
 
     ``pad_factor > 1`` zero-pads the detector axis to ``pad_factor * n`` before
     the FFT and crops afterwards. Without padding the ramp's negative side
@@ -85,8 +107,7 @@ def _ramp_numpy(sino_np, axis, pad_factor=1, sample_spacing=1.0):
         pad_width = [(0, 0)] * sino_np.ndim
         pad_width[axis] = (0, n_pad - n)
         sino_np = np.pad(sino_np, pad_width)
-    freqs = np.fft.fftfreq(n_pad)
-    ramp = (2.0 * np.abs(freqs) / float(sample_spacing)).astype(np.float32)
+    ramp = _ram_lak_response(n_pad, sample_spacing)
     shape = [1] * sino_np.ndim
     shape[axis] = n_pad
     sino_fft = np.fft.fft(sino_np, axis=axis)
@@ -99,10 +120,10 @@ def _ramp_numpy(sino_np, axis, pad_factor=1, sample_spacing=1.0):
 
 
 def _ramp_device(sinogram, axis, pad_factor=1, sample_spacing=1.0):
-    """On-device ramp filter reproducing the ``2*|fftfreq|`` DFT convention.
+    """On-device ramp filter with the discrete Ram-Lak response of :func:`_ramp_numpy`.
 
-    Identical maths to :func:`_ramp_numpy` (same DFT-bin ramp — no ``2*pi`` and
-    no sample-spacing rescale) but evaluated with the backend FFT, so the
+    Identical maths to :func:`_ramp_numpy` (same ``2*|f|`` scale, no ``2*pi``)
+    but evaluated with the backend FFT, so the
     analytic FBP/FDK pipeline stays GPU-resident and every downstream
     normalization constant (see ``cases.py``) is unchanged.
     """
@@ -113,8 +134,8 @@ def _ramp_device(sinogram, axis, pad_factor=1, sample_spacing=1.0):
         pad_shape[axis] = n_pad - n
         sinogram = xp.concatenate(
             [sinogram, xp.zeros(pad_shape, dtype=_b.float32)], axis=axis)
-    freqs = xp.fft.fftfreq(n_pad)
-    ramp = 2.0 * xp.abs(freqs) / float(sample_spacing)
+    ramp = _b.as_array(_ram_lak_response(n_pad, sample_spacing), dtype=_b.float32,
+                       device=_b.device_of(sinogram))
     shape = [1] * sinogram.ndim
     shape[axis] = n_pad
     ramp = xp.reshape(ramp, shape)

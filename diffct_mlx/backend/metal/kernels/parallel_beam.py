@@ -11,7 +11,8 @@ import mlx.core as mx
 # Constants for Metal kernels
 # ---------------------------------------------------------------------------
 _EPSILON_STR = "1e-6f"
-_INF_STR = "1e30f"
+_INF_STR = "1e30f"  # finite sentinel: fast math may assume no infinities
+_TINY_STR = "1e-20f"
 
 # ============================================================================
 # 2D Parallel Beam Forward Projection Metal Kernel
@@ -38,6 +39,15 @@ _PARALLEL_2D_FORWARD_SOURCE = """
     // === 2D PARALLEL BEAM GEOMETRY SETUP ===
     float dir_x = ray_dir[iang * 2 + 0];
     float dir_y = ray_dir[iang * 2 + 1];
+    // Normalize the direction: segment lengths are differences of the ray
+    // parameter, so a non-unit ray_dir would scale every line integral.
+    float dir_norm = metal::sqrt(dir_x * dir_x + dir_y * dir_y);
+    if (dir_norm <= 0.0f) {
+        sino[iang * n_det + idet] = 0.0f;
+        return;
+    }
+    dir_x /= dir_norm;
+    dir_y /= dir_norm;
 
     float det_ox = det_origin[iang * 2 + 0] / voxel_spacing;
     float det_oy = det_origin[iang * 2 + 1] / voxel_spacing;
@@ -55,8 +65,10 @@ _PARALLEL_2D_FORWARD_SOURCE = """
     float t_max =  """ + _INF_STR + """;
 
     float eps = """ + _EPSILON_STR + """;
+    // Direction components at or below tiny count as axis-parallel.
+    float tiny = """ + _TINY_STR + """;
 
-    if (metal::abs(dir_x) > eps) {
+    if (metal::abs(dir_x) > tiny) {
         float tx1 = (-cx - pnt_x) / dir_x;
         float tx2 = ( cx - pnt_x) / dir_x;
         t_min = metal::max(t_min, metal::min(tx1, tx2));
@@ -66,7 +78,7 @@ _PARALLEL_2D_FORWARD_SOURCE = """
         return;
     }
 
-    if (metal::abs(dir_y) > eps) {
+    if (metal::abs(dir_y) > tiny) {
         float ty1 = (-cy - pnt_y) / dir_y;
         float ty2 = ( cy - pnt_y) / dir_y;
         t_min = metal::max(t_min, metal::min(ty1, ty2));
@@ -91,13 +103,13 @@ _PARALLEL_2D_FORWARD_SOURCE = """
     int step_x = (dir_x >= 0.0f) ? 1 : -1;
     int step_y = (dir_y >= 0.0f) ? 1 : -1;
 
-    float inv_dir_x = (metal::abs(dir_x) > eps) ? (1.0f / dir_x) : 0.0f;
-    float inv_dir_y = (metal::abs(dir_y) > eps) ? (1.0f / dir_y) : 0.0f;
-    float dt_x = (metal::abs(dir_x) > eps) ? metal::abs(inv_dir_x) : """ + _INF_STR + """;
-    float dt_y = (metal::abs(dir_y) > eps) ? metal::abs(inv_dir_y) : """ + _INF_STR + """;
+    float inv_dir_x = (metal::abs(dir_x) > tiny) ? (1.0f / dir_x) : 0.0f;
+    float inv_dir_y = (metal::abs(dir_y) > tiny) ? (1.0f / dir_y) : 0.0f;
+    float dt_x = (metal::abs(dir_x) > tiny) ? metal::abs(inv_dir_x) : """ + _INF_STR + """;
+    float dt_y = (metal::abs(dir_y) > tiny) ? metal::abs(inv_dir_y) : """ + _INF_STR + """;
 
-    float tx = (metal::abs(dir_x) > eps) ? ((float)(ix + (step_x > 0 ? 1 : 0)) - cx - pnt_x) * inv_dir_x : """ + _INF_STR + """;
-    float ty = (metal::abs(dir_y) > eps) ? ((float)(iy + (step_y > 0 ? 1 : 0)) - cy - pnt_y) * inv_dir_y : """ + _INF_STR + """;
+    float tx = (metal::abs(dir_x) > tiny) ? ((float)(ix + (step_x > 0 ? 1 : 0)) - cx - pnt_x) * inv_dir_x : """ + _INF_STR + """;
+    float ty = (metal::abs(dir_y) > tiny) ? ((float)(iy + (step_y > 0 ? 1 : 0)) - cy - pnt_y) * inv_dir_y : """ + _INF_STR + """;
 
     // Main traversal loop
     while (t < t_max) {
@@ -105,7 +117,7 @@ _PARALLEL_2D_FORWARD_SOURCE = """
             float t_next = metal::min(metal::min(tx, ty), t_max);
             float seg_len = t_next - t;
 
-            if (seg_len > eps) {
+            if (seg_len > 0.0f) {
                 // Cell-constant accumulation (matches the CUDA Siddon kernel:
                 // cell k spans [k - c, k + 1 - c), center at k + 0.5 - c)
                 accum += image[iy * Nx + ix] * seg_len;
@@ -114,11 +126,11 @@ _PARALLEL_2D_FORWARD_SOURCE = """
 
         // Advance to next voxel
         if (tx <= ty) {
-            t = tx;
+            t = metal::max(t, tx);
             ix += step_x;
             tx += dt_x;
         } else {
-            t = ty;
+            t = metal::max(t, ty);
             iy += step_y;
             ty += dt_y;
         }
@@ -161,6 +173,12 @@ _PARALLEL_2D_BACKWARD_SOURCE = """
     // === 2D PARALLEL BEAM GEOMETRY SETUP ===
     float dir_x = ray_dir[iang * 2 + 0];
     float dir_y = ray_dir[iang * 2 + 1];
+    // Normalize the direction: segment lengths are differences of the ray
+    // parameter, so a non-unit ray_dir would scale every line integral.
+    float dir_norm = metal::sqrt(dir_x * dir_x + dir_y * dir_y);
+    if (dir_norm <= 0.0f) { return; }
+    dir_x /= dir_norm;
+    dir_y /= dir_norm;
 
     float det_ox = det_origin_arr[iang * 2 + 0] / voxel_spacing;
     float det_oy = det_origin_arr[iang * 2 + 1] / voxel_spacing;
@@ -177,15 +195,17 @@ _PARALLEL_2D_BACKWARD_SOURCE = """
     float t_min = -""" + _INF_STR + """;
     float t_max =  """ + _INF_STR + """;
     float eps = """ + _EPSILON_STR + """;
+    // Direction components at or below tiny count as axis-parallel.
+    float tiny = """ + _TINY_STR + """;
 
-    if (metal::abs(dir_x) > eps) {
+    if (metal::abs(dir_x) > tiny) {
         float tx1 = (-cx - pnt_x) / dir_x;
         float tx2 = ( cx - pnt_x) / dir_x;
         t_min = metal::max(t_min, metal::min(tx1, tx2));
         t_max = metal::min(t_max, metal::max(tx1, tx2));
     } else if (pnt_x < -cx || pnt_x > cx) { return; }
 
-    if (metal::abs(dir_y) > eps) {
+    if (metal::abs(dir_y) > tiny) {
         float ty1 = (-cy - pnt_y) / dir_y;
         float ty2 = ( cy - pnt_y) / dir_y;
         t_min = metal::max(t_min, metal::min(ty1, ty2));
@@ -202,20 +222,20 @@ _PARALLEL_2D_BACKWARD_SOURCE = """
     int step_x = (dir_x >= 0.0f) ? 1 : -1;
     int step_y = (dir_y >= 0.0f) ? 1 : -1;
 
-    float inv_dir_x = (metal::abs(dir_x) > eps) ? (1.0f / dir_x) : 0.0f;
-    float inv_dir_y = (metal::abs(dir_y) > eps) ? (1.0f / dir_y) : 0.0f;
-    float dt_x = (metal::abs(dir_x) > eps) ? metal::abs(inv_dir_x) : """ + _INF_STR + """;
-    float dt_y = (metal::abs(dir_y) > eps) ? metal::abs(inv_dir_y) : """ + _INF_STR + """;
+    float inv_dir_x = (metal::abs(dir_x) > tiny) ? (1.0f / dir_x) : 0.0f;
+    float inv_dir_y = (metal::abs(dir_y) > tiny) ? (1.0f / dir_y) : 0.0f;
+    float dt_x = (metal::abs(dir_x) > tiny) ? metal::abs(inv_dir_x) : """ + _INF_STR + """;
+    float dt_y = (metal::abs(dir_y) > tiny) ? metal::abs(inv_dir_y) : """ + _INF_STR + """;
 
-    float tx = (metal::abs(dir_x) > eps) ? ((float)(ix + (step_x > 0 ? 1 : 0)) - cx - pnt_x) * inv_dir_x : """ + _INF_STR + """;
-    float ty = (metal::abs(dir_y) > eps) ? ((float)(iy + (step_y > 0 ? 1 : 0)) - cy - pnt_y) * inv_dir_y : """ + _INF_STR + """;
+    float tx = (metal::abs(dir_x) > tiny) ? ((float)(ix + (step_x > 0 ? 1 : 0)) - cx - pnt_x) * inv_dir_x : """ + _INF_STR + """;
+    float ty = (metal::abs(dir_y) > tiny) ? ((float)(iy + (step_y > 0 ? 1 : 0)) - cy - pnt_y) * inv_dir_y : """ + _INF_STR + """;
 
     while (t < t_max) {
         if (ix >= 0 && ix < Nx && iy >= 0 && iy < Ny) {
             float t_next = metal::min(metal::min(tx, ty), t_max);
             float seg_len = t_next - t;
 
-            if (seg_len > eps) {
+            if (seg_len > 0.0f) {
                 // Cell-constant adjoint of the forward kernel (atomic: several
                 // rays may hit the same cell)
                 atomic_fetch_add_explicit(&grad_image[iy * Nx + ix], val * seg_len, memory_order_relaxed);
@@ -223,11 +243,11 @@ _PARALLEL_2D_BACKWARD_SOURCE = """
         }
 
         if (tx <= ty) {
-            t = tx;
+            t = metal::max(t, tx);
             ix += step_x;
             tx += dt_x;
         } else {
-            t = ty;
+            t = metal::max(t, ty);
             iy += step_y;
             ty += dt_y;
         }
