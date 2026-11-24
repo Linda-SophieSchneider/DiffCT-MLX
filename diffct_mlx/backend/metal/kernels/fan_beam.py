@@ -11,7 +11,8 @@ import mlx.core as mx
 # Constants for Metal kernels
 # ---------------------------------------------------------------------------
 _EPSILON_STR = "1e-6f"
-_INF_STR = "1e30f"
+_INF_STR = "1e30f"  # finite sentinel: fast math may assume no infinities
+_TINY_STR = "1e-20f"
 
 # ============================================================================
 # 2D Fan Beam Forward Projection Metal Kernel
@@ -36,6 +37,8 @@ _FAN_2D_FORWARD_SOURCE = """
     if ((int)iang >= n_ang || (int)idet >= n_det) return;
 
     float eps = """ + _EPSILON_STR + """;
+    // Direction components at or below tiny count as axis-parallel.
+    float tiny = """ + _TINY_STR + """;
 
     // === 2D FAN BEAM GEOMETRY SETUP ===
     float src_x = src_pos[iang * 2 + 0] / voxel_spacing;
@@ -65,25 +68,31 @@ _FAN_2D_FORWARD_SOURCE = """
     dir_y *= inv_len;
 
     // === RAY-VOLUME INTERSECTION ===
-    float t_min = -""" + _INF_STR + """;
-    float t_max =  """ + _INF_STR + """;
+    // Integrate only from the source to the detector pixel, t in [0, length].
+    // The ray parameter is measured from the endpoint nearer the volume
+    // centre, so a distant source does not make the parameters coarse.
+    bool from_src = (src_x * src_x + src_y * src_y) <= (det_x * det_x + det_y * det_y);
+    float org_x = from_src ? src_x : det_x;
+    float org_y = from_src ? src_y : det_y;
+    float t_min = from_src ? 0.0f : -length;
+    float t_max = from_src ? length : 0.0f;
 
-    if (metal::abs(dir_x) > eps) {
-        float tx1 = (-cx - src_x) / dir_x;
-        float tx2 = ( cx - src_x) / dir_x;
+    if (metal::abs(dir_x) > tiny) {
+        float tx1 = (-cx - org_x) / dir_x;
+        float tx2 = ( cx - org_x) / dir_x;
         t_min = metal::max(t_min, metal::min(tx1, tx2));
         t_max = metal::min(t_max, metal::max(tx1, tx2));
-    } else if (src_x < -cx || src_x > cx) {
+    } else if (org_x < -cx || org_x > cx) {
         sino[iang * n_det + idet] = 0.0f;
         return;
     }
 
-    if (metal::abs(dir_y) > eps) {
-        float ty1 = (-cy - src_y) / dir_y;
-        float ty2 = ( cy - src_y) / dir_y;
+    if (metal::abs(dir_y) > tiny) {
+        float ty1 = (-cy - org_y) / dir_y;
+        float ty2 = ( cy - org_y) / dir_y;
         t_min = metal::max(t_min, metal::min(ty1, ty2));
         t_max = metal::min(t_max, metal::max(ty1, ty2));
-    } else if (src_y < -cy || src_y > cy) {
+    } else if (org_y < -cy || org_y > cy) {
         sino[iang * n_det + idet] = 0.0f;
         return;
     }
@@ -95,28 +104,32 @@ _FAN_2D_FORWARD_SOURCE = """
 
     // === SIDDON TRAVERSAL ===
     float accum = 0.0f;
-    float t = t_min;
+    // Restart the traversal at the volume entry point.
+    float ent_x = org_x + t_min * dir_x;
+    float ent_y = org_y + t_min * dir_y;
+    float t_end = t_max - t_min;
+    float t = 0.0f;
 
-    int ix = (int)metal::floor(src_x + t * dir_x + cx);
-    int iy = (int)metal::floor(src_y + t * dir_y + cy);
+    int ix = (int)metal::floor(ent_x + cx);
+    int iy = (int)metal::floor(ent_y + cy);
 
     int step_x = (dir_x >= 0.0f) ? 1 : -1;
     int step_y = (dir_y >= 0.0f) ? 1 : -1;
 
-    float inv_dir_x = (metal::abs(dir_x) > eps) ? (1.0f / dir_x) : 0.0f;
-    float inv_dir_y = (metal::abs(dir_y) > eps) ? (1.0f / dir_y) : 0.0f;
-    float dt_x = (metal::abs(dir_x) > eps) ? metal::abs(inv_dir_x) : """ + _INF_STR + """;
-    float dt_y = (metal::abs(dir_y) > eps) ? metal::abs(inv_dir_y) : """ + _INF_STR + """;
+    float inv_dir_x = (metal::abs(dir_x) > tiny) ? (1.0f / dir_x) : 0.0f;
+    float inv_dir_y = (metal::abs(dir_y) > tiny) ? (1.0f / dir_y) : 0.0f;
+    float dt_x = (metal::abs(dir_x) > tiny) ? metal::abs(inv_dir_x) : """ + _INF_STR + """;
+    float dt_y = (metal::abs(dir_y) > tiny) ? metal::abs(inv_dir_y) : """ + _INF_STR + """;
 
-    float tx = (metal::abs(dir_x) > eps) ? ((float)(ix + (step_x > 0 ? 1 : 0)) - cx - src_x) * inv_dir_x : """ + _INF_STR + """;
-    float ty = (metal::abs(dir_y) > eps) ? ((float)(iy + (step_y > 0 ? 1 : 0)) - cy - src_y) * inv_dir_y : """ + _INF_STR + """;
+    float tx = (metal::abs(dir_x) > tiny) ? ((float)(ix + (step_x > 0 ? 1 : 0)) - cx - ent_x) * inv_dir_x : """ + _INF_STR + """;
+    float ty = (metal::abs(dir_y) > tiny) ? ((float)(iy + (step_y > 0 ? 1 : 0)) - cy - ent_y) * inv_dir_y : """ + _INF_STR + """;
 
-    while (t < t_max) {
+    while (t < t_end) {
         if (ix >= 0 && ix < Nx && iy >= 0 && iy < Ny) {
-            float t_next = metal::min(metal::min(tx, ty), t_max);
+            float t_next = metal::min(metal::min(tx, ty), t_end);
             float seg_len = t_next - t;
 
-            if (seg_len > eps) {
+            if (seg_len > 0.0f) {
                 // Cell-constant accumulation (matches the CUDA Siddon kernel:
                 // cell k spans [k - c, k + 1 - c), center at k + 0.5 - c)
                 accum += image[iy * Nx + ix] * seg_len;
@@ -124,11 +137,11 @@ _FAN_2D_FORWARD_SOURCE = """
         }
 
         if (tx <= ty) {
-            t = tx;
+            t = metal::max(t, tx);
             ix += step_x;
             tx += dt_x;
         } else {
-            t = ty;
+            t = metal::max(t, ty);
             iy += step_y;
             ty += dt_y;
         }
@@ -167,6 +180,8 @@ _FAN_2D_BACKWARD_SOURCE = """
     if ((int)iang >= n_ang || (int)idet >= n_det) return;
 
     float eps = """ + _EPSILON_STR + """;
+    // Direction components at or below tiny count as axis-parallel.
+    float tiny = """ + _TINY_STR + """;
 
     float val = sino[iang * n_det + idet];
 
@@ -195,47 +210,57 @@ _FAN_2D_BACKWARD_SOURCE = """
     dir_y *= inv_len;
 
     // === RAY-VOLUME INTERSECTION ===
-    float t_min = -""" + _INF_STR + """;
-    float t_max =  """ + _INF_STR + """;
+    // Integrate only from the source to the detector pixel, t in [0, length].
+    // The ray parameter is measured from the endpoint nearer the volume
+    // centre, so a distant source does not make the parameters coarse.
+    bool from_src = (src_x * src_x + src_y * src_y) <= (det_x * det_x + det_y * det_y);
+    float org_x = from_src ? src_x : det_x;
+    float org_y = from_src ? src_y : det_y;
+    float t_min = from_src ? 0.0f : -length;
+    float t_max = from_src ? length : 0.0f;
 
-    if (metal::abs(dir_x) > eps) {
-        float tx1 = (-cx - src_x) / dir_x;
-        float tx2 = ( cx - src_x) / dir_x;
+    if (metal::abs(dir_x) > tiny) {
+        float tx1 = (-cx - org_x) / dir_x;
+        float tx2 = ( cx - org_x) / dir_x;
         t_min = metal::max(t_min, metal::min(tx1, tx2));
         t_max = metal::min(t_max, metal::max(tx1, tx2));
-    } else if (src_x < -cx || src_x > cx) { return; }
+    } else if (org_x < -cx || org_x > cx) { return; }
 
-    if (metal::abs(dir_y) > eps) {
-        float ty1 = (-cy - src_y) / dir_y;
-        float ty2 = ( cy - src_y) / dir_y;
+    if (metal::abs(dir_y) > tiny) {
+        float ty1 = (-cy - org_y) / dir_y;
+        float ty2 = ( cy - org_y) / dir_y;
         t_min = metal::max(t_min, metal::min(ty1, ty2));
         t_max = metal::min(t_max, metal::max(ty1, ty2));
-    } else if (src_y < -cy || src_y > cy) { return; }
+    } else if (org_y < -cy || org_y > cy) { return; }
 
     if (t_min >= t_max) return;
 
     // === SIDDON TRAVERSAL ===
-    float t = t_min;
-    int ix = (int)metal::floor(src_x + t * dir_x + cx);
-    int iy = (int)metal::floor(src_y + t * dir_y + cy);
+    // Restart the traversal at the volume entry point.
+    float ent_x = org_x + t_min * dir_x;
+    float ent_y = org_y + t_min * dir_y;
+    float t_end = t_max - t_min;
+    float t = 0.0f;
+    int ix = (int)metal::floor(ent_x + cx);
+    int iy = (int)metal::floor(ent_y + cy);
 
     int step_x = (dir_x >= 0.0f) ? 1 : -1;
     int step_y = (dir_y >= 0.0f) ? 1 : -1;
 
-    float inv_dir_x = (metal::abs(dir_x) > eps) ? (1.0f / dir_x) : 0.0f;
-    float inv_dir_y = (metal::abs(dir_y) > eps) ? (1.0f / dir_y) : 0.0f;
-    float dt_x = (metal::abs(dir_x) > eps) ? metal::abs(inv_dir_x) : """ + _INF_STR + """;
-    float dt_y = (metal::abs(dir_y) > eps) ? metal::abs(inv_dir_y) : """ + _INF_STR + """;
+    float inv_dir_x = (metal::abs(dir_x) > tiny) ? (1.0f / dir_x) : 0.0f;
+    float inv_dir_y = (metal::abs(dir_y) > tiny) ? (1.0f / dir_y) : 0.0f;
+    float dt_x = (metal::abs(dir_x) > tiny) ? metal::abs(inv_dir_x) : """ + _INF_STR + """;
+    float dt_y = (metal::abs(dir_y) > tiny) ? metal::abs(inv_dir_y) : """ + _INF_STR + """;
 
-    float tx = (metal::abs(dir_x) > eps) ? ((float)(ix + (step_x > 0 ? 1 : 0)) - cx - src_x) * inv_dir_x : """ + _INF_STR + """;
-    float ty = (metal::abs(dir_y) > eps) ? ((float)(iy + (step_y > 0 ? 1 : 0)) - cy - src_y) * inv_dir_y : """ + _INF_STR + """;
+    float tx = (metal::abs(dir_x) > tiny) ? ((float)(ix + (step_x > 0 ? 1 : 0)) - cx - ent_x) * inv_dir_x : """ + _INF_STR + """;
+    float ty = (metal::abs(dir_y) > tiny) ? ((float)(iy + (step_y > 0 ? 1 : 0)) - cy - ent_y) * inv_dir_y : """ + _INF_STR + """;
 
-    while (t < t_max) {
+    while (t < t_end) {
         if (ix >= 0 && ix < Nx && iy >= 0 && iy < Ny) {
-            float t_next = metal::min(metal::min(tx, ty), t_max);
+            float t_next = metal::min(metal::min(tx, ty), t_end);
             float seg_len = t_next - t;
 
-            if (seg_len > eps) {
+            if (seg_len > 0.0f) {
                 // Cell-constant adjoint of the forward kernel (atomic: several
                 // rays may hit the same cell)
                 atomic_fetch_add_explicit(&grad_image[iy * Nx + ix], val * seg_len, memory_order_relaxed);
@@ -243,11 +268,11 @@ _FAN_2D_BACKWARD_SOURCE = """
         }
 
         if (tx <= ty) {
-            t = tx;
+            t = metal::max(t, tx);
             ix += step_x;
             tx += dt_x;
         } else {
-            t = ty;
+            t = metal::max(t, ty);
             iy += step_y;
             ty += dt_y;
         }

@@ -321,6 +321,8 @@ def custom_trajectory_3d(n_views, sid, sdd,
     if src_pos.shape != (n_views, 3):
         raise ValueError(f"source_path_fn must return shape ({n_views}, 3), got {src_pos.shape}")
 
+    if not bool(mx.all(mx.isfinite(src_pos))):
+        raise ValueError("source_path_fn returned non-finite source positions")
     src_norm = mx.linalg.norm(src_pos, axis=1)
     mx.eval(src_norm)
     min_src_norm = float(mx.min(src_norm))

@@ -49,38 +49,65 @@ def detector_fan_angles(num_detectors: int, detector_spacing: float, sdd: float)
     return xp.arctan(u / float(sdd))
 
 
+def _is_full_turn(span: float, step: float) -> bool:
+    """True when views spanning ``span`` with spacing ``step`` cover a full turn.
+
+    Same rule as upstream diffct: endpoint-included, endpoint-excluded and
+    downsampled circular scans leave a closure gap of at most about one view
+    interval. The fan width plays no part.
+    """
+    tol = max(1e-4, 0.05 * abs(step))
+    closure = 2.0 * math.pi - span
+    return -tol <= closure <= 1.5 * abs(step) + tol
+
+
 def parker_weights(num_views: int, gammas, angular_range: float, betas=None):
     """Parker short-scan redundancy weights, shape ``(num_views, num_detectors)``.
 
     ``gammas`` are the per-detector fan angles (see :func:`detector_fan_angles`);
     ``angular_range`` is the total source rotation (radians), which for a minimal
     short scan is ``pi + 2*gamma_max``. Pass the actual per-view source angles as
-    ``betas`` (relative to the scan start); otherwise views are assumed uniformly
-    spaced over ``[0, angular_range]``. Weighting normalizes conjugate-ray
-    redundancy (``w(beta, gamma) + w(beta + pi - 2*gamma, -gamma) = 1``) so a
+    ``betas``; otherwise views are assumed uniformly spaced over
+    ``[0, angular_range]``. Weighting normalizes conjugate-ray redundancy
+    (``w(beta, gamma) + w(beta + pi - 2*gamma, -gamma) = 1``) so a
     ramp-filtered backprojection over the short scan is exact.
+
+    Scans longer than a minimal short scan use the generalized Parker taper
+    with half-width ``delta = max(gamma_max, (range - pi) / 2)``, so every
+    detector still integrates to ``pi``. A full turn returns ones. Whether
+    the views form a full turn is decided from the acquired angles alone.
     """
     gamma_max = float(xp.max(xp.abs(gammas)))
     if betas is None:
-        betas = xp.arange(num_views) * (float(angular_range) / max(num_views - 1, 1))
+        step = float(angular_range) / max(num_views - 1, 1)
+        betas_np = np.arange(num_views, dtype=np.float64) * step
+        span = float(angular_range)
     else:
-        betas = xp.array(_b.to_numpy(betas).astype(np.float32))
-    beta = xp.reshape(betas, (num_views, 1))
+        betas_np = _b.to_numpy(betas).astype(np.float64).reshape(-1)
+        betas_np = betas_np - betas_np.min()
+        ordered = np.sort(betas_np)
+        span = float(ordered[-1])
+        step = float(np.median(np.diff(ordered))) if num_views > 1 else span
+    beta = xp.reshape(xp.array(betas_np.astype(np.float32)), (num_views, 1))
     gamma = xp.reshape(gammas, (1, -1))
+    if num_views > 1 and _is_full_turn(span, step):
+        return xp.ones_like(beta) + 0.0 * gamma
+
+    delta = max(gamma_max, 0.5 * (span - math.pi))
 
     def _smooth(x):
-        # Parker feathering sin^2(pi/4 * beta/(gamma_max -+ gamma)); ``x`` is the
-        # normalized coordinate beta / (2*(gamma_max -+ gamma)) in [0, 1], so the
+        # Parker feathering sin^2(pi/4 * beta/(delta -+ gamma)); ``x`` is the
+        # normalized coordinate beta / (2*(delta -+ gamma)) in [0, 1], so the
         # ramp must reach 1 at x = 1: sin^2(pi/2 * x).
         s = xp.sin(0.5 * math.pi * xp.clip(x, 0.0, 1.0))
         return s * s
 
-    denom_lo = xp.maximum(gamma_max - gamma, 1e-6)
-    denom_hi = xp.maximum(gamma_max + gamma, 1e-6)
+    denom_lo = xp.maximum(delta - gamma, 1e-6)
+    denom_hi = xp.maximum(delta + gamma, 1e-6)
     w_lo = _smooth(beta / (2.0 * denom_lo))
-    w_hi = _smooth((math.pi + 2.0 * gamma_max - beta) / (2.0 * denom_hi))
+    w_hi = _smooth((math.pi + 2.0 * delta - beta) / (2.0 * denom_hi))
 
-    in_lo = beta < (2.0 * (gamma_max - gamma))
+    in_lo = beta < (2.0 * (delta - gamma))
     in_hi = beta > (math.pi - 2.0 * gamma)
     weights = xp.where(in_lo, w_lo, xp.where(in_hi, w_hi, xp.ones_like(beta) + 0.0 * gamma))
     return weights
