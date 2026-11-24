@@ -9,7 +9,13 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Work towards 3.0.0 on branch `v3`; see `docs/V3_PLAN.md`.
+## [3.0.0rc1] - 2026-11-25
+
+Release candidate for 3.0.0 (install with `pip install --pre`). Not yet run
+on CUDA hardware; plan and status in `docs/V3_PLAN.md`. Breaking: both
+backends now use centred detector pixels and physical line integrals (see
+"Changed (3.0 conventions)"); `detector_convention="legacy"` and
+`line_integrals="voxel"` reproduce 2.x.
 
 ### Changed
 
@@ -625,7 +631,8 @@ necessary for the arbitrary-trajectory kernel API:
   when the detector is not plane-aligned to the voxel axes) and will
   be tackled in a dedicated follow-up.
 
-[Unreleased]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v3.0.0rc1...HEAD
+[3.0.0rc1]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.3.0...v3.0.0rc1
 [2.3.0]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.0.1...v2.1.0
