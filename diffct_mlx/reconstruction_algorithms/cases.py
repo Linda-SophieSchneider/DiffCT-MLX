@@ -11,6 +11,7 @@ from typing import Any, Callable
 import numpy as np
 
 from ..backend import active as _b
+from ..conventions import kernel_detector_center, line_integral_scale
 
 xp = _b.xp
 
@@ -249,6 +250,32 @@ def _build_leap_style_circular_fov_mask(
     return np.broadcast_to(radial_keep[None, :, :], (nz, ny, nx)).astype(bool, copy=False)
 
 
+
+def _finish_operators(forward_single, forward_slice, back_single, back_slice, back_project_all, scale):
+    """Attach ``project_slice`` and apply the line-integral unit scale."""
+    if scale != 1.0:
+        fs, fsl, bs, bsl, ball = forward_single, forward_slice, back_single, back_slice, back_project_all
+
+        def forward_single(volume, projection_index):
+            return fs(volume, projection_index) * scale
+
+        def forward_slice(volume, start, stop):
+            return fsl(volume, start, stop) * scale
+
+        def back_single(projection, projection_index):
+            return bs(projection, projection_index) * scale
+
+        def back_slice(projection, start, stop):
+            return bsl(projection, start, stop) * scale
+
+        def back_project_all(filtered_sinogram):
+            return ball(filtered_sinogram) * scale
+
+    forward_single.project_slice = forward_slice  # type: ignore[attr-defined]
+    back_single.project_slice = back_slice  # type: ignore[attr-defined]
+    return forward_single, back_single, back_project_all
+
+
 def make_parallel_2d_operators(
     ray_dir: Array,
     det_origin: Array,
@@ -259,8 +286,19 @@ def make_parallel_2d_operators(
     detector_spacing: float = 1.0,
     voxel_spacing: float = 1.0,
     projector_mode: str = "footprint",
+    detector_convention: str = "kernel",
+    line_integrals: str = "voxel",
 ) -> tuple[Callable[[Array, int], Array], Callable[[Array, int], Array], Callable[[Array], Array]]:
-    """Create single-view and all-view parallel-beam projector wrappers."""
+    """Create single-view and all-view parallel-beam projector wrappers.
+
+    ``detector_convention`` and ``line_integrals`` select the detector-pixel
+    and line-integral conventions; see
+    :func:`diffct_mlx.operators.make_cone_3d_operator` and
+    :mod:`diffct_mlx.conventions`. Defaults keep the kernel-native behaviour.
+    """
+    det_origin = kernel_detector_center(
+        det_origin, det_u_vec, detector_spacing, convention=detector_convention)
+    scale = line_integral_scale(line_integrals, voxel_spacing)
     ny, nx = image_shape
     projector_key = str(projector_mode).strip().lower()
     if projector_key == "siddon":
@@ -330,9 +368,9 @@ def make_parallel_2d_operators(
             voxel_spacing=voxel_spacing,
         )
 
-    forward_single.project_slice = forward_slice  # type: ignore[attr-defined]
-    back_single.project_slice = back_slice  # type: ignore[attr-defined]
-    return forward_single, back_single, back_project_all
+    return _finish_operators(
+        forward_single, forward_slice, back_single, back_slice, back_project_all, scale
+    )
 
 
 def make_fan_2d_operators(
@@ -345,8 +383,19 @@ def make_fan_2d_operators(
     detector_spacing: float = 1.0,
     voxel_spacing: float = 1.0,
     projector_mode: str = "footprint",
+    detector_convention: str = "kernel",
+    line_integrals: str = "voxel",
 ) -> tuple[Callable[[Array, int], Array], Callable[[Array, int], Array], Callable[[Array], Array]]:
-    """Create single-view and all-view fan-beam projector wrappers."""
+    """Create single-view and all-view fan-beam projector wrappers.
+
+    ``detector_convention`` and ``line_integrals`` select the detector-pixel
+    and line-integral conventions; see
+    :func:`diffct_mlx.operators.make_cone_3d_operator` and
+    :mod:`diffct_mlx.conventions`. Defaults keep the kernel-native behaviour.
+    """
+    det_center = kernel_detector_center(
+        det_center, det_u_vec, detector_spacing, convention=detector_convention)
+    scale = line_integral_scale(line_integrals, voxel_spacing)
     ny, nx = image_shape
     projector_key = str(projector_mode).strip().lower()
     if projector_key == "siddon":
@@ -416,9 +465,9 @@ def make_fan_2d_operators(
             voxel_spacing=voxel_spacing,
         )
 
-    forward_single.project_slice = forward_slice  # type: ignore[attr-defined]
-    back_single.project_slice = back_slice  # type: ignore[attr-defined]
-    return forward_single, back_single, back_project_all
+    return _finish_operators(
+        forward_single, forward_slice, back_single, back_slice, back_project_all, scale
+    )
 
 
 def make_cone_3d_operators(
@@ -433,8 +482,19 @@ def make_cone_3d_operators(
     dv: float = 1.0,
     voxel_spacing: float = 1.0,
     projector_mode: str = "footprint",
+    detector_convention: str = "kernel",
+    line_integrals: str = "voxel",
 ) -> tuple[Callable[[Array, int], Array], Callable[[Array, int], Array], Callable[[Array], Array]]:
-    """Create single-view and all-view cone-beam projector wrappers."""
+    """Create single-view and all-view cone-beam projector wrappers.
+
+    ``detector_convention`` and ``line_integrals`` select the detector-pixel
+    and line-integral conventions; see
+    :func:`diffct_mlx.operators.make_cone_3d_operator` and
+    :mod:`diffct_mlx.conventions`. Defaults keep the kernel-native behaviour.
+    """
+    det_center = kernel_detector_center(
+        det_center, det_u_vec, du, det_v_vec, dv, convention=detector_convention)
+    scale = line_integral_scale(line_integrals, voxel_spacing)
     nz, ny, nx = volume_shape
     det_u_count, det_v_count = detector_shape
     projector_key = str(projector_mode).strip().lower()
@@ -520,9 +580,9 @@ def make_cone_3d_operators(
             voxel_spacing=voxel_spacing,
         )
 
-    forward_single.project_slice = forward_slice  # type: ignore[attr-defined]
-    back_single.project_slice = back_slice  # type: ignore[attr-defined]
-    return forward_single, back_single, back_project_all
+    return _finish_operators(
+        forward_single, forward_slice, back_single, back_slice, back_project_all, scale
+    )
 
 
 def _quantitative_fdk_operators(src_pos, det_center, det_u_vec, det_v_vec,

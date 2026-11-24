@@ -131,6 +131,17 @@ filter itself now accepts `pad_factor` and `sample_spacing`, and
 > encodes it per data source. One consequence to know: **iterative**
 > reconstruction of measured (physical) data converges to attenuation *per
 > voxel*; divide by `case.voxel_spacing` for µ in 1/mm.
+>
+> **Detector convention.** The kernels place detector pixel `i` at
+> `det_center + (i − N/2)·du` (the diffct `dev` line they come from), half a
+> pixel off the geometric panel centre. Upstream diffct ≥ 2.0, DiffCT-MLX 1.x
+> and scanner geometry files use `(i − (N−1)/2)·du` and physical line
+> integrals. To work in that convention, build operators with
+> `detector_convention="centered", line_integrals="physical"`
+> (`make_*_operator` and `make_*_operators`); `A.T` scales alike and stays
+> the exact adjoint, and reconstructions then come out in 1/mm. For direct
+> projector or FBP/FDK calls, `dct.kernel_detector_center(...)` converts a
+> panel-centre `det_center` (shift by `+du/2·u + dv/2·v`).
 
 ### Operators, solvers, regularizers, physics & simulation
 

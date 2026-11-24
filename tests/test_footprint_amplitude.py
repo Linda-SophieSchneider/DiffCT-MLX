@@ -118,6 +118,29 @@ def test_cone_footprint_amplitude_holds_off_axis():
     assert np.allclose(_per_view_mass_ratio(fpt, sidd), 1.0, atol=0.015)
 
 
+@pytest.mark.parametrize("depth_mm", [-25.0, 25.0])
+def test_cone_footprint_amplitude_holds_along_the_ray(depth_mm):
+    """An object displaced towards the source or the detector keeps its amplitude.
+
+    DiffCT-MLX 1.x weighted every voxel by ``(cell at the voxel's depth / voxel)**2``
+    instead of the true magnification, so an object 25 mm off the isocentre along
+    the ray came out about 10 % too bright or too dark at SID 500 mm. A centred
+    object hides this, because the error cancels to first order along each ray.
+    """
+    _skip_if_unusable()
+    n, vs = 208, 500.0 / 900.0 * 0.5  # study geometry: 0.5 mm pixels, voxel = pixel at isocentre
+    ax = (np.arange(n, dtype=np.float32) - 0.5 * (n - 1)) * vs
+    zz, yy, xx = np.meshgrid(ax, ax, ax, indexing="ij")
+    src, det_c, det_u, det_v = dct.circular_trajectory_3d(1, 500.0, 900.0)
+    axis = -_b.to_numpy(src)[0] / np.linalg.norm(_b.to_numpy(src)[0])  # source -> detector, (x, y, z)
+    c = depth_mm * axis
+    inside = (xx - c[0]) ** 2 + (yy - c[1]) ** 2 + (zz - c[2]) ** 2 <= 4.0**2
+    vol = xp.array(inside.astype(np.float32))
+    sidd = dct.cone_forward(vol, src, det_c, det_u, det_v, 256, 256, 0.5, 0.5, vs)
+    fpt = dct.cone_forward_footprint(vol, src, det_c, det_u, det_v, 256, 256, 0.5, 0.5, vs)
+    assert np.allclose(_per_view_mass_ratio(fpt, sidd), 1.0, atol=0.015)
+
+
 def _rel_adjoint_error(Ax, y, x, Aty):
     lhs = float((Ax * y).sum())
     rhs = float((x * Aty).sum())

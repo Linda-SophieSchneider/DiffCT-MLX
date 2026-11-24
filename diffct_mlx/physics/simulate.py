@@ -272,7 +272,8 @@ def simulate_scan(
     The projectors return line integrals in VOXEL units; the physics
     (``exp(-p)`` transmission, beam-hardening nonlinearity) needs PHYSICAL
     line integrals, so the projection is rescaled by ``voxel_spacing`` first
-    (taken from the operator's metadata when not given). The returned
+    (taken from the operator's metadata when not given; an operator built
+    with ``line_integrals="physical"`` is used as is). The returned
     sinogram is therefore physical (mu*mm) — like real measured -log data —
     and identical to previous behaviour at ``voxel_spacing = 1``.
 
@@ -282,7 +283,11 @@ def simulate_scan(
     if float(I0) <= 0.0:
         raise ValueError(f"I0 (incident photon count) must be positive, got {I0!r}.")
     if voxel_spacing is None:
-        voxel_spacing = float(getattr(operator, "voxel_spacing", 1.0))
+        # operator metadata: voxel-unit operators need * voxel_spacing,
+        # operators built with line_integrals="physical" are already mu*mm
+        voxel_spacing = getattr(operator, "to_physical", None)
+        if voxel_spacing is None:
+            voxel_spacing = float(getattr(operator, "voxel_spacing", 1.0))
     if float(voxel_spacing) <= 0.0:
         raise ValueError(f"voxel_spacing must be positive, got {voxel_spacing!r}.")
     x = xp.array(phantom, dtype=_b.float32)

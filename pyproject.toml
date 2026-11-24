@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "diffct-mlx"
-version = "2.2.0"
+version = "2.3.0"
 description = "Differentiable computed tomography with an auto-selecting backend (Torch/CUDA or Apple MLX)"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -30,7 +30,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cuda = ["torch", "numba-cuda"]
+# numba-cuda calls np.row_stack, which numpy 2.5 removed (upstream diffct pins it too)
+cuda = ["torch", "numba-cuda", "numpy<2.5"]
 mlx = ["mlx"]
 zarr = ["zarr>=3"]         # optional chunked+compressed out-of-core store
 

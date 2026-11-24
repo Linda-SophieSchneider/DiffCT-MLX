@@ -32,6 +32,7 @@ from __future__ import annotations
 from typing import Any, Callable, Sequence
 
 from .backend import active as _b
+from .conventions import _check, LINE_INTEGRAL_UNITS, kernel_detector_center, line_integral_scale
 from .projectors import (
     cone_backward,
     cone_backward_footprint,
@@ -281,6 +282,7 @@ class ProjectionOperator(LinearOperator):
         beam: str | None = None,
         views: Any = None,
         voxel_spacing: float = 1.0,
+        line_integrals: str = "voxel",
     ):
         self._forward_fn = forward_fn
         self._adjoint_fn = adjoint_fn
@@ -289,11 +291,16 @@ class ProjectionOperator(LinearOperator):
         self.n_views = int(n_views)
         self.beam = beam
         self._views = views
-        #: Physical voxel pitch of the domain grid. The projectors return line
-        #: integrals in VOXEL units; multiply ``A @ x`` by this to obtain
-        #: physical line integrals (mu*mm) — e.g. for comparison against
-        #: measured -log data or for the physics/simulation chain.
+        #: Physical voxel pitch of the domain grid.
         self.voxel_spacing = float(voxel_spacing)
+        #: Units of ``A @ x``: ``"voxel"`` (kernel native; multiply by
+        #: ``voxel_spacing`` for mu*mm) or ``"physical"`` (already mu*mm).
+        self.line_integrals = _check(line_integrals, LINE_INTEGRAL_UNITS, "line_integrals")
+
+    @property
+    def to_physical(self) -> float:
+        """Factor that turns ``A @ x`` into physical line integrals (mu*mm)."""
+        return self.voxel_spacing if self.line_integrals == "voxel" else 1.0
 
     def _forward(self, x: Array) -> Array:
         return self._forward_fn(x, self._views)
@@ -323,6 +330,7 @@ class ProjectionOperator(LinearOperator):
             beam=self.beam,
             views=view_indices,
             voxel_spacing=self.voxel_spacing,
+            line_integrals=self.line_integrals,
         )
 
 
@@ -351,6 +359,10 @@ def _index(array: Array, views: Any) -> Array:
     return array if views is None else array[views]
 
 
+def _scaled(y: Array, scale: float) -> Array:
+    return y if scale == 1.0 else y * scale
+
+
 def make_parallel_2d_operator(
     ray_dir: Array,
     det_origin: Array,
@@ -361,30 +373,45 @@ def make_parallel_2d_operator(
     detector_spacing: float = 1.0,
     voxel_spacing: float = 1.0,
     projector_mode: str = "footprint",
+    detector_convention: str = "kernel",
+    line_integrals: str = "voxel",
 ) -> ProjectionOperator:
-    """Build an all-view parallel-beam :class:`ProjectionOperator`."""
+    """Build an all-view parallel-beam :class:`ProjectionOperator`.
+
+    ``detector_convention`` selects how ``det_center`` is read: ``"kernel"``
+    (default, kernel native: pixel ``i`` at ``(i - N/2)·du``) or ``"centered"``
+    (``det_center`` is the geometric panel centre: pixel ``i`` at
+    ``(i - (N-1)/2)·du``, as in scanner geometry files, upstream diffct >= 2.0
+    and DiffCT-MLX 1.x). ``line_integrals`` selects the units of ``A @ x``:
+    ``"voxel"`` (default) or ``"physical"`` (times ``voxel_spacing``, as in
+    upstream diffct >= 2.0 and DiffCT-MLX 1.x). ``A.T`` is scaled alike, so it stays the exact adjoint.
+    See :mod:`diffct_mlx.conventions`.
+    """
     ny, nx = image_shape
     forward_op, backward_op = _select_pair("parallel", projector_mode)
+    scale = line_integral_scale(line_integrals, voxel_spacing)
     ray_dir = xp.array(ray_dir)
-    det_origin = xp.array(det_origin)
     det_u_vec = xp.array(det_u_vec)
+    det_origin = kernel_detector_center(
+        xp.array(det_origin), det_u_vec, detector_spacing, convention=detector_convention)
     n_views = int(ray_dir.shape[0])
 
     def fwd(volume: Array, views: Any) -> Array:
-        return forward_op(
+        return _scaled(forward_op(
             volume, _index(ray_dir, views), _index(det_origin, views), _index(det_u_vec, views),
             num_detectors=num_detectors, detector_spacing=detector_spacing, voxel_spacing=voxel_spacing,
-        )
+        ), scale)
 
     def adj(sino: Array, views: Any) -> Array:
-        return backward_op(
+        return _scaled(backward_op(
             xp.array(sino, dtype=xp.float32), _index(ray_dir, views), _index(det_origin, views), _index(det_u_vec, views),
             detector_spacing=detector_spacing, H=ny, W=nx, voxel_spacing=voxel_spacing,
-        )
+        ), scale)
 
     return ProjectionOperator(
         fwd, adj, domain_shape=(ny, nx), range_shape=(n_views, num_detectors),
         n_views=n_views, beam="parallel", voxel_spacing=voxel_spacing,
+        line_integrals=line_integrals,
     )
 
 
@@ -398,30 +425,45 @@ def make_fan_2d_operator(
     detector_spacing: float = 1.0,
     voxel_spacing: float = 1.0,
     projector_mode: str = "footprint",
+    detector_convention: str = "kernel",
+    line_integrals: str = "voxel",
 ) -> ProjectionOperator:
-    """Build an all-view fan-beam :class:`ProjectionOperator`."""
+    """Build an all-view fan-beam :class:`ProjectionOperator`.
+
+    ``detector_convention`` selects how ``det_center`` is read: ``"kernel"``
+    (default, kernel native: pixel ``i`` at ``(i - N/2)·du``) or ``"centered"``
+    (``det_center`` is the geometric panel centre: pixel ``i`` at
+    ``(i - (N-1)/2)·du``, as in scanner geometry files, upstream diffct >= 2.0
+    and DiffCT-MLX 1.x). ``line_integrals`` selects the units of ``A @ x``:
+    ``"voxel"`` (default) or ``"physical"`` (times ``voxel_spacing``, as in
+    upstream diffct >= 2.0 and DiffCT-MLX 1.x). ``A.T`` is scaled alike, so it stays the exact adjoint.
+    See :mod:`diffct_mlx.conventions`.
+    """
     ny, nx = image_shape
     forward_op, backward_op = _select_pair("fan", projector_mode)
+    scale = line_integral_scale(line_integrals, voxel_spacing)
     src_pos = xp.array(src_pos)
-    det_center = xp.array(det_center)
     det_u_vec = xp.array(det_u_vec)
+    det_center = kernel_detector_center(
+        xp.array(det_center), det_u_vec, detector_spacing, convention=detector_convention)
     n_views = int(src_pos.shape[0])
 
     def fwd(volume: Array, views: Any) -> Array:
-        return forward_op(
+        return _scaled(forward_op(
             volume, _index(src_pos, views), _index(det_center, views), _index(det_u_vec, views),
             num_detectors=num_detectors, detector_spacing=detector_spacing, voxel_spacing=voxel_spacing,
-        )
+        ), scale)
 
     def adj(sino: Array, views: Any) -> Array:
-        return backward_op(
+        return _scaled(backward_op(
             xp.array(sino, dtype=xp.float32), _index(src_pos, views), _index(det_center, views), _index(det_u_vec, views),
             detector_spacing=detector_spacing, H=ny, W=nx, voxel_spacing=voxel_spacing,
-        )
+        ), scale)
 
     return ProjectionOperator(
         fwd, adj, domain_shape=(ny, nx), range_shape=(n_views, num_detectors),
         n_views=n_views, beam="fan", voxel_spacing=voxel_spacing,
+        line_integrals=line_integrals,
     )
 
 
@@ -437,32 +479,48 @@ def make_cone_3d_operator(
     dv: float = 1.0,
     voxel_spacing: float = 1.0,
     projector_mode: str = "footprint",
+    detector_convention: str = "kernel",
+    line_integrals: str = "voxel",
 ) -> ProjectionOperator:
-    """Build an all-view cone-beam :class:`ProjectionOperator`."""
+    """Build an all-view cone-beam :class:`ProjectionOperator`.
+
+    ``detector_convention`` selects how ``det_center`` is read: ``"kernel"``
+    (default, kernel native: pixel ``i`` at ``(i - N/2)·du``) or ``"centered"``
+    (``det_center`` is the geometric panel centre: pixel ``i`` at
+    ``(i - (N-1)/2)·du``, as in scanner geometry files, upstream diffct >= 2.0
+    and DiffCT-MLX 1.x). ``line_integrals`` selects the units of ``A @ x``:
+    ``"voxel"`` (default) or ``"physical"`` (times ``voxel_spacing``, as in
+    upstream diffct >= 2.0 and DiffCT-MLX 1.x). ``A.T`` is scaled alike, so it stays the exact adjoint.
+    See :mod:`diffct_mlx.conventions`.
+    """
     nz, ny, nx = volume_shape
     det_u_count, det_v_count = detector_shape
     forward_op, backward_op = _select_pair("cone", projector_mode)
+    scale = line_integral_scale(line_integrals, voxel_spacing)
     src_pos = xp.array(src_pos)
-    det_center = xp.array(det_center)
     det_u_vec = xp.array(det_u_vec)
     det_v_vec = xp.array(det_v_vec)
+    det_center = kernel_detector_center(
+        xp.array(det_center), det_u_vec, du, det_v_vec, dv, convention=detector_convention)
     n_views = int(src_pos.shape[0])
 
     def fwd(volume: Array, views: Any) -> Array:
-        return forward_op(
+        return _scaled(forward_op(
             volume, _index(src_pos, views), _index(det_center, views),
             _index(det_u_vec, views), _index(det_v_vec, views),
             det_u=det_u_count, det_v=det_v_count, du=du, dv=dv, voxel_spacing=voxel_spacing,
-        )
+        ), scale)
 
     def adj(sino: Array, views: Any) -> Array:
-        return backward_op(
+        return _scaled(backward_op(
             xp.array(sino, dtype=xp.float32), _index(src_pos, views), _index(det_center, views),
             _index(det_u_vec, views), _index(det_v_vec, views),
             D=nz, H=ny, W=nx, du=du, dv=dv, voxel_spacing=voxel_spacing,
-        )
+        ), scale)
 
     return ProjectionOperator(
         fwd, adj, domain_shape=(nz, ny, nx), range_shape=(n_views, det_u_count, det_v_count),
         n_views=n_views, beam="cone", voxel_spacing=voxel_spacing,
+        line_integrals=line_integrals,
     )
+

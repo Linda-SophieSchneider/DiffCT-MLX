@@ -38,6 +38,8 @@ from .projectors import (
     cone_backward_footprint,
 )
 from . import geometry
+from . import conventions
+from .conventions import kernel_detector_center, line_integral_scale
 from .geometry import __all__ as _geometry_all
 
 # Re-export trajectory generators at top level (mirrors the MLX API).
@@ -200,11 +202,14 @@ from .tv_gradients import (
     awtv_gradient,
 )
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 
 __all__ = [
     "backend",
     "geometry",
+    "conventions",
+    "kernel_detector_center",
+    "line_integral_scale",
     # Projector functions
     "parallel_forward",
     "parallel_backward",

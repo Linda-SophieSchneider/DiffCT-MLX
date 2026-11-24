@@ -9,6 +9,39 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-25
+
+### Added
+
+- `detector_convention=` and `line_integrals=` on `make_*_operator` and
+  `make_*_operators`. `detector_convention="centered"` reads `det_center` as
+  the geometric panel centre (pixel `i` at `(i − (N−1)/2)·du`) instead of
+  the kernel-native `(i − N/2)·du`. `line_integrals="physical"` returns
+  `A @ x` in µ·mm, and `A.T` scales alike. Together they reproduce the
+  conventions of DiffCT-MLX 1.x and upstream diffct ≥ 2.0. Defaults are
+  unchanged. New module `diffct_mlx.conventions` with
+  `kernel_detector_center` for direct projector and FBP/FDK calls.
+- `ProjectionOperator.line_integrals` and `.to_physical`; `simulate_scan`
+  uses them, so physical-unit operators are not rescaled twice.
+
+### Fixed
+
+- The `[cuda]` extra pins `numpy<2.5`. numba-cuda calls `np.row_stack`,
+  which numpy 2.5 removed, so a fresh install failed at import.
+
+### Tests
+
+- `test_cone_footprint_amplitude_holds_along_the_ray` pins the cone footprint
+  amplitude for an object 25 mm off the isocentre along the ray, in the
+  SID 500 / SDD 900 geometry. DiffCT-MLX 1.x fails it by about 10 %: it
+  weighted each voxel with the cell size at the voxel's own depth instead of
+  the true magnification. A centred object hides that error.
+
+### Documentation
+
+- README states the detector-pixel convention and how it differs from
+  upstream diffct ≥ 2.0, which moved to centred pixels and physical units.
+
 ## [2.2.0] - 2026-11-18
 
 ### Fixed
@@ -476,7 +509,9 @@ necessary for the arbitrary-trajectory kernel API:
   when the detector is not plane-aligned to the voxel axes) and will
   be tackled in a dedicated follow-up.
 
-[Unreleased]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.2.0...v2.3.0
+[2.2.0]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/Linda-SophieSchneider/DiffCT-MLX/releases/tag/v2.0.0
