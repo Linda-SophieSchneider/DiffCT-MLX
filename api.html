@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API Reference &mdash; DiffCT-MLX 3.0.0 documentation</title>
+  <title>API Reference &mdash; DiffCT-MLX 3.1.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=acc74ff5"></script>
+      <script src="_static/documentation_options.js?v=dd1205ac"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -213,10 +213,11 @@ take <code class="docutils literal notranslate"><span class="pre">detector_conve
 <code class="docutils literal notranslate"><span class="pre">fan_backward</span></code>, <code class="docutils literal notranslate"><span class="pre">cone_forward</span></code> / <code class="docutils literal notranslate"><span class="pre">cone_backward</span></code>, and the
 separable-footprint variants <code class="docutils literal notranslate"><span class="pre">*_forward_footprint</span></code> / <code class="docutils literal notranslate"><span class="pre">*_backward_footprint</span></code>
 (<code class="docutils literal notranslate"><span class="pre">cone_backward_footprint</span></code> additionally accepts <code class="docutils literal notranslate"><span class="pre">indices=</span></code> for sparse
-region-of-interest evaluation). All flow gradients to their data. Siddon
-forward projectors also flow exact gradients to the geometry arrays on the
-Torch backend; on MLX this holds for cone Siddon, while fan and parallel
-geometry gradients are not implemented yet.</p>
+region-of-interest evaluation). All flow gradients to their data. The
+Siddon forward projectors also flow exact gradients to the geometry arrays
+(<code class="docutils literal notranslate"><span class="pre">ray_dir</span></code>, <code class="docutils literal notranslate"><span class="pre">src_pos</span></code>, <code class="docutils literal notranslate"><span class="pre">det_origin</span></code>/<code class="docutils literal notranslate"><span class="pre">det_center</span></code>, <code class="docutils literal notranslate"><span class="pre">det_u_vec</span></code>,
+<code class="docutils literal notranslate"><span class="pre">det_v_vec</span></code>) on both backends. Footprint geometry gradients use finite
+differences on Torch; on MLX only the cone <code class="docutils literal notranslate"><span class="pre">src_pos</span></code> has one.</p>
 <p class="rubric">Geometry (<code class="docutils literal notranslate"><span class="pre">diffct_mlx.geometry</span></code>, re-exported at top level)</p>
 <p>Trajectory generators: <code class="docutils literal notranslate"><span class="pre">circular_trajectory_3d</span></code>, <code class="docutils literal notranslate"><span class="pre">spiral_trajectory_3d</span></code>
 (helical), <code class="docutils literal notranslate"><span class="pre">sinusoidal_trajectory_3d</span></code>, <code class="docutils literal notranslate"><span class="pre">saddle_trajectory_3d</span></code>,
