@@ -722,6 +722,26 @@ def circular_trajectory_2d_parallel(n_views, detector_distance=0.0, start_angle=
     return ray_dir, det_origin, det_u_vec
 
 
+def circular_trajectory_3d_parallel(n_views, detector_distance=0.0, start_angle=0.0,
+                                    end_angle=None, dtype=mx.float32):
+    """Circular 3D parallel-beam orbit: the 2D parallel orbit in the XY plane.
+
+    Same layout as the engine's ``circular_trajectory_3d_parallel``: rays and
+    detector u axes lie in XY, the detector v axis is vertical.
+
+    Returns
+    -------
+    ray_dir, det_origin, det_u_vec, det_v_vec : mx.array
+        Shapes ``(n_views, 3)``.
+    """
+    frames = circular_trajectory_2d_parallel(n_views, detector_distance, start_angle,
+                                             end_angle, dtype=dtype)
+    zero = mx.zeros((frames[0].shape[0], 1), dtype=dtype)
+    lifted = tuple(mx.concatenate([f, zero], axis=1) for f in frames)
+    vertical = mx.concatenate([zero, zero, mx.ones_like(zero)], axis=1)
+    return (*lifted, vertical)
+
+
 def sinusoidal_trajectory_2d_parallel(n_views, amplitude=50.0, frequency=2.0,
                                      start_angle=0.0, dtype=mx.float32):
     """Generate sinusoidal trajectory for 2D parallel-beam CT.

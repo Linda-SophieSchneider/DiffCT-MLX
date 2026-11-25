@@ -9,6 +9,47 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-11-25
+
+### Added
+
+- **`dct.Projector`**, a matched projector and backprojector object with the
+  constructor of the engine's `Projector`, on both backends. `P(x)`,
+  `P.backproject(y)`, `P.project_into` / `P.backproject_into`,
+  `P.subset(views)` and `P.as_operator()` (a `ProjectionOperator` for the
+  operator algebra and the solver registry). Options: `precision="fast" |
+  "float32" | "float64"`, per-axis `voxel_spacing`, `beam="parallel3d"`,
+  `detector_surface`, chunking by views, volume and detector blocks, leading
+  batch dimensions, `detector_convention` and `line_integrals`. On Torch the
+  Siddon model runs on the engine with all engine options, including
+  multi-device execution.
+- **All of it on MLX, except multi-device execution, at Metal speed.** New
+  Metal ray kernels (`diffct_mlx/backend/metal/kernels/ray_beam.py`) trace
+  explicit rays, one thread each, with per-axis pitches and exact
+  face-crossing VJPs returned per ray. They serve per-axis spacing,
+  `parallel3d`, detector surfaces and `precision="float32"`; a 128³ cone
+  projection with 180 views runs in about the time of the existing cone
+  kernel. They match the engine's float64 backend to < 1e-5 in values and
+  adjoints and < 1e-4 in trajectory and surface-parameter gradients
+  (`tests/test_backend_parity.py`). MLX works in float32 throughout, because
+  Metal has no float64; `precision="float64"` runs in float32 with a
+  warning. Chunking, batch dimensions and `*_into` with NumPy memmaps work
+  on every MLX path.
+- `circular_trajectory_3d_parallel` and `dct.ParameterizedSurface` on both
+  backends. On MLX, `P.project(x, trajectory=t, surface_parameters=p)` gives
+  gradients for the trajectory and the surface parameters under `mx.grad`.
+
+### Changed
+
+- `ProjectionOperator.voxel_spacing` keeps per-axis pitches as a tuple.
+  `to_physical` raises for per-axis pitches with `line_integrals="voxel"`.
+
+### Known limits
+
+- The footprint model supports flat detectors, scalar spacing and float32
+  on both backends.
+- MLX has no float64 projector; `precision="float64"` is float32 there.
+
 ## [3.1.0] - 2026-11-25
 
 ### Added

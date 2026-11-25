@@ -45,6 +45,10 @@ from .geometry import __all__ as _geometry_all
 # Re-export trajectory generators at top level (mirrors the MLX API).
 from .geometry import *  # noqa: F401,F403
 
+# Unified Projector object: engine options on Torch, Metal kernels and the
+# portable MLX path on Apple Silicon.
+from .projector import Projector, ParameterizedSurface, BEAMS, PROJECTOR_MODES, PRECISIONS
+
 from .reconstruction_algorithms import (
     ReconstructionParameters,
     RegularizationParameters,
@@ -202,7 +206,7 @@ from .tv_gradients import (
     awtv_gradient,
 )
 
-__version__ = "3.1.0"
+__version__ = "3.2.0"
 
 __all__ = [
     "backend",
@@ -210,6 +214,11 @@ __all__ = [
     "conventions",
     "kernel_detector_center",
     "line_integral_scale",
+    "Projector",
+    "BEAMS",
+    "PROJECTOR_MODES",
+    "PRECISIONS",
+    "ParameterizedSurface",
     # Projector functions
     "parallel_forward",
     "parallel_backward",

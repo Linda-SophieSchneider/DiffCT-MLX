@@ -48,10 +48,13 @@ issues below carry over to 3.x. Status markers: [x] done, [~] in progress, [ ] o
    upstream conventions. Flip the defaults in `diffct_mlx.conventions`,
    `operators.py` and `cases.py`. Remove the voxel-unit conversions in
    `simulate_scan`, the case builders and the quantitative FDK path.
-6. [ ] Expose the new engine features in the unified API: `precision`,
+6. [x] Expose the new engine features in the unified API: `precision`,
    per-axis `voxel_spacing`, `parallel3d`, detector surfaces, geometry
    gradients, chunked `Projector`. MLX raises `NotImplementedError` where it
-   has no counterpart yet.
+   has no counterpart yet. Done as `dct.Projector` (3.2.0), on MLX
+   too: Metal ray kernels for per-axis spacing, `parallel3d`, surfaces and
+   float32. MLX works in float32 throughout (float64 requests run in float32
+   with a warning). Only multi-device execution stays Torch-only.
 7. [x] Cross-backend parity tests (MLX against portable Torch on the same Mac,
    against CUDA on Alex). Rerun the study equivalence check with 3.0 on both
    backends.

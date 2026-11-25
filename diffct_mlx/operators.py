@@ -29,6 +29,7 @@ an additive object-oriented layer on top of the same projectors.
 
 from __future__ import annotations
 
+import numbers
 from typing import Any, Callable, Sequence
 
 from .backend import active as _b
@@ -291,8 +292,10 @@ class ProjectionOperator(LinearOperator):
         self.n_views = int(n_views)
         self.beam = beam
         self._views = views
-        #: Physical voxel pitch of the domain grid.
-        self.voxel_spacing = float(voxel_spacing)
+        #: Physical voxel pitch of the domain grid; a tuple in tensor axis
+        #: order for per-axis pitches (see :class:`diffct_mlx.Projector`).
+        self.voxel_spacing = (float(voxel_spacing) if isinstance(voxel_spacing, numbers.Real)
+                              else tuple(float(v) for v in voxel_spacing))
         #: Units of ``A @ x``: ``"physical"`` (mu*mm, kernel native) or
         #: ``"voxel"`` (2.x convention; multiply by ``voxel_spacing`` for mu*mm).
         self.line_integrals = _check(line_integrals, LINE_INTEGRAL_UNITS, "line_integrals")
@@ -300,7 +303,11 @@ class ProjectionOperator(LinearOperator):
     @property
     def to_physical(self) -> float:
         """Factor that turns ``A @ x`` into physical line integrals (mu*mm)."""
-        return self.voxel_spacing if self.line_integrals == "voxel" else 1.0
+        if self.line_integrals != "voxel":
+            return 1.0
+        if isinstance(self.voxel_spacing, tuple):
+            raise ValueError('line_integrals="voxel" is undefined for per-axis voxel_spacing')
+        return self.voxel_spacing
 
     def _forward(self, x: Array) -> Array:
         return self._forward_fn(x, self._views)

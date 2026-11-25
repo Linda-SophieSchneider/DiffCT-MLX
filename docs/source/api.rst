@@ -27,6 +27,32 @@ take ``detector_convention=`` and ``line_integrals=``;
 convention="legacy")`` converts a 2.x detector centre for direct calls and
 ``line_integral_scale`` gives the unit factor. See :doc:`migration`.
 
+.. rubric:: Projector object (``diffct_mlx.projector``, re-exported at top level)
+
+``Projector(trajectory, volume_shape, detector_shape, *, beam, detector_spacing,
+voxel_spacing, projector_mode="siddon", precision="fast", detector_surface=None,
+view_chunk_size=None, volume_chunk_shape=None, detector_chunk_shape=None,
+devices=None, backend="auto", detector_convention="centered",
+line_integrals="physical", **engine_options)`` is a matched projector and
+backprojector with ``P(x)`` / ``P.project(x, trajectory=None)``,
+``P.backproject(y)``, ``P.subset(views)`` and ``P.as_operator()``. ``beam`` is
+one of ``BEAMS`` (``"parallel"``, ``"fan"``, ``"cone"``, ``"parallel3d"``),
+``precision`` one of ``PRECISIONS``. On the Torch backend the Siddon model runs
+on :class:`diffct_mlx.engine.Projector` with all of its options, including
+float64, per-axis ``voxel_spacing`` in tensor order, ``parallel3d``,
+``ParameterizedSurface`` detectors and chunking. On MLX every option except
+multi-device execution works too, and in float32 at Metal speed: flat
+parallel, fan and cone beams with scalar spacing use the frame-based Metal
+kernels (``P.path == "kernel"``); per-axis spacing, ``parallel3d``, detector
+surfaces and ``precision="float32"`` use the Metal ray kernels of
+:mod:`diffct_mlx.backend.metal.rays` (``"rays"``). Metal has no float64, so
+MLX works in float32; ``precision="float64"`` runs in float32 with a warning. Chunking by views, volume and detector blocks, leading batch dimensions
+and ``project_into`` / ``backproject_into`` (NumPy memmaps, zarr) work on both
+backends. ``project(x, trajectory=t, surface_parameters=p)`` gives MLX
+gradients for the trajectory and surface parameters.
+``circular_trajectory_3d_parallel`` builds a ``parallel3d`` orbit on either
+backend.
+
 .. rubric:: Projectors (``diffct_mlx.projectors``, re-exported at top level)
 
 Functional operators with identical signatures on both backends:

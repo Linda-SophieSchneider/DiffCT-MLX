@@ -197,3 +197,101 @@ def test_footprint_agrees_with_engine_siddon(beam):
     cen = lambda a: (prof(a) @ idx) / prof(a).sum(1)
     assert np.abs(cen(got) - cen(ref)).max() < 0.1
     assert _rel(got, ref) < 0.06
+
+
+def test_parallel3d_trajectory_matches_engine():
+    got = dct.circular_trajectory_3d_parallel(7, detector_distance=3.0, start_angle=0.21)
+    ref = engine.circular_trajectory_3d_parallel(7, detector_distance=3.0, start_angle=0.21,
+                                                 device="cpu")
+    for g, r in zip(got, ref):
+        np.testing.assert_allclose(np.asarray(g), r.numpy(), atol=1e-6)
+
+
+# --- dct.Projector on the Metal ray kernels against the engine in float64 ------
+
+def _engine_traj(beam, n_views):
+    if beam == "parallel":
+        return engine.circular_trajectory_2d_parallel(n_views, start_angle=0.21, device="cpu", dtype=torch.float64)
+    if beam == "fan":
+        return engine.circular_trajectory_2d_fan(n_views, 60.0, 110.0, start_angle=0.21, device="cpu", dtype=torch.float64)
+    if beam == "cone":
+        return engine.circular_trajectory_3d(n_views, 60.0, 110.0, start_angle=0.21, device="cpu", dtype=torch.float64)
+    return engine.circular_trajectory_3d_parallel(n_views, start_angle=0.21, device="cpu", dtype=torch.float64)
+
+
+def _offset(traj, beam):
+    """Lift the orbit off the z = 0 voxel plane and away from voxel edges.
+
+    A source or pixel exactly on a voxel face plane makes the geometry
+    derivative one-sided; float32 and float64 may then pick different sides.
+    """
+    traj = list(traj)
+    if beam in ("cone", "parallel3d"):
+        shift = torch.tensor([0.031, -0.017, 0.137], dtype=torch.float64)
+        for i in ((0, 1) if beam == "cone" else (1,)):
+            traj[i] = traj[i] + shift
+    return tuple(traj)
+
+
+@pytest.mark.parametrize("beam", ["parallel", "fan", "cone", "parallel3d"])
+@pytest.mark.parametrize("case", ["per_axis", "float32"])
+def test_projector_metal_rays_match_engine(beam, case):
+    """Metal ray kernels (float32, GPU): values, adjoint and geometry gradients."""
+    three = beam in ("cone", "parallel3d")
+    vol, det, ds = ((14, 16, 18), (24, 20), (0.9, 1.1)) if three else ((24, 26), (40,), 0.7)
+    vs = ((0.6, 0.7, 0.5) if three else (0.7, 0.5)) if case == "per_axis" else 0.7
+    traj = _offset(_engine_traj(beam, 5), beam)
+    x = _RNG.random(vol)
+    w = _RNG.random((5,) + det)
+    leaves = [t.clone().requires_grad_(True) for t in traj]
+    E = engine.Projector(tuple(leaves), vol, det, beam=beam, detector_spacing=ds, voxel_spacing=vs,
+                         backend="torch", precision="float64")
+    (E(_torch(x)) * _torch(w)).sum().backward()
+
+    t32 = tuple(mx.array(t.detach().numpy().astype(np.float32)) for t in traj)
+    kw = dict(precision="float32") if case == "float32" else {}
+    P = dct.Projector(t32, vol, det, beam=beam, detector_spacing=ds, voxel_spacing=vs, **kw)
+    assert P.path == "rays"
+    x32, w32 = mx.array(x.astype(np.float32)), mx.array(w.astype(np.float32))
+    assert _rel(P(x32), E(_torch(x)).detach().numpy()) < 1e-5
+    assert _rel(P.backproject(w32), E.backproject(_torch(w)).detach().numpy()) < 1e-5
+    grads = mx.grad(lambda t: (P.project(x32, trajectory=t) * w32).sum())(t32)
+    for g, leaf in zip(grads, leaves):
+        ref = leaf.grad.numpy()
+        if np.linalg.norm(ref) > 0:
+            assert _rel(g, ref) < 1e-4
+
+
+@pytest.mark.parametrize("beam", ["fan", "cone"])
+def test_projector_detector_surface_matches_engine(beam):
+    """Cylindrical detector on the Metal ray kernels: values, adjoint, radius gradient."""
+    three = beam == "cone"
+    vol, det, ds = ((14, 16, 18), (24, 20), (1.2, 1.0)) if three else ((20, 22), (40,), 1.1)
+    traj = _engine_traj(beam, 4)
+    x = _RNG.random(vol)
+    w = _RNG.random((4,) + det)
+    radius = torch.tensor(110.0, dtype=torch.float64, requires_grad=True)
+
+    def sample_t(u, v, ids, r):
+        u, v = u.to(r.dtype), v.to(r.dtype)
+        return torch.stack((r * torch.sin(u / r), v, r * (torch.cos(u / r) - 1)), -1)
+
+    E = engine.Projector(traj, vol, det, beam=beam, detector_spacing=ds, voxel_spacing=0.8,
+                         detector_surface=engine.ParameterizedSurface(sample_t, (radius,)),
+                         backend="torch", precision="float64")
+    (E(_torch(x)) * _torch(w)).sum().backward()
+
+    def sample_m(u, v, ids, r):
+        a = u / r
+        return mx.stack([r * mx.sin(a), v, r * (mx.cos(a) - 1)], -1)
+
+    surface32 = dct.ParameterizedSurface(sample_m, (mx.array(110.0),))
+    t32 = tuple(mx.array(t.numpy().astype(np.float32)) for t in traj)
+    P32 = dct.Projector(t32, vol, det, beam=beam, detector_spacing=ds, voxel_spacing=0.8,
+                        detector_surface=surface32)
+    assert P32.path == "rays"
+    x32, w32 = mx.array(x.astype(np.float32)), mx.array(w.astype(np.float32))
+    assert _rel(P32(x32), E(_torch(x)).detach().numpy()) < 1e-5
+    assert _rel(P32.backproject(w32), E.backproject(_torch(w)).detach().numpy()) < 1e-5
+    g32 = mx.grad(lambda r: (P32.project(x32, surface_parameters=(r,)) * w32).sum())(mx.array(110.0))
+    assert _rel(g32, radius.grad.numpy()) < 1e-3

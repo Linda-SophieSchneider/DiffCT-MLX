@@ -24,6 +24,7 @@ _g = getattr(_b, "geometry", None)
 
 _NAMES = [
     "circular_trajectory_3d",
+    "circular_trajectory_3d_parallel",
     "random_trajectory_3d",
     "spiral_trajectory_3d",
     "sinusoidal_trajectory_3d",

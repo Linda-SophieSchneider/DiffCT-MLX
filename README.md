@@ -268,27 +268,58 @@ Arrays that fit a host-RAM budget stay in RAM.
 `set_out_of_core_backend("zarr")` swaps the memmap spill for compressed zarr
 storage. Chunked and monolithic runs agree to about 10⁻⁶.
 
-## ⚙️ The Torch engine (`diffct_mlx.engine`)
+## ⚙️ The `Projector` object and engine options
 
-On the Torch backend the full upstream diffct 2.5.2 API is available under
-`diffct_mlx.engine`, for features the unified API does not expose yet:
+`dct.Projector` bundles a trajectory, a volume grid and a detector into one
+matched projector and backprojector. It takes the constructor of the engine's
+`Projector` and runs on both backends:
 
 ```python
-from diffct_mlx import engine
-
-P = engine.Projector((src, det_c, det_u, det_v), (D, H, W), (nu, nv), beam="cone",
-                     detector_spacing=(du, dv), voxel_spacing=(sx, sy, sz),
-                     backend="torch", precision="float64")   # also "numba" (CUDA) or "auto"
-y = P(volume)
-x = P.backproject(y)
+P = dct.Projector(dct.circular_trajectory_3d(360, 600, 900), (D, H, W), (nu, nv),
+                  beam="cone", detector_spacing=(du, dv), voxel_spacing=vs,
+                  projector_mode="siddon", view_chunk_size=60)
+y = P(volume)                  # (360, nu, nv)
+x = P.backproject(y)           # (D, H, W)
+A = P.as_operator()            # LinearOperator: A @ x, A.T @ y, A.subset(views), solvers
 ```
 
-This gives the portable backend on CPU, MPS and ROCm, float64 precision,
-chunked and streamed projection, per-axis voxel spacing, `parallel3d`,
-`ParameterizedSurface` detectors, `fbp`/`fdk`/`helical_fdk` and the engine's
-`cgls`, `sirt` and `tv_reconstruction` solvers. On CUDA tensors the unified
-Siddon projectors use the native kernels, on CPU and MPS tensors the portable
-backend. The upstream documentation is in [`docs/engine/`](docs/engine/).
+Every option works on both backends; only multi-device execution needs the
+Torch engine.
+
+| Option | Torch / CUDA | MLX / Apple Silicon |
+|---|---|---|
+| `beam="parallel"`, `"fan"`, `"cone"` | engine | Metal kernels |
+| `beam="parallel3d"` (`circular_trajectory_3d_parallel`) | engine | Metal ray kernels |
+| `projector_mode="footprint"` | CUDA kernels | Metal kernels |
+| per-axis `voxel_spacing=(dz, dy, dx)` | engine | Metal ray kernels |
+| `precision="float32"` | portable engine backend | Metal ray kernels |
+| `precision="float64"` | portable engine backend | runs in float32 (warning) |
+| `detector_surface` (`ParameterizedSurface`, curved detectors) | engine | Metal ray kernels |
+| `view_chunk_size`, `volume_chunk_shape`, `detector_chunk_shape` | engine | yes |
+| `project_into` / `backproject_into` (memmaps, zarr, stores) | engine | yes |
+| leading batch dimensions | engine | yes |
+| geometry gradients | trajectory tensors with `requires_grad` | `P.project(x, trajectory=t)` under `mx.grad` |
+| surface parameter gradients | parameters with `requires_grad` | `P.project(x, surface_parameters=p)` under `mx.grad` |
+| `devices`, `distributed`, `partition` (multi-GPU) | engine | no |
+
+On MLX every float32 case runs on Metal at the same speed: flat parallel,
+fan and cone beams with scalar spacing on the frame-based kernels, everything
+else on Metal ray kernels that take each ray explicitly (one thread per ray,
+exact face-crossing VJPs, gradients to the trajectory and surface
+parameters through MLX autodiff). For a 128³ volume, 180 views and a
+192×160 detector a cone projection takes about 15–20 ms on any of these
+paths and a backprojection about 45 ms. Metal has no float64, so MLX works
+in float32 throughout; `precision="float64"` runs in float32 with a warning,
+so scripts written for the Torch backend still run. For CT data float32 is
+almost always enough.
+
+The footprint model needs a flat detector, scalar spacing and float32 on
+both backends.
+
+The full upstream diffct 2.5.2 API stays available under `diffct_mlx.engine`,
+with `fbp`/`fdk`/`helical_fdk`, `cgls`, `sirt`, `tv_reconstruction` and
+streaming stores. The upstream documentation is in
+[`docs/engine/`](docs/engine/).
 
 ## 🔁 Migrating from 2.x
 
