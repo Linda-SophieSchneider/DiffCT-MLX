@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API Reference &mdash; DiffCT-MLX 3.1.0 documentation</title>
+  <title>API Reference &mdash; DiffCT-MLX 3.2.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=dd1205ac"></script>
+      <script src="_static/documentation_options.js?v=4f6ddb47"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -207,6 +207,30 @@ take <code class="docutils literal notranslate"><span class="pre">detector_conve
 <code class="docutils literal notranslate"><span class="pre">kernel_detector_center(det_center,</span> <span class="pre">det_u_vec,</span> <span class="pre">du,</span> <span class="pre">det_v_vec,</span> <span class="pre">dv,</span>
 <span class="pre">convention=&quot;legacy&quot;)</span></code> converts a 2.x detector centre for direct calls and
 <code class="docutils literal notranslate"><span class="pre">line_integral_scale</span></code> gives the unit factor. See <a class="reference internal" href="migration.html"><span class="doc">Migrating from 2.x to 3.0</span></a>.</p>
+<p class="rubric">Projector object (<code class="docutils literal notranslate"><span class="pre">diffct_mlx.projector</span></code>, re-exported at top level)</p>
+<p><code class="docutils literal notranslate"><span class="pre">Projector(trajectory,</span> <span class="pre">volume_shape,</span> <span class="pre">detector_shape,</span> <span class="pre">*,</span> <span class="pre">beam,</span> <span class="pre">detector_spacing,</span>
+<span class="pre">voxel_spacing,</span> <span class="pre">projector_mode=&quot;siddon&quot;,</span> <span class="pre">precision=&quot;fast&quot;,</span> <span class="pre">detector_surface=None,</span>
+<span class="pre">view_chunk_size=None,</span> <span class="pre">volume_chunk_shape=None,</span> <span class="pre">detector_chunk_shape=None,</span>
+<span class="pre">devices=None,</span> <span class="pre">backend=&quot;auto&quot;,</span> <span class="pre">detector_convention=&quot;centered&quot;,</span>
+<span class="pre">line_integrals=&quot;physical&quot;,</span> <span class="pre">**engine_options)</span></code> is a matched projector and
+backprojector with <code class="docutils literal notranslate"><span class="pre">P(x)</span></code> / <code class="docutils literal notranslate"><span class="pre">P.project(x,</span> <span class="pre">trajectory=None)</span></code>,
+<code class="docutils literal notranslate"><span class="pre">P.backproject(y)</span></code>, <code class="docutils literal notranslate"><span class="pre">P.subset(views)</span></code> and <code class="docutils literal notranslate"><span class="pre">P.as_operator()</span></code>. <code class="docutils literal notranslate"><span class="pre">beam</span></code> is
+one of <code class="docutils literal notranslate"><span class="pre">BEAMS</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;parallel&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;fan&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;cone&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;parallel3d&quot;</span></code>),
+<code class="docutils literal notranslate"><span class="pre">precision</span></code> one of <code class="docutils literal notranslate"><span class="pre">PRECISIONS</span></code>. On the Torch backend the Siddon model runs
+on <a class="reference internal" href="#diffct_mlx.engine.Projector" title="diffct_mlx.engine.Projector"><code class="xref py py-class docutils literal notranslate"><span class="pre">diffct_mlx.engine.Projector</span></code></a> with all of its options, including
+float64, per-axis <code class="docutils literal notranslate"><span class="pre">voxel_spacing</span></code> in tensor order, <code class="docutils literal notranslate"><span class="pre">parallel3d</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ParameterizedSurface</span></code> detectors and chunking. On MLX every option except
+multi-device execution works too, and in float32 at Metal speed: flat
+parallel, fan and cone beams with scalar spacing use the frame-based Metal
+kernels (<code class="docutils literal notranslate"><span class="pre">P.path</span> <span class="pre">==</span> <span class="pre">&quot;kernel&quot;</span></code>); per-axis spacing, <code class="docutils literal notranslate"><span class="pre">parallel3d</span></code>, detector
+surfaces and <code class="docutils literal notranslate"><span class="pre">precision=&quot;float32&quot;</span></code> use the Metal ray kernels of
+<code class="xref py py-mod docutils literal notranslate"><span class="pre">diffct_mlx.backend.metal.rays</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;rays&quot;</span></code>). Metal has no float64, so
+MLX works in float32; <code class="docutils literal notranslate"><span class="pre">precision=&quot;float64&quot;</span></code> runs in float32 with a warning. Chunking by views, volume and detector blocks, leading batch dimensions
+and <code class="docutils literal notranslate"><span class="pre">project_into</span></code> / <code class="docutils literal notranslate"><span class="pre">backproject_into</span></code> (NumPy memmaps, zarr) work on both
+backends. <code class="docutils literal notranslate"><span class="pre">project(x,</span> <span class="pre">trajectory=t,</span> <span class="pre">surface_parameters=p)</span></code> gives MLX
+gradients for the trajectory and surface parameters.
+<code class="docutils literal notranslate"><span class="pre">circular_trajectory_3d_parallel</span></code> builds a <code class="docutils literal notranslate"><span class="pre">parallel3d</span></code> orbit on either
+backend.</p>
 <p class="rubric">Projectors (<code class="docutils literal notranslate"><span class="pre">diffct_mlx.projectors</span></code>, re-exported at top level)</p>
 <p>Functional operators with identical signatures on both backends:
 <code class="docutils literal notranslate"><span class="pre">parallel_forward</span></code> / <code class="docutils literal notranslate"><span class="pre">parallel_backward</span></code>, <code class="docutils literal notranslate"><span class="pre">fan_forward</span></code> /
