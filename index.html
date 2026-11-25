@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DiffCT-MLX: Differentiable CT — One API, Two Backends &mdash; DiffCT-MLX 2.3.0 documentation</title>
+  <title>DiffCT-MLX: Differentiable CT — One API, Two Backends &mdash; DiffCT-MLX 3.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=c3c8ae58"></script>
+      <script src="_static/documentation_options.js?v=acc74ff5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -44,6 +44,7 @@
               <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="migration.html">Migrating from 2.x to 3.0</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
@@ -81,13 +82,22 @@
 user-facing package, <code class="docutils literal notranslate"><span class="pre">diffct_mlx</span></code>, that selects its compute engine at import
 time:</p>
 <ul class="simple">
-<li><p><strong>Torch / numba-CUDA</strong> on NVIDIA GPUs (wrapping the vendored <code class="docutils literal notranslate"><span class="pre">diffct</span></code>
-engine, adapted from <a class="reference external" href="https://github.com/sypsyp97/diffct">sypsyp97/diffct</a>),</p></li>
-<li><p><strong>MLX / Metal</strong> on Apple Silicon.</p></li>
+<li><p><strong>MLX / Metal</strong> on Apple Silicon,</p></li>
+<li><p><strong>Torch / numba-CUDA</strong> on NVIDIA GPUs, through <code class="docutils literal notranslate"><span class="pre">diffct_mlx.engine</span></code>, a
+vendored and maintained copy of upstream
+<a class="reference external" href="https://github.com/sypsyp97/diffct">diffct</a> 2.5.2 by Yipeng Sun.</p></li>
 </ul>
 <p>The same script — projectors, geometry, reconstruction, physics — runs
-unchanged on both platforms. Override the automatic choice with the
-<code class="docutils literal notranslate"><span class="pre">DIFFCT_BACKEND</span></code> environment variable (<code class="docutils literal notranslate"><span class="pre">torch</span></code> / <code class="docutils literal notranslate"><span class="pre">mlx</span></code>).</p>
+unchanged on both platforms and gives the same numbers. Override the
+automatic choice with the <code class="docutils literal notranslate"><span class="pre">DIFFCT_BACKEND</span></code> environment variable (<code class="docutils literal notranslate"><span class="pre">torch</span></code> /
+<code class="docutils literal notranslate"><span class="pre">mlx</span></code>).</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><strong>DiffCT-MLX 3.0</strong> uses one convention on both backends: detector pixel
+<code class="docutils literal notranslate"><span class="pre">i</span></code> at <code class="docutils literal notranslate"><span class="pre">det_center</span> <span class="pre">+</span> <span class="pre">(i</span> <span class="pre">-</span> <span class="pre">(N-1)/2)·du</span></code> and physical line integrals
+(µ · length). Iterative reconstruction of physical data returns µ in 1/mm.
+Coming from 2.x? Read <a class="reference internal" href="migration.html"><span class="doc">Migrating from 2.x to 3.0</span></a>.</p>
+</div>
 <section id="key-features">
 <h2><strong>Key Features</strong><a class="headerlink" href="#key-features" title="Link to this heading"></a></h2>
 <ul class="simple">
@@ -105,7 +115,10 @@ SART/SIRT/normalized-SART, TV-/ASD-/AwTV-POCS, DART, plus a solver registry
 (<code class="docutils literal notranslate"><span class="pre">cgls</span></code>, <code class="docutils literal notranslate"><span class="pre">wls</span></code>/<code class="docutils literal notranslate"><span class="pre">rwls</span></code>, <code class="docutils literal notranslate"><span class="pre">pcg</span></code>, <code class="docutils literal notranslate"><span class="pre">mlem</span></code>/<code class="docutils literal notranslate"><span class="pre">osem</span></code>, <code class="docutils literal notranslate"><span class="pre">mltr</span></code>, …)
 over a composable <code class="docutils literal notranslate"><span class="pre">LinearOperator</span></code> algebra with functionals,
 regularizers and Plug-and-Play denoisers.</p></li>
-<li><p><strong>Physics &amp; simulation:</strong> explicit voxel/physical line-integral conventions,
+<li><p><strong>Exact geometry gradients:</strong> the Siddon projectors differentiate with
+respect to source and detector positions, for trajectory optimization and
+self-calibration.</p></li>
+<li><p><strong>Physics &amp; simulation:</strong> physical line integrals throughout,
 GPU-native preprocessing (flat field, rings, bad
 pixels, beam hardening, deblur, scatter, MAR) and forward simulation with an
 embedded, physically-validated X-ray spectrum / material-attenuation
@@ -115,13 +128,14 @@ TB-scale volumes through chunked, conveyor-pipelined FDK/SIRT/OS-SART with
 automatic RAM/disk (memmap or zarr) spill.</p></li>
 </ul>
 </section>
-<section id="two-importable-packages">
-<h2><strong>Two importable packages</strong><a class="headerlink" href="#two-importable-packages" title="Link to this heading"></a></h2>
+<section id="package-layout">
+<h2><strong>Package layout</strong><a class="headerlink" href="#package-layout" title="Link to this heading"></a></h2>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx</span></code> — the unified, auto-backend API. <strong>Import this.</strong></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">diffct</span></code> — the low-level Torch/numba-CUDA engine (autograd Functions,
-CUDA kernels, analytical FBP/FDK helpers). Useful for advanced integrations
-on NVIDIA hardware; documented in the API reference.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx.engine</span></code> — the Torch/numba-CUDA engine (upstream diffct
+2.5.2): autograd Functions, the chunked <code class="docutils literal notranslate"><span class="pre">Projector</span></code>, the portable PyTorch
+backend for CPU, MPS and ROCm, analytical FBP/FDK helpers and solvers.
+Documented in the API reference.</p></li>
 </ul>
 </section>
 <section id="getting-started">
@@ -136,6 +150,15 @@ on NVIDIA hardware; documented in the API reference.</p></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started.html#where-to-go-next">Where to go next</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="migration.html">Migrating from 2.x to 3.0</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="migration.html#what-changed">What changed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="migration.html#reproducing-2-x-results">Reproducing 2.x results</a></li>
+<li class="toctree-l2"><a class="reference internal" href="migration.html#projection-stacks">Projection stacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="migration.html#imports-of-the-engine">Imports of the engine</a></li>
+<li class="toctree-l2"><a class="reference internal" href="migration.html#behaviour-fixes-you-will-notice">Behaviour fixes you will notice</a></li>
+<li class="toctree-l2"><a class="reference internal" href="migration.html#staying-on-2-x">Staying on 2.x</a></li>
+</ul>
+</li>
 </ul>
 </div>
 </section>
@@ -146,7 +169,8 @@ on NVIDIA hardware; documented in the API reference.</p></li>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="api.html#the-unified-package-diffct-mlx">The unified package: <code class="docutils literal notranslate"><span class="pre">diffct_mlx</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="api.html#the-low-level-engine-diffct">The low-level engine: <code class="docutils literal notranslate"><span class="pre">diffct</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#the-torch-engine-diffct-mlx-engine">The Torch engine: <code class="docutils literal notranslate"><span class="pre">diffct_mlx.engine</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#projector">Projector</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#core-projector-functions">Core Projector Functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#geometry-helpers">Geometry Helpers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#analytical-reconstruction-helpers">Analytical Reconstruction Helpers</a></li>
@@ -154,7 +178,7 @@ on NVIDIA hardware; documented in the API reference.</p></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#analytical-fbp-fdk-architecture">Analytical FBP / FDK architecture</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#utilities">Utilities</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#constants">Constants</a></li>
-<li class="toctree-l2"><a class="reference internal" href="api.html#backward-compatibility">Backward Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#reconstruction-and-solvers">Reconstruction and Solvers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#usage-notes">Usage Notes</a></li>
 </ul>
 </li>

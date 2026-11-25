@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cone Beam FDK Reconstruction &mdash; DiffCT-MLX 2.3.0 documentation</title>
+  <title>Cone Beam FDK Reconstruction &mdash; DiffCT-MLX 3.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=c3c8ae58"></script>
+      <script src="_static/documentation_options.js?v=acc74ff5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
@@ -46,6 +46,7 @@
               <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="migration.html">Migrating from 2.x to 3.0</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul class="current">
@@ -92,7 +93,7 @@
              
   <section id="cone-beam-fdk-reconstruction">
 <h1>Cone Beam FDK Reconstruction<a class="headerlink" href="#cone-beam-fdk-reconstruction" title="Link to this heading"></a></h1>
-<p>This example demonstrates 3D cone beam FDK (Feldkamp-Davis-Kress) reconstruction using the <cite>ConeProjectorFunction</cite> and <cite>ConeBackprojectorFunction</cite> from <cite>diffct</cite>.</p>
+<p>This example demonstrates 3D cone beam FDK (Feldkamp-Davis-Kress) reconstruction using the <cite>ConeProjectorFunction</cite> and <cite>ConeBackprojectorFunction</cite> from <code class="docutils literal notranslate"><span class="pre">diffct_mlx.engine</span></code>.</p>
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
 <p>The FDK algorithm is the standard analytical method for 3D cone beam CT reconstruction. This example shows how to:</p>
@@ -143,7 +144,7 @@
 <p><strong>Implementation Steps</strong></p>
 <ol class="arabic simple">
 <li><p><strong>3D Phantom Generation</strong>: Create 3D Shepp-Logan phantom with 10 ellipsoids</p></li>
-<li><p><strong>Cone Beam Projection</strong>: Generate 2D projections using <cite>ConeProjectorFunction</cite> with geometry from helpers such as <code class="docutils literal notranslate"><span class="pre">diffct.geometry.circular_trajectory_3d</span></code></p></li>
+<li><p><strong>Cone Beam Projection</strong>: Generate 2D projections using <cite>ConeProjectorFunction</cite> with geometry from helpers such as <code class="docutils literal notranslate"><span class="pre">diffct_mlx.engine.circular_trajectory_3d</span></code></p></li>
 <li><p><strong>Cosine Weighting</strong>: Apply distance-dependent weights</p></li>
 <li><p><strong>Row-wise Filtering</strong>: Apply ramp filter to each detector row</p></li>
 <li><p><strong>3D Backprojection</strong>: Reconstruct volume using <cite>ConeBackprojectorFunction</cite></p></li>
@@ -199,7 +200,7 @@
 <span class="linenos"> 29</span><span class="k">if</span> <span class="nb">str</span><span class="p">(</span><span class="n">ROOT_DIR</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">:</span>
 <span class="linenos"> 30</span>    <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">ROOT_DIR</span><span class="p">))</span>
 <span class="linenos"> 31</span>
-<span class="linenos"> 32</span><span class="kn">from</span><span class="w"> </span><span class="nn">diffct</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 32</span><span class="kn">from</span><span class="w"> </span><span class="nn">diffct_mlx.engine</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
 <span class="linenos"> 33</span>    <span class="n">ConeProjectorFunction</span><span class="p">,</span>
 <span class="linenos"> 34</span>    <span class="n">angular_integration_weights</span><span class="p">,</span>
 <span class="linenos"> 35</span>    <span class="n">circular_trajectory_3d</span><span class="p">,</span>

@@ -1,0 +1,1282 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>diffct_mlx.engine.geometry &mdash; DiffCT-MLX 3.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=acc74ff5"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            DiffCT-MLX
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../migration.html">Migrating from 2.x to 3.0</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples.html">Examples</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">DiffCT-MLX</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">diffct_mlx.engine.geometry</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for diffct_mlx.engine.geometry</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Geometry and trajectory generation for 2D and 3D CT.</span>
+
+<span class="sd">This module provides functions for generating circular, spiral, sinusoidal, saddle,</span>
+<span class="sd">and custom trajectories for parallel, fan and cone beams, plus rigid transforms.</span>
+<span class="sd">"""</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Tuple</span>
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># Trajectory Generation Functions</span>
+<span class="c1"># ============================================================================</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">transform_trajectory</span><span class="p">(</span><span class="n">trajectory</span><span class="p">,</span> <span class="n">rotation</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">translation</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">beam</span><span class="o">=</span><span class="s1">'cone'</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Apply ``p' = R p + t`` to points and ``d' = R d`` to directions.</span>
+
+<span class="sd">    Rotation and translation can be shared or have one entry per view. All</span>
+<span class="sd">    inputs must share dtype and device. Ordinary tensor operations preserve</span>
+<span class="sd">    gradients to the frames and transform parameters.</span>
+<span class="sd">    """</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.operators</span><span class="w"> </span><span class="kn">import</span> <span class="n">_validate_trajectory</span>
+
+    <span class="k">if</span> <span class="n">beam</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">'parallel'</span><span class="p">,</span> <span class="s1">'fan'</span><span class="p">,</span> <span class="s1">'cone'</span><span class="p">,</span> <span class="s1">'parallel3d'</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"beam must be 'parallel', 'fan', 'cone', or 'parallel3d'"</span><span class="p">)</span>
+    <span class="c1"># Frames alone do not specify the sampled detector surface.</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">views</span> <span class="o">=</span> <span class="n">_validate_trajectory</span><span class="p">(</span><span class="n">trajectory</span><span class="p">,</span> <span class="n">beam</span><span class="p">,</span> <span class="n">detector_surface</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">first</span> <span class="o">=</span> <span class="n">trajectory</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">dimensions</span> <span class="o">=</span> <span class="n">first</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">(</span><span class="o">*</span><span class="n">trajectory</span><span class="p">,</span> <span class="n">rotation</span><span class="p">,</span> <span class="n">translation</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_floating_point</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"frames and transforms must be floating-point tensors"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">dtype</span> <span class="o">!=</span> <span class="n">first</span><span class="o">.</span><span class="n">dtype</span> <span class="ow">or</span> <span class="n">value</span><span class="o">.</span><span class="n">device</span> <span class="o">!=</span> <span class="n">first</span><span class="o">.</span><span class="n">device</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"frames and transforms must share dtype and device"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"frames and transforms must be finite"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">rotation</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rotation</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">((</span><span class="n">dimensions</span><span class="p">,</span> <span class="n">dimensions</span><span class="p">),</span> <span class="p">(</span><span class="n">views</span><span class="p">,</span> <span class="n">dimensions</span><span class="p">,</span> <span class="n">dimensions</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"rotation must have shape (d, d) or (views, d, d)"</span><span class="p">)</span>
+        <span class="c1"># MPS provides no float64; the formal harness also loads this module</span>
+        <span class="c1"># standalone, so the cast stays inline instead of importing helpers.</span>
+        <span class="n">matrix</span> <span class="o">=</span> <span class="n">rotation</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span> <span class="k">if</span> <span class="n">rotation</span><span class="o">.</span><span class="n">device</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">"mps"</span>
+                                      <span class="k">else</span> <span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+        <span class="n">identity</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">dimensions</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">matrix</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">matrix</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">expand_as</span><span class="p">(</span><span class="n">matrix</span><span class="p">)</span>
+        <span class="c1"># Small explicit determinants: linalg.det routes through LU kernels</span>
+        <span class="c1"># that MPS does not provide.</span>
+        <span class="k">if</span> <span class="n">dimensions</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">determinant</span> <span class="o">=</span> <span class="p">(</span><span class="n">matrix</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">matrix</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+                           <span class="o">-</span> <span class="n">matrix</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">matrix</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">determinant</span> <span class="o">=</span> <span class="p">(</span><span class="n">matrix</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">matrix</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">matrix</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">matrix</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">)</span> <span class="o">@</span> <span class="n">matrix</span><span class="p">,</span> <span class="n">identity</span><span class="p">,</span> <span class="n">rtol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">)</span>
+                <span class="ow">or</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">determinant</span><span class="p">,</span> <span class="n">matrix</span><span class="o">.</span><span class="n">new_ones</span><span class="p">(</span><span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">2</span><span class="p">]),</span>
+                                      <span class="n">rtol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"rotation must be orthogonal and proper (determinant +1)"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">translation</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">translation</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">((</span><span class="n">dimensions</span><span class="p">,),</span> <span class="p">(</span><span class="n">views</span><span class="p">,</span> <span class="n">dimensions</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"translation must have shape (d,) or (views, d)"</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">trajectory</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">rotation</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="p">(</span><span class="n">rotation</span> <span class="o">@</span> <span class="n">value</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">translation</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span><span class="n">index</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="p">(</span><span class="n">index</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">beam</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">'fan'</span><span class="p">,</span> <span class="s1">'cone'</span><span class="p">))):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">value</span> <span class="o">+</span> <span class="n">translation</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">circular_trajectory_3d_parallel</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">detector_distance</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">start_angle</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+                                    <span class="n">end_angle</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Lift the 2D parallel orbit into XY, with a vertical detector v axis.</span>
+
+<span class="sd">    ``n_views`` accepts a count or a finite floating angle vector in radians.</span>
+<span class="sd">    The default orbit spans pi; detector_distance is the legacy transverse</span>
+<span class="sd">    offset along detector u. Angle tensors retain their dtype, device and graph.</span>
+<span class="sd">    """</span>
+    <span class="n">frames</span> <span class="o">=</span> <span class="n">circular_trajectory_2d_parallel</span><span class="p">(</span>
+        <span class="n">n_views</span><span class="p">,</span> <span class="n">detector_distance</span><span class="p">,</span> <span class="n">start_angle</span><span class="p">,</span> <span class="n">end_angle</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">zero</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">frames</span><span class="p">[</span><span class="mi">0</span><span class="p">][:,</span> <span class="p">:</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">lifted</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">((</span><span class="n">value</span><span class="p">,</span> <span class="n">zero</span><span class="p">),</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">frames</span><span class="p">)</span>
+    <span class="n">vertical</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">((</span><span class="n">zero</span><span class="p">,</span> <span class="n">zero</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">zero</span><span class="p">)),</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span><span class="o">*</span><span class="n">lifted</span><span class="p">,</span> <span class="n">vertical</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_circular_angles</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">start_angle</span><span class="p">,</span> <span class="n">end_angle</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_floating_point</span><span class="p">(</span><span class="n">n_views</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"angles must have floating-point dtype"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">n_views</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">n_views</span><span class="o">.</span><span class="n">numel</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"angles must be a nonempty one-dimensional tensor"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">n_views</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"angles must be finite"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_views</span><span class="o">.</span><span class="n">numel</span><span class="p">(),</span> <span class="n">n_views</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">n_views</span><span class="o">.</span><span class="n">dtype</span>
+    <span class="n">_check_n_views</span><span class="p">(</span><span class="n">n_views</span><span class="p">)</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="p">(</span><span class="n">end_angle</span> <span class="o">-</span> <span class="n">start_angle</span><span class="p">)</span> <span class="o">/</span> <span class="n">n_views</span>
+    <span class="n">angles</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span> <span class="o">*</span> <span class="n">step</span>
+    <span class="k">return</span> <span class="n">angles</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">dtype</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_source_positions</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">what</span><span class="o">=</span><span class="s2">"source_path_fn"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Reject non-finite sources and sources at the isocenter, which have no viewing direction."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">src_pos</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">what</span><span class="si">}</span><span class="s2"> returned non-finite source positions"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">vector_norm</span><span class="p">(</span><span class="n">src_pos</span><span class="o">.</span><span class="n">detach</span><span class="p">(),</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">what</span><span class="si">}</span><span class="s2"> returned a source at the isocenter; every source needs a "</span>
+            <span class="s2">"nonzero distance from the origin"</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_n_views</span><span class="p">(</span><span class="n">n_views</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Reject view counts that are not positive integers.</span>
+
+<span class="sd">    A float count would space ``arange(ceil(n))`` views by ``span / n``, and a</span>
+<span class="sd">    nonpositive count builds an empty trajectory or divides by zero.</span>
+<span class="sd">    """</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">count</span> <span class="o">=</span> <span class="n">operator</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">n_views</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+        <span class="n">count</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">count</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"n_views must be a positive integer, got </span><span class="si">{</span><span class="n">n_views</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">count</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"n_views must be a positive integer, got </span><span class="si">{</span><span class="n">n_views</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_ray_directions</span><span class="p">(</span><span class="n">ray_dir</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Reject non-finite and zero ray directions, which normalize to NaN."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">ray_dir</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"ray_dir_fn returned non-finite ray directions"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">vector_norm</span><span class="p">(</span><span class="n">ray_dir</span><span class="o">.</span><span class="n">detach</span><span class="p">(),</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"ray_dir_fn returned a zero ray direction; every view needs a "</span>
+            <span class="s2">"nonzero direction vector"</span>
+        <span class="p">)</span>
+
+
+<div class="viewcode-block" id="circular_trajectory_3d">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.geometry.circular_trajectory_3d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">circular_trajectory_3d</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">sid</span><span class="p">,</span> <span class="n">sdd</span><span class="p">,</span> <span class="n">start_angle</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">end_angle</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Generate circular trajectory geometry for cone-beam CT.</span>
+
+<span class="sd">    Creates source and detector position matrices for a standard circular</span>
+<span class="sd">    orbit around the z-axis, commonly used in cone-beam CT imaging.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_views : int or torch.Tensor</span>
+<span class="sd">        Number of projection views, or a nonempty finite floating angle vector</span>
+<span class="sd">        in radians. Angle tensors preserve their dtype, device and autograd graph.</span>
+<span class="sd">    sid : float</span>
+<span class="sd">        Source-to-Isocenter Distance (SID), in physical units.</span>
+<span class="sd">    sdd : float</span>
+<span class="sd">        Source-to-Detector Distance (SDD), in physical units.</span>
+<span class="sd">    start_angle : float, optional</span>
+<span class="sd">        Starting angle in radians (default: 0.0).</span>
+<span class="sd">    end_angle : float, optional</span>
+<span class="sd">        Ending angle in radians (default: 2*pi, full rotation).</span>
+<span class="sd">    device : str or torch.device, optional</span>
+<span class="sd">        Device for tensors (default: 'cuda').</span>
+<span class="sd">    dtype : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float32).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    src_pos : torch.Tensor</span>
+<span class="sd">        Source positions, shape (n_views, 3).</span>
+<span class="sd">    det_center : torch.Tensor</span>
+<span class="sd">        Detector center positions, shape (n_views, 3).</span>
+<span class="sd">    det_u_vec : torch.Tensor</span>
+<span class="sd">        Detector u-direction unit vectors, shape (n_views, 3).</span>
+<span class="sd">    det_v_vec : torch.Tensor</span>
+<span class="sd">        Detector v-direction unit vectors, shape (n_views, 3).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec, det_v_vec = circular_trajectory_3d(</span>
+<span class="sd">    ...     n_views=360, sid=1000.0, sdd=1500.0, device='cuda'</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; print(src_pos.shape)  # (360, 3)</span>
+<span class="sd">    """</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+
+    <span class="k">if</span> <span class="n">end_angle</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">end_angle</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+
+    <span class="c1"># Generate angles (equivalent to linspace with endpoint=False)</span>
+    <span class="n">angles</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">dtype</span> <span class="o">=</span> <span class="n">_circular_angles</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">start_angle</span><span class="p">,</span> <span class="n">end_angle</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Preallocate position matrices</span>
+    <span class="n">src_pos</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_center</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Compute trigonometric values</span>
+    <span class="n">cos_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+    <span class="n">sin_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+
+    <span class="c1"># Source rotates around isocenter at distance sid</span>
+    <span class="c1"># Convention: source at (x, y, 0), rotating in xy-plane</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">sid</span> <span class="o">*</span> <span class="n">sin_angles</span>  <span class="c1"># x</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sid</span> <span class="o">*</span> <span class="n">cos_angles</span>   <span class="c1"># y</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>                <span class="c1"># z</span>
+
+    <span class="c1"># Detector center is opposite to source at distance (sdd - sid) from isocenter</span>
+    <span class="n">idd</span> <span class="o">=</span> <span class="n">sdd</span> <span class="o">-</span> <span class="n">sid</span>  <span class="c1"># Isocenter-to-Detector Distance</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">idd</span> <span class="o">*</span> <span class="n">sin_angles</span>   <span class="c1"># x</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">idd</span> <span class="o">*</span> <span class="n">cos_angles</span>  <span class="c1"># y</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>                <span class="c1"># z</span>
+
+    <span class="c1"># Detector u-direction (tangent to rotation, in xy-plane)</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">cos_angles</span>   <span class="c1"># x</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sin_angles</span>   <span class="c1"># y</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>          <span class="c1"># z</span>
+
+    <span class="c1"># Detector v-direction (vertical, along z-axis)</span>
+    <span class="n">det_v_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>   <span class="c1"># x</span>
+    <span class="n">det_v_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>   <span class="c1"># y</span>
+    <span class="n">det_v_vec</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>   <span class="c1"># z</span>
+
+    <span class="k">return</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span></div>
+
+
+
+<div class="viewcode-block" id="random_trajectory_3d">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.geometry.random_trajectory_3d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">random_trajectory_3d</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">sid_mean</span><span class="p">,</span> <span class="n">sdd_mean</span><span class="p">,</span> <span class="n">sid_std</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">pos_std</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+                         <span class="n">angle_std</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Generate random trajectory geometry for cone-beam CT.</span>
+
+<span class="sd">    Creates source and detector position matrices with random perturbations,</span>
+<span class="sd">    useful for testing reconstruction with non-ideal trajectories or for</span>
+<span class="sd">    simulating robotic C-arm systems with positioning uncertainties.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_views : int</span>
+<span class="sd">        Number of projection views.</span>
+<span class="sd">    sid_mean : float</span>
+<span class="sd">        Mean Source-to-Isocenter Distance, in physical units.</span>
+<span class="sd">    sdd_mean : float</span>
+<span class="sd">        Mean Source-to-Detector Distance, in physical units.</span>
+<span class="sd">    sid_std : float, optional</span>
+<span class="sd">        Standard deviation for SID variations (default: 0.0).</span>
+<span class="sd">    pos_std : float, optional</span>
+<span class="sd">        Standard deviation for random position offsets (default: 0.0).</span>
+<span class="sd">    angle_std : float, optional</span>
+<span class="sd">        Standard deviation for angular perturbations in radians (default: 0.0).</span>
+<span class="sd">    device : str or torch.device, optional</span>
+<span class="sd">        Device for tensors (default: 'cuda').</span>
+<span class="sd">    dtype : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float32).</span>
+<span class="sd">    seed : int, optional</span>
+<span class="sd">        Random seed for reproducibility (default: None). The noise comes from</span>
+<span class="sd">        a private generator, so the global PyTorch random state is unchanged.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    src_pos : torch.Tensor</span>
+<span class="sd">        Source positions, shape (n_views, 3).</span>
+<span class="sd">    det_center : torch.Tensor</span>
+<span class="sd">        Detector center positions, shape (n_views, 3).</span>
+<span class="sd">    det_u_vec : torch.Tensor</span>
+<span class="sd">        Detector u-direction unit vectors, shape (n_views, 3).</span>
+<span class="sd">    det_v_vec : torch.Tensor</span>
+<span class="sd">        Detector v-direction unit vectors, shape (n_views, 3).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; # Generate random trajectory with 10% SID variation and 5mm position noise</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec, det_v_vec = random_trajectory_3d(</span>
+<span class="sd">    ...     n_views=180, sid_mean=1000.0, sdd_mean=1500.0,</span>
+<span class="sd">    ...     sid_std=100.0, pos_std=5.0, seed=42, device='cuda'</span>
+<span class="sd">    ... )</span>
+<span class="sd">    """</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+
+    <span class="c1"># Start with circular trajectory</span>
+    <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">circular_trajectory_3d</span><span class="p">(</span>
+        <span class="n">n_views</span><span class="p">,</span> <span class="n">sid_mean</span><span class="p">,</span> <span class="n">sdd_mean</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Angle tensors override the requested device. Keep seeded draws on that</span>
+    <span class="c1"># device without changing any process-wide RNG state.</span>
+    <span class="n">generator</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">seed</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># No fallback stream: a different generator would change the values.</span>
+        <span class="n">generator</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Generator</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">src_pos</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="c1"># Match torch.manual_seed's conversion of bool, NumPy and tensor seeds.</span>
+        <span class="n">generator</span><span class="o">.</span><span class="n">manual_seed</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">seed</span><span class="p">))</span>
+
+    <span class="c1"># Add random perturbations</span>
+    <span class="k">if</span> <span class="n">sid_std</span> <span class="o">&gt;</span> <span class="mf">0.0</span><span class="p">:</span>
+        <span class="c1"># Random SID variations</span>
+        <span class="n">sid_perturbations</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">,</span> <span class="n">generator</span><span class="o">=</span><span class="n">generator</span><span class="p">)</span> <span class="o">*</span> <span class="n">sid_std</span>
+        <span class="n">sdd_perturbations</span> <span class="o">=</span> <span class="n">sid_perturbations</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span>  <span class="c1"># Keep SDD-SID distance approximately constant</span>
+
+        <span class="c1"># Compute angles from existing positions</span>
+        <span class="n">angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">atan2</span><span class="p">(</span><span class="o">-</span><span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">])</span>
+        <span class="n">cos_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+        <span class="n">sin_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+
+        <span class="c1"># Apply SID perturbations</span>
+        <span class="n">sid_actual</span> <span class="o">=</span> <span class="n">sid_mean</span> <span class="o">+</span> <span class="n">sid_perturbations</span>
+        <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">sid_actual</span> <span class="o">*</span> <span class="n">sin_angles</span>
+        <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sid_actual</span> <span class="o">*</span> <span class="n">cos_angles</span>
+
+        <span class="c1"># Apply SDD perturbations</span>
+        <span class="n">sdd_actual</span> <span class="o">=</span> <span class="n">sdd_mean</span> <span class="o">+</span> <span class="n">sdd_perturbations</span>
+        <span class="n">idd</span> <span class="o">=</span> <span class="n">sdd_actual</span> <span class="o">-</span> <span class="n">sid_actual</span>
+        <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">idd</span> <span class="o">*</span> <span class="n">sin_angles</span>
+        <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">idd</span> <span class="o">*</span> <span class="n">cos_angles</span>
+
+    <span class="k">if</span> <span class="n">pos_std</span> <span class="o">&gt;</span> <span class="mf">0.0</span><span class="p">:</span>
+        <span class="c1"># Random 3D position offsets</span>
+        <span class="n">src_pos</span> <span class="o">+=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">src_pos</span><span class="p">)</span><span class="o">.</span><span class="n">normal_</span><span class="p">(</span><span class="n">generator</span><span class="o">=</span><span class="n">generator</span><span class="p">)</span> <span class="o">*</span> <span class="n">pos_std</span>
+        <span class="n">det_center</span> <span class="o">+=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">det_center</span><span class="p">)</span><span class="o">.</span><span class="n">normal_</span><span class="p">(</span><span class="n">generator</span><span class="o">=</span><span class="n">generator</span><span class="p">)</span> <span class="o">*</span> <span class="n">pos_std</span>
+
+    <span class="k">if</span> <span class="n">angle_std</span> <span class="o">&gt;</span> <span class="mf">0.0</span><span class="p">:</span>
+        <span class="c1"># Random angular perturbations (rotate detector orientation)</span>
+        <span class="n">angle_perturbations</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">,</span> <span class="n">generator</span><span class="o">=</span><span class="n">generator</span><span class="p">)</span> <span class="o">*</span> <span class="n">angle_std</span>
+        <span class="n">cos_perturb</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">angle_perturbations</span><span class="p">)</span>
+        <span class="n">sin_perturb</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">angle_perturbations</span><span class="p">)</span>
+
+        <span class="c1"># Rotate u and v vectors</span>
+        <span class="n">u_new_x</span> <span class="o">=</span> <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">cos_perturb</span> <span class="o">-</span> <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">sin_perturb</span>
+        <span class="n">u_new_y</span> <span class="o">=</span> <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">sin_perturb</span> <span class="o">+</span> <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">cos_perturb</span>
+        <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">u_new_x</span>
+        <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">u_new_y</span>
+
+    <span class="c1"># Renormalize direction vectors to ensure they remain unit vectors</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">det_u_vec</span> <span class="o">/</span> <span class="n">torch</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">det_v_vec</span> <span class="o">/</span> <span class="n">torch</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">det_v_vec</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">_check_source_positions</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="s2">"random_trajectory_3d"</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span></div>
+
+
+
+<div class="viewcode-block" id="spiral_trajectory_3d">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.geometry.spiral_trajectory_3d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">spiral_trajectory_3d</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">sid</span><span class="p">,</span> <span class="n">sdd</span><span class="p">,</span> <span class="n">z_range</span><span class="o">=</span><span class="mf">100.0</span><span class="p">,</span> <span class="n">n_turns</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span>
+                        <span class="n">start_angle</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Generate spiral (helical) trajectory geometry for cone-beam CT.</span>
+
+<span class="sd">    Creates a helical trajectory where the source moves in a spiral pattern</span>
+<span class="sd">    around the z-axis, commonly used in helical CT scanners.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_views : int</span>
+<span class="sd">        Number of projection views.</span>
+<span class="sd">    sid : float</span>
+<span class="sd">        Source-to-Isocenter Distance (SID), in physical units.</span>
+<span class="sd">    sdd : float</span>
+<span class="sd">        Source-to-Detector Distance (SDD), in physical units.</span>
+<span class="sd">    z_range : float, optional</span>
+<span class="sd">        Total z-axis range covered during the spiral (default: 100.0).</span>
+<span class="sd">    n_turns : float, optional</span>
+<span class="sd">        Number of complete rotations (default: 2.0).</span>
+<span class="sd">    start_angle : float, optional</span>
+<span class="sd">        Starting angle in radians (default: 0.0).</span>
+<span class="sd">    device : str or torch.device, optional</span>
+<span class="sd">        Device for tensors (default: 'cuda').</span>
+<span class="sd">    dtype : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float32).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    src_pos : torch.Tensor</span>
+<span class="sd">        Source positions, shape (n_views, 3).</span>
+<span class="sd">    det_center : torch.Tensor</span>
+<span class="sd">        Detector center positions, shape (n_views, 3).</span>
+<span class="sd">    det_u_vec : torch.Tensor</span>
+<span class="sd">        Detector u-direction unit vectors, shape (n_views, 3).</span>
+<span class="sd">    det_v_vec : torch.Tensor</span>
+<span class="sd">        Detector v-direction unit vectors, shape (n_views, 3).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec, det_v_vec = spiral_trajectory_3d(</span>
+<span class="sd">    ...     n_views=360, sid=1000.0, sdd=1500.0, z_range=200.0, n_turns=3.0</span>
+<span class="sd">    ... )</span>
+<span class="sd">    """</span>
+    <span class="c1"># Generate angles for spiral motion</span>
+    <span class="n">end_angle</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">n_turns</span>
+    <span class="n">_check_n_views</span><span class="p">(</span><span class="n">n_views</span><span class="p">)</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="p">(</span><span class="n">end_angle</span> <span class="o">-</span> <span class="n">start_angle</span><span class="p">)</span> <span class="o">/</span> <span class="n">n_views</span>
+    <span class="n">angles</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span> <span class="o">*</span> <span class="n">step</span>
+
+    <span class="c1"># Generate z positions (linear motion along z-axis)</span>
+    <span class="n">z_positions</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="o">-</span><span class="n">z_range</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span> <span class="n">z_range</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Preallocate position matrices</span>
+    <span class="n">src_pos</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_center</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Compute trigonometric values</span>
+    <span class="n">cos_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+    <span class="n">sin_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+
+    <span class="c1"># Source rotates around z-axis with z-motion</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">sid</span> <span class="o">*</span> <span class="n">sin_angles</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sid</span> <span class="o">*</span> <span class="n">cos_angles</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">z_positions</span>
+
+    <span class="c1"># Detector center opposite to source</span>
+    <span class="n">idd</span> <span class="o">=</span> <span class="n">sdd</span> <span class="o">-</span> <span class="n">sid</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">idd</span> <span class="o">*</span> <span class="n">sin_angles</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">idd</span> <span class="o">*</span> <span class="n">cos_angles</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">z_positions</span>
+
+    <span class="c1"># Detector u-direction (tangent to rotation)</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">cos_angles</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sin_angles</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="c1"># Detector v-direction (vertical)</span>
+    <span class="n">det_v_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">det_v_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">det_v_vec</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+    <span class="k">return</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span></div>
+
+
+
+<div class="viewcode-block" id="sinusoidal_trajectory_3d">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.geometry.sinusoidal_trajectory_3d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">sinusoidal_trajectory_3d</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">sid</span><span class="p">,</span> <span class="n">sdd</span><span class="p">,</span> <span class="n">amplitude</span><span class="o">=</span><span class="mf">50.0</span><span class="p">,</span> <span class="n">frequency</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span>
+                            <span class="n">start_angle</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Generate sinusoidal trajectory geometry for cone-beam CT.</span>
+
+<span class="sd">    Creates a trajectory where the source follows a sinusoidal path in 3D space,</span>
+<span class="sd">    with radial oscillations as it rotates around the z-axis.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_views : int</span>
+<span class="sd">        Number of projection views.</span>
+<span class="sd">    sid : float</span>
+<span class="sd">        Mean Source-to-Isocenter Distance (SID), in physical units.</span>
+<span class="sd">    sdd : float</span>
+<span class="sd">        Source-to-Detector Distance (SDD), in physical units.</span>
+<span class="sd">    amplitude : float, optional</span>
+<span class="sd">        Amplitude of sinusoidal radial variation (default: 50.0).</span>
+<span class="sd">    frequency : float, optional</span>
+<span class="sd">        Number of oscillation cycles per full rotation (default: 2.0).</span>
+<span class="sd">    start_angle : float, optional</span>
+<span class="sd">        Starting angle in radians (default: 0.0).</span>
+<span class="sd">    device : str or torch.device, optional</span>
+<span class="sd">        Device for tensors (default: 'cuda').</span>
+<span class="sd">    dtype : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float32).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    src_pos : torch.Tensor</span>
+<span class="sd">        Source positions, shape (n_views, 3).</span>
+<span class="sd">    det_center : torch.Tensor</span>
+<span class="sd">        Detector center positions, shape (n_views, 3).</span>
+<span class="sd">    det_u_vec : torch.Tensor</span>
+<span class="sd">        Detector u-direction unit vectors, shape (n_views, 3).</span>
+<span class="sd">    det_v_vec : torch.Tensor</span>
+<span class="sd">        Detector v-direction unit vectors, shape (n_views, 3).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec, det_v_vec = sinusoidal_trajectory_3d(</span>
+<span class="sd">    ...     n_views=360, sid=1000.0, sdd=1500.0, amplitude=100.0, frequency=3.0</span>
+<span class="sd">    ... )</span>
+<span class="sd">    """</span>
+    <span class="c1"># Generate angles</span>
+    <span class="n">end_angle</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+    <span class="n">_check_n_views</span><span class="p">(</span><span class="n">n_views</span><span class="p">)</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="p">(</span><span class="n">end_angle</span> <span class="o">-</span> <span class="n">start_angle</span><span class="p">)</span> <span class="o">/</span> <span class="n">n_views</span>
+    <span class="n">angles</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span> <span class="o">*</span> <span class="n">step</span>
+
+    <span class="c1"># Compute sinusoidal radial variation</span>
+    <span class="n">radial_variation</span> <span class="o">=</span> <span class="n">amplitude</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">frequency</span> <span class="o">*</span> <span class="n">angles</span><span class="p">)</span>
+    <span class="n">sid_varying</span> <span class="o">=</span> <span class="n">sid</span> <span class="o">+</span> <span class="n">radial_variation</span>
+
+    <span class="c1"># Preallocate position matrices</span>
+    <span class="n">src_pos</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_center</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Compute trigonometric values</span>
+    <span class="n">cos_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+    <span class="n">sin_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+
+    <span class="c1"># Source with sinusoidal radial variation</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">sid_varying</span> <span class="o">*</span> <span class="n">sin_angles</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sid_varying</span> <span class="o">*</span> <span class="n">cos_angles</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="c1"># Detector center</span>
+    <span class="n">idd</span> <span class="o">=</span> <span class="n">sdd</span> <span class="o">-</span> <span class="n">sid_varying</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">idd</span> <span class="o">*</span> <span class="n">sin_angles</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">idd</span> <span class="o">*</span> <span class="n">cos_angles</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="c1"># Detector u-direction</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">cos_angles</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sin_angles</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="c1"># Detector v-direction</span>
+    <span class="n">det_v_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">det_v_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">det_v_vec</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+    <span class="k">return</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span></div>
+
+
+
+<div class="viewcode-block" id="saddle_trajectory_3d">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.geometry.saddle_trajectory_3d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">saddle_trajectory_3d</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">sid</span><span class="p">,</span> <span class="n">sdd</span><span class="p">,</span> <span class="n">z_amplitude</span><span class="o">=</span><span class="mf">50.0</span><span class="p">,</span> <span class="n">radial_amplitude</span><span class="o">=</span><span class="mf">30.0</span><span class="p">,</span>
+                        <span class="n">start_angle</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Generate saddle-shaped trajectory geometry for cone-beam CT.</span>
+
+<span class="sd">    The source height varies with ``cos(2 * angle)`` and its radius varies</span>
+<span class="sd">    with ``sin(2 * angle)``.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_views : int</span>
+<span class="sd">        Number of projection views.</span>
+<span class="sd">    sid : float</span>
+<span class="sd">        Mean Source-to-Isocenter Distance (SID), in physical units.</span>
+<span class="sd">    sdd : float</span>
+<span class="sd">        Source-to-Detector Distance (SDD), in physical units.</span>
+<span class="sd">    z_amplitude : float, optional</span>
+<span class="sd">        Amplitude of z-axis variation (default: 50.0).</span>
+<span class="sd">    radial_amplitude : float, optional</span>
+<span class="sd">        Amplitude of radial variation (default: 30.0).</span>
+<span class="sd">    start_angle : float, optional</span>
+<span class="sd">        Starting angle in radians (default: 0.0).</span>
+<span class="sd">    device : str or torch.device, optional</span>
+<span class="sd">        Device for tensors (default: 'cuda').</span>
+<span class="sd">    dtype : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float32).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    src_pos : torch.Tensor</span>
+<span class="sd">        Source positions, shape (n_views, 3).</span>
+<span class="sd">    det_center : torch.Tensor</span>
+<span class="sd">        Detector center positions, shape (n_views, 3).</span>
+<span class="sd">    det_u_vec : torch.Tensor</span>
+<span class="sd">        Detector u-direction unit vectors, shape (n_views, 3).</span>
+<span class="sd">    det_v_vec : torch.Tensor</span>
+<span class="sd">        Detector v-direction unit vectors, shape (n_views, 3).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec, det_v_vec = saddle_trajectory_3d(</span>
+<span class="sd">    ...     n_views=360, sid=1000.0, sdd=1500.0, z_amplitude=80.0, radial_amplitude=50.0</span>
+<span class="sd">    ... )</span>
+<span class="sd">    """</span>
+    <span class="c1"># Generate angles</span>
+    <span class="n">end_angle</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+    <span class="n">_check_n_views</span><span class="p">(</span><span class="n">n_views</span><span class="p">)</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="p">(</span><span class="n">end_angle</span> <span class="o">-</span> <span class="n">start_angle</span><span class="p">)</span> <span class="o">/</span> <span class="n">n_views</span>
+    <span class="n">angles</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span> <span class="o">*</span> <span class="n">step</span>
+
+    <span class="c1"># Saddle surface: z varies with cos(2*theta), radius varies with sin(2*theta)</span>
+    <span class="n">z_positions</span> <span class="o">=</span> <span class="n">z_amplitude</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">angles</span><span class="p">)</span>
+    <span class="n">radial_variation</span> <span class="o">=</span> <span class="n">radial_amplitude</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">angles</span><span class="p">)</span>
+    <span class="n">sid_varying</span> <span class="o">=</span> <span class="n">sid</span> <span class="o">+</span> <span class="n">radial_variation</span>
+
+    <span class="c1"># Preallocate position matrices</span>
+    <span class="n">src_pos</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_center</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Compute trigonometric values</span>
+    <span class="n">cos_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+    <span class="n">sin_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+
+    <span class="c1"># Source with saddle shape</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">sid_varying</span> <span class="o">*</span> <span class="n">sin_angles</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sid_varying</span> <span class="o">*</span> <span class="n">cos_angles</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">z_positions</span>
+
+    <span class="c1"># Detector center</span>
+    <span class="n">idd</span> <span class="o">=</span> <span class="n">sdd</span> <span class="o">-</span> <span class="n">sid_varying</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">idd</span> <span class="o">*</span> <span class="n">sin_angles</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">idd</span> <span class="o">*</span> <span class="n">cos_angles</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">z_positions</span>
+
+    <span class="c1"># Detector u-direction</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">cos_angles</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sin_angles</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="c1"># Detector v-direction</span>
+    <span class="n">det_v_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">det_v_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">det_v_vec</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+    <span class="k">return</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span></div>
+
+
+
+<div class="viewcode-block" id="custom_trajectory_3d">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.geometry.custom_trajectory_3d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">custom_trajectory_3d</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">sid</span><span class="p">,</span> <span class="n">sdd</span><span class="p">,</span>
+                        <span class="n">source_path_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">],</span>
+                        <span class="n">start_angle</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Generate custom trajectory geometry for cone-beam CT using user-defined function.</span>
+
+<span class="sd">    Creates a trajectory based on a user-provided function that defines the source</span>
+<span class="sd">    position as a function of angle and SID.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_views : int</span>
+<span class="sd">        Number of projection views.</span>
+<span class="sd">    sid : float</span>
+<span class="sd">        Source-to-Isocenter Distance (SID), in physical units.</span>
+<span class="sd">    sdd : float</span>
+<span class="sd">        Source-to-Detector Distance (SDD), in physical units.</span>
+<span class="sd">    source_path_fn : Callable[[torch.Tensor, float], torch.Tensor]</span>
+<span class="sd">        Function that takes (angles, sid) and returns source positions (n_views, 3).</span>
+<span class="sd">        The function signature should be: f(angles: torch.Tensor, sid: float) -&gt; torch.Tensor</span>
+<span class="sd">        where angles has shape (n_views,) and output has shape (n_views, 3).</span>
+<span class="sd">    start_angle : float, optional</span>
+<span class="sd">        Starting angle in radians (default: 0.0).</span>
+<span class="sd">    device : str or torch.device, optional</span>
+<span class="sd">        Device for tensors (default: 'cuda').</span>
+<span class="sd">    dtype : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float32).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    src_pos : torch.Tensor</span>
+<span class="sd">        Source positions, shape (n_views, 3).</span>
+<span class="sd">    det_center : torch.Tensor</span>
+<span class="sd">        Detector center positions, shape (n_views, 3).</span>
+<span class="sd">    det_u_vec : torch.Tensor</span>
+<span class="sd">        Detector u-direction unit vectors, shape (n_views, 3).</span>
+<span class="sd">    det_v_vec : torch.Tensor</span>
+<span class="sd">        Detector v-direction unit vectors, shape (n_views, 3).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; # Circular orbit with a two-lobe (figure-8) vertical motion</span>
+<span class="sd">    &gt;&gt;&gt; def figure8_path(angles, sid):</span>
+<span class="sd">    ...     src_pos = torch.zeros((len(angles), 3), device=angles.device, dtype=angles.dtype)</span>
+<span class="sd">    ...     src_pos[:, 0] = -sid * torch.sin(angles)</span>
+<span class="sd">    ...     src_pos[:, 1] = sid * torch.cos(angles)</span>
+<span class="sd">    ...     src_pos[:, 2] = 50 * torch.sin(2 * angles)</span>
+<span class="sd">    ...     return src_pos</span>
+<span class="sd">    &gt;&gt;&gt;</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec, det_v_vec = custom_trajectory_3d(</span>
+<span class="sd">    ...     n_views=360, sid=1000.0, sdd=1500.0, source_path_fn=figure8_path</span>
+<span class="sd">    ... )</span>
+<span class="sd">    """</span>
+    <span class="c1"># Generate angles</span>
+    <span class="n">end_angle</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+    <span class="n">_check_n_views</span><span class="p">(</span><span class="n">n_views</span><span class="p">)</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="p">(</span><span class="n">end_angle</span> <span class="o">-</span> <span class="n">start_angle</span><span class="p">)</span> <span class="o">/</span> <span class="n">n_views</span>
+    <span class="n">angles</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span> <span class="o">*</span> <span class="n">step</span>
+
+    <span class="c1"># Get source positions from user-defined function</span>
+    <span class="n">src_pos</span> <span class="o">=</span> <span class="n">source_path_fn</span><span class="p">(</span><span class="n">angles</span><span class="p">,</span> <span class="n">sid</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">src_pos</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">3</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"source_path_fn must return tensor of shape (</span><span class="si">{</span><span class="n">n_views</span><span class="si">}</span><span class="s2">, 3), "</span>
+                        <span class="sa">f</span><span class="s2">"got </span><span class="si">{</span><span class="n">src_pos</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="n">_check_source_positions</span><span class="p">(</span><span class="n">src_pos</span><span class="p">)</span>
+
+    <span class="c1"># Keep the entire frame in the source-path autograd graph. Constructing</span>
+    <span class="c1"># tensors from scalar tensors detaches them; rewriting view slices in</span>
+    <span class="c1"># place also invalidates tensors saved by cross/norm for backward.</span>
+    <span class="n">src_unit</span> <span class="o">=</span> <span class="n">src_pos</span> <span class="o">/</span> <span class="n">torch</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">vector_norm</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">det_center</span> <span class="o">=</span> <span class="n">src_pos</span> <span class="o">-</span> <span class="n">sdd</span> <span class="o">*</span> <span class="n">src_unit</span>
+    <span class="n">u_unnorm</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">((</span><span class="o">-</span><span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span>
+                            <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">])),</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">along_z</span> <span class="o">=</span> <span class="p">(</span><span class="n">src_pos</span><span class="p">[:,</span> <span class="p">:</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">1e-6</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">u_unnorm</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">along_z</span><span class="p">,</span> <span class="n">src_pos</span><span class="o">.</span><span class="n">new_tensor</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]),</span> <span class="n">u_unnorm</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">u_unnorm</span> <span class="o">/</span> <span class="n">torch</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">vector_norm</span><span class="p">(</span><span class="n">u_unnorm</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">src_unit</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">det_v_vec</span> <span class="o">/</span> <span class="n">torch</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">vector_norm</span><span class="p">(</span><span class="n">det_v_vec</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span></div>
+
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># 2D Fan Beam Trajectory Generation Functions</span>
+<span class="c1"># ============================================================================</span>
+
+<div class="viewcode-block" id="circular_trajectory_2d_fan">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.geometry.circular_trajectory_2d_fan">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">circular_trajectory_2d_fan</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">sid</span><span class="p">,</span> <span class="n">sdd</span><span class="p">,</span> <span class="n">start_angle</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">end_angle</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Generate circular trajectory geometry for 2D fan-beam CT.</span>
+
+<span class="sd">    Creates source and detector position matrices for a standard circular</span>
+<span class="sd">    orbit around the origin, commonly used in 2D fan-beam CT imaging.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_views : int or torch.Tensor</span>
+<span class="sd">        Number of projection views, or a nonempty finite floating angle vector</span>
+<span class="sd">        in radians. Angle tensors preserve their dtype, device and autograd graph.</span>
+<span class="sd">    sid : float</span>
+<span class="sd">        Source-to-Isocenter Distance (SID), in physical units.</span>
+<span class="sd">    sdd : float</span>
+<span class="sd">        Source-to-Detector Distance (SDD), in physical units.</span>
+<span class="sd">    start_angle : float, optional</span>
+<span class="sd">        Starting angle in radians (default: 0.0).</span>
+<span class="sd">    end_angle : float, optional</span>
+<span class="sd">        Ending angle in radians (default: 2*pi, full rotation).</span>
+<span class="sd">    device : str or torch.device, optional</span>
+<span class="sd">        Device for tensors (default: 'cuda').</span>
+<span class="sd">    dtype : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float32).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    src_pos : torch.Tensor</span>
+<span class="sd">        Source positions, shape (n_views, 2).</span>
+<span class="sd">    det_center : torch.Tensor</span>
+<span class="sd">        Detector center positions, shape (n_views, 2).</span>
+<span class="sd">    det_u_vec : torch.Tensor</span>
+<span class="sd">        Detector u-direction unit vectors, shape (n_views, 2).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec = circular_trajectory_2d_fan(</span>
+<span class="sd">    ...     n_views=360, sid=1000.0, sdd=1500.0, device='cuda'</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; print(src_pos.shape)  # (360, 2)</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">end_angle</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">end_angle</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+
+    <span class="c1"># Generate angles</span>
+    <span class="n">angles</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">dtype</span> <span class="o">=</span> <span class="n">_circular_angles</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">start_angle</span><span class="p">,</span> <span class="n">end_angle</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Preallocate position matrices</span>
+    <span class="n">src_pos</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_center</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Compute trigonometric values</span>
+    <span class="n">cos_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+    <span class="n">sin_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+
+    <span class="c1"># Source rotates around isocenter at distance sid</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">sid</span> <span class="o">*</span> <span class="n">sin_angles</span>  <span class="c1"># x</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sid</span> <span class="o">*</span> <span class="n">cos_angles</span>   <span class="c1"># y</span>
+
+    <span class="c1"># Detector center is opposite to source at distance (sdd - sid) from isocenter</span>
+    <span class="n">idd</span> <span class="o">=</span> <span class="n">sdd</span> <span class="o">-</span> <span class="n">sid</span>  <span class="c1"># Isocenter-to-Detector Distance</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">idd</span> <span class="o">*</span> <span class="n">sin_angles</span>   <span class="c1"># x</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">idd</span> <span class="o">*</span> <span class="n">cos_angles</span>  <span class="c1"># y</span>
+
+    <span class="c1"># Detector u-direction (tangent to rotation)</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">cos_angles</span>   <span class="c1"># x</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sin_angles</span>   <span class="c1"># y</span>
+
+    <span class="k">return</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span></div>
+
+
+
+<div class="viewcode-block" id="sinusoidal_trajectory_2d_fan">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.geometry.sinusoidal_trajectory_2d_fan">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">sinusoidal_trajectory_2d_fan</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">sid</span><span class="p">,</span> <span class="n">sdd</span><span class="p">,</span> <span class="n">amplitude</span><span class="o">=</span><span class="mf">50.0</span><span class="p">,</span> <span class="n">frequency</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span>
+                                 <span class="n">start_angle</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Generate sinusoidal trajectory geometry for 2D fan-beam CT.</span>
+
+<span class="sd">    Creates a trajectory where the source follows a sinusoidal path,</span>
+<span class="sd">    with radial oscillations as it rotates around the origin.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_views : int</span>
+<span class="sd">        Number of projection views.</span>
+<span class="sd">    sid : float</span>
+<span class="sd">        Mean Source-to-Isocenter Distance (SID), in physical units.</span>
+<span class="sd">    sdd : float</span>
+<span class="sd">        Source-to-Detector Distance (SDD), in physical units.</span>
+<span class="sd">    amplitude : float, optional</span>
+<span class="sd">        Amplitude of sinusoidal radial variation (default: 50.0).</span>
+<span class="sd">    frequency : float, optional</span>
+<span class="sd">        Number of oscillation cycles per full rotation (default: 2.0).</span>
+<span class="sd">    start_angle : float, optional</span>
+<span class="sd">        Starting angle in radians (default: 0.0).</span>
+<span class="sd">    device : str or torch.device, optional</span>
+<span class="sd">        Device for tensors (default: 'cuda').</span>
+<span class="sd">    dtype : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float32).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    src_pos : torch.Tensor</span>
+<span class="sd">        Source positions, shape (n_views, 2).</span>
+<span class="sd">    det_center : torch.Tensor</span>
+<span class="sd">        Detector center positions, shape (n_views, 2).</span>
+<span class="sd">    det_u_vec : torch.Tensor</span>
+<span class="sd">        Detector u-direction unit vectors, shape (n_views, 2).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec = sinusoidal_trajectory_2d_fan(</span>
+<span class="sd">    ...     n_views=360, sid=1000.0, sdd=1500.0, amplitude=100.0, frequency=3.0</span>
+<span class="sd">    ... )</span>
+<span class="sd">    """</span>
+    <span class="c1"># Generate angles</span>
+    <span class="n">end_angle</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+    <span class="n">_check_n_views</span><span class="p">(</span><span class="n">n_views</span><span class="p">)</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="p">(</span><span class="n">end_angle</span> <span class="o">-</span> <span class="n">start_angle</span><span class="p">)</span> <span class="o">/</span> <span class="n">n_views</span>
+    <span class="n">angles</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span> <span class="o">*</span> <span class="n">step</span>
+
+    <span class="c1"># Compute sinusoidal radial variation</span>
+    <span class="n">radial_variation</span> <span class="o">=</span> <span class="n">amplitude</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">frequency</span> <span class="o">*</span> <span class="n">angles</span><span class="p">)</span>
+    <span class="n">sid_varying</span> <span class="o">=</span> <span class="n">sid</span> <span class="o">+</span> <span class="n">radial_variation</span>
+
+    <span class="c1"># Preallocate position matrices</span>
+    <span class="n">src_pos</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_center</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Compute trigonometric values</span>
+    <span class="n">cos_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+    <span class="n">sin_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+
+    <span class="c1"># Source with sinusoidal radial variation</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">sid_varying</span> <span class="o">*</span> <span class="n">sin_angles</span>
+    <span class="n">src_pos</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sid_varying</span> <span class="o">*</span> <span class="n">cos_angles</span>
+
+    <span class="c1"># Detector center</span>
+    <span class="n">idd</span> <span class="o">=</span> <span class="n">sdd</span> <span class="o">-</span> <span class="n">sid_varying</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">idd</span> <span class="o">*</span> <span class="n">sin_angles</span>
+    <span class="n">det_center</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">idd</span> <span class="o">*</span> <span class="n">cos_angles</span>
+
+    <span class="c1"># Detector u-direction</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">cos_angles</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sin_angles</span>
+
+    <span class="k">return</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span></div>
+
+
+
+<div class="viewcode-block" id="custom_trajectory_2d_fan">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.geometry.custom_trajectory_2d_fan">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">custom_trajectory_2d_fan</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">sid</span><span class="p">,</span> <span class="n">sdd</span><span class="p">,</span>
+                             <span class="n">source_path_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">],</span>
+                             <span class="n">start_angle</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Generate custom trajectory geometry for 2D fan-beam CT using user-defined function.</span>
+
+<span class="sd">    Creates a trajectory based on a user-provided function that defines the source</span>
+<span class="sd">    position as a function of angle and SID.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_views : int</span>
+<span class="sd">        Number of projection views.</span>
+<span class="sd">    sid : float</span>
+<span class="sd">        Source-to-Isocenter Distance (SID), in physical units.</span>
+<span class="sd">    sdd : float</span>
+<span class="sd">        Source-to-Detector Distance (SDD), in physical units.</span>
+<span class="sd">    source_path_fn : Callable[[torch.Tensor, float], torch.Tensor]</span>
+<span class="sd">        Function that takes (angles, sid) and returns source positions (n_views, 2).</span>
+<span class="sd">        The function signature should be: f(angles: torch.Tensor, sid: float) -&gt; torch.Tensor</span>
+<span class="sd">        where angles has shape (n_views,) and output has shape (n_views, 2).</span>
+<span class="sd">    start_angle : float, optional</span>
+<span class="sd">        Starting angle in radians (default: 0.0).</span>
+<span class="sd">    device : str or torch.device, optional</span>
+<span class="sd">        Device for tensors (default: 'cuda').</span>
+<span class="sd">    dtype : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float32).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    src_pos : torch.Tensor</span>
+<span class="sd">        Source positions, shape (n_views, 2).</span>
+<span class="sd">    det_center : torch.Tensor</span>
+<span class="sd">        Detector center positions, shape (n_views, 2).</span>
+<span class="sd">    det_u_vec : torch.Tensor</span>
+<span class="sd">        Detector u-direction unit vectors, shape (n_views, 2).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; # Define a custom elliptical trajectory</span>
+<span class="sd">    &gt;&gt;&gt; def ellipse_path(angles, sid):</span>
+<span class="sd">    ...     src_pos = torch.zeros((len(angles), 2), device=angles.device, dtype=angles.dtype)</span>
+<span class="sd">    ...     src_pos[:, 0] = -sid * 1.5 * torch.sin(angles)  # wider in x</span>
+<span class="sd">    ...     src_pos[:, 1] = sid * torch.cos(angles)</span>
+<span class="sd">    ...     return src_pos</span>
+<span class="sd">    &gt;&gt;&gt;</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec = custom_trajectory_2d_fan(</span>
+<span class="sd">    ...     n_views=360, sid=1000.0, sdd=1500.0, source_path_fn=ellipse_path</span>
+<span class="sd">    ... )</span>
+<span class="sd">    """</span>
+    <span class="c1"># Generate angles</span>
+    <span class="n">end_angle</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+    <span class="n">_check_n_views</span><span class="p">(</span><span class="n">n_views</span><span class="p">)</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="p">(</span><span class="n">end_angle</span> <span class="o">-</span> <span class="n">start_angle</span><span class="p">)</span> <span class="o">/</span> <span class="n">n_views</span>
+    <span class="n">angles</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span> <span class="o">*</span> <span class="n">step</span>
+
+    <span class="c1"># Get source positions from user-defined function</span>
+    <span class="n">src_pos</span> <span class="o">=</span> <span class="n">source_path_fn</span><span class="p">(</span><span class="n">angles</span><span class="p">,</span> <span class="n">sid</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">src_pos</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"source_path_fn must return tensor of shape (</span><span class="si">{</span><span class="n">n_views</span><span class="si">}</span><span class="s2">, 2), "</span>
+                        <span class="sa">f</span><span class="s2">"got </span><span class="si">{</span><span class="n">src_pos</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="n">_check_source_positions</span><span class="p">(</span><span class="n">src_pos</span><span class="p">)</span>
+
+    <span class="c1"># Preallocate remaining position matrices</span>
+    <span class="n">det_center</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># For each view, compute detector position and orientation</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_views</span><span class="p">):</span>
+        <span class="c1"># Vector from isocenter to source</span>
+        <span class="n">src_vec</span> <span class="o">=</span> <span class="n">src_pos</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">src_vec_norm</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">src_vec</span><span class="p">)</span>
+        <span class="n">src_unit</span> <span class="o">=</span> <span class="n">src_vec</span> <span class="o">/</span> <span class="n">src_vec_norm</span>
+
+        <span class="c1"># Detector center is opposite to source</span>
+        <span class="n">det_center</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">src_unit</span> <span class="o">*</span> <span class="p">(</span><span class="n">sdd</span> <span class="o">-</span> <span class="n">src_vec_norm</span><span class="p">)</span>
+
+        <span class="c1"># Detector u-direction: perpendicular to source direction (rotate 90 degrees)</span>
+        <span class="n">det_u_vec</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">src_unit</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># perpendicular: (-y, x)</span>
+        <span class="n">det_u_vec</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">src_unit</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span></div>
+
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># 2D Parallel Beam Trajectory Generation Functions</span>
+<span class="c1"># ============================================================================</span>
+
+<div class="viewcode-block" id="circular_trajectory_2d_parallel">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.geometry.circular_trajectory_2d_parallel">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">circular_trajectory_2d_parallel</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">detector_distance</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">start_angle</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">end_angle</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                                   <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Generate circular trajectory geometry for 2D parallel-beam CT.</span>
+
+<span class="sd">    Creates ray direction and detector position matrices for a standard circular</span>
+<span class="sd">    scanning geometry, commonly used in 2D parallel-beam CT imaging.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_views : int or torch.Tensor</span>
+<span class="sd">        Number of projection views, or a nonempty finite floating angle vector</span>
+<span class="sd">        in radians. Angle tensors preserve their dtype, device and autograd graph.</span>
+<span class="sd">    detector_distance : float, optional</span>
+<span class="sd">        Transverse detector-origin offset along ``det_u`` (default: 0.0).</span>
+<span class="sd">    start_angle : float, optional</span>
+<span class="sd">        Starting angle in radians (default: 0.0).</span>
+<span class="sd">    end_angle : float, optional</span>
+<span class="sd">        Ending angle in radians (default: pi, half rotation for parallel beam).</span>
+<span class="sd">    device : str or torch.device, optional</span>
+<span class="sd">        Device for tensors (default: 'cuda').</span>
+<span class="sd">    dtype : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float32).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ray_dir : torch.Tensor</span>
+<span class="sd">        Ray direction unit vectors for each view, shape (n_views, 2).</span>
+<span class="sd">    det_origin : torch.Tensor</span>
+<span class="sd">        Detector origin positions for each view, shape (n_views, 2).</span>
+<span class="sd">    det_u_vec : torch.Tensor</span>
+<span class="sd">        Detector u-direction unit vectors for each view, shape (n_views, 2).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; ray_dir, det_origin, det_u_vec = circular_trajectory_2d_parallel(</span>
+<span class="sd">    ...     n_views=180, device='cuda'</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; print(ray_dir.shape)  # (180, 2)</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">end_angle</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">end_angle</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>  <span class="c1"># Half rotation for parallel beam</span>
+
+    <span class="c1"># Generate angles</span>
+    <span class="n">angles</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">dtype</span> <span class="o">=</span> <span class="n">_circular_angles</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">start_angle</span><span class="p">,</span> <span class="n">end_angle</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Preallocate position matrices</span>
+    <span class="n">ray_dir</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_origin</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Compute trigonometric values</span>
+    <span class="n">cos_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+    <span class="n">sin_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+
+    <span class="c1"># Ray direction: perpendicular to detector</span>
+    <span class="n">ray_dir</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">cos_angles</span>
+    <span class="n">ray_dir</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sin_angles</span>
+
+    <span class="c1"># Detector origin: offset from isocenter perpendicular to ray direction</span>
+    <span class="n">det_origin</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">detector_distance</span> <span class="o">*</span> <span class="n">sin_angles</span>
+    <span class="n">det_origin</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">detector_distance</span> <span class="o">*</span> <span class="n">cos_angles</span>
+
+    <span class="c1"># Detector u-direction: tangent to rotation (perpendicular to ray)</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">sin_angles</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">cos_angles</span>
+
+    <span class="k">return</span> <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span></div>
+
+
+
+<div class="viewcode-block" id="sinusoidal_trajectory_2d_parallel">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.geometry.sinusoidal_trajectory_2d_parallel">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">sinusoidal_trajectory_2d_parallel</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">amplitude</span><span class="o">=</span><span class="mf">50.0</span><span class="p">,</span> <span class="n">frequency</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span>
+                                     <span class="n">start_angle</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Generate sinusoidal trajectory geometry for 2D parallel-beam CT.</span>
+
+<span class="sd">    Creates a trajectory where the detector follows a sinusoidal path</span>
+<span class="sd">    while maintaining parallel rays.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_views : int</span>
+<span class="sd">        Number of projection views.</span>
+<span class="sd">    amplitude : float, optional</span>
+<span class="sd">        Amplitude of sinusoidal detector displacement (default: 50.0).</span>
+<span class="sd">    frequency : float, optional</span>
+<span class="sd">        Number of oscillation cycles per rotation (default: 2.0).</span>
+<span class="sd">    start_angle : float, optional</span>
+<span class="sd">        Starting angle in radians (default: 0.0).</span>
+<span class="sd">    device : str or torch.device, optional</span>
+<span class="sd">        Device for tensors (default: 'cuda').</span>
+<span class="sd">    dtype : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float32).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ray_dir : torch.Tensor</span>
+<span class="sd">        Ray direction unit vectors for each view, shape (n_views, 2).</span>
+<span class="sd">    det_origin : torch.Tensor</span>
+<span class="sd">        Detector origin positions for each view, shape (n_views, 2).</span>
+<span class="sd">    det_u_vec : torch.Tensor</span>
+<span class="sd">        Detector u-direction unit vectors for each view, shape (n_views, 2).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; ray_dir, det_origin, det_u_vec = sinusoidal_trajectory_2d_parallel(</span>
+<span class="sd">    ...     n_views=180, amplitude=100.0, frequency=3.0</span>
+<span class="sd">    ... )</span>
+<span class="sd">    """</span>
+    <span class="c1"># Generate angles</span>
+    <span class="n">end_angle</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+    <span class="n">_check_n_views</span><span class="p">(</span><span class="n">n_views</span><span class="p">)</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="p">(</span><span class="n">end_angle</span> <span class="o">-</span> <span class="n">start_angle</span><span class="p">)</span> <span class="o">/</span> <span class="n">n_views</span>
+    <span class="n">angles</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span> <span class="o">*</span> <span class="n">step</span>
+
+    <span class="c1"># Compute sinusoidal detector displacement</span>
+    <span class="n">detector_offset</span> <span class="o">=</span> <span class="n">amplitude</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">frequency</span> <span class="o">*</span> <span class="n">angles</span><span class="p">)</span>
+
+    <span class="c1"># Preallocate position matrices</span>
+    <span class="n">ray_dir</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_origin</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="c1"># Compute trigonometric values</span>
+    <span class="n">cos_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+    <span class="n">sin_angles</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+
+    <span class="c1"># Ray direction: perpendicular to detector</span>
+    <span class="n">ray_dir</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">cos_angles</span>
+    <span class="n">ray_dir</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sin_angles</span>
+
+    <span class="c1"># Detector origin with sinusoidal offset</span>
+    <span class="n">det_origin</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">detector_offset</span> <span class="o">*</span> <span class="n">sin_angles</span>
+    <span class="n">det_origin</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">detector_offset</span> <span class="o">*</span> <span class="n">cos_angles</span>
+
+    <span class="c1"># Detector u-direction: tangent to rotation</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">sin_angles</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">cos_angles</span>
+
+    <span class="k">return</span> <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span></div>
+
+
+
+<div class="viewcode-block" id="custom_trajectory_2d_parallel">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.geometry.custom_trajectory_2d_parallel">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">custom_trajectory_2d_parallel</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span>
+                                  <span class="n">ray_dir_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">],</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">],</span>
+                                  <span class="n">det_origin_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">],</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">],</span>
+                                  <span class="n">start_angle</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Generate custom trajectory geometry for 2D parallel-beam CT using user-defined functions.</span>
+
+<span class="sd">    Creates a trajectory based on user-provided functions that define the ray</span>
+<span class="sd">    direction and detector origin as functions of angle.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_views : int</span>
+<span class="sd">        Number of projection views.</span>
+<span class="sd">    ray_dir_fn : Callable[[torch.Tensor], torch.Tensor]</span>
+<span class="sd">        Function that takes angles and returns ray directions (n_views, 2).</span>
+<span class="sd">    det_origin_fn : Callable[[torch.Tensor], torch.Tensor]</span>
+<span class="sd">        Function that takes angles and returns detector origins (n_views, 2).</span>
+<span class="sd">    start_angle : float, optional</span>
+<span class="sd">        Starting angle in radians (default: 0.0).</span>
+<span class="sd">    device : str or torch.device, optional</span>
+<span class="sd">        Device for tensors (default: 'cuda').</span>
+<span class="sd">    dtype : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float32).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ray_dir : torch.Tensor</span>
+<span class="sd">        Ray direction unit vectors for each view, shape (n_views, 2).</span>
+<span class="sd">    det_origin : torch.Tensor</span>
+<span class="sd">        Detector origin positions for each view, shape (n_views, 2).</span>
+<span class="sd">    det_u_vec : torch.Tensor</span>
+<span class="sd">        Detector u-direction unit vectors for each view, shape (n_views, 2).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; # Define custom trajectory functions</span>
+<span class="sd">    &gt;&gt;&gt; def ray_dirs(angles):</span>
+<span class="sd">    ...     dirs = torch.zeros((len(angles), 2), device=angles.device, dtype=angles.dtype)</span>
+<span class="sd">    ...     dirs[:, 0] = torch.cos(angles)</span>
+<span class="sd">    ...     dirs[:, 1] = torch.sin(angles)</span>
+<span class="sd">    ...     return dirs</span>
+<span class="sd">    &gt;&gt;&gt;</span>
+<span class="sd">    &gt;&gt;&gt; def det_origins(angles):</span>
+<span class="sd">    ...     origins = torch.zeros((len(angles), 2), device=angles.device, dtype=angles.dtype)</span>
+<span class="sd">    ...     return origins</span>
+<span class="sd">    &gt;&gt;&gt;</span>
+<span class="sd">    &gt;&gt;&gt; ray_dir, det_origin, det_u_vec = custom_trajectory_2d_parallel(</span>
+<span class="sd">    ...     n_views=180, ray_dir_fn=ray_dirs, det_origin_fn=det_origins</span>
+<span class="sd">    ... )</span>
+<span class="sd">    """</span>
+    <span class="c1"># Generate angles</span>
+    <span class="n">end_angle</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+    <span class="n">_check_n_views</span><span class="p">(</span><span class="n">n_views</span><span class="p">)</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="p">(</span><span class="n">end_angle</span> <span class="o">-</span> <span class="n">start_angle</span><span class="p">)</span> <span class="o">/</span> <span class="n">n_views</span>
+    <span class="n">angles</span> <span class="o">=</span> <span class="n">start_angle</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span> <span class="o">*</span> <span class="n">step</span>
+
+    <span class="c1"># Get ray directions and detector origins from user-defined functions</span>
+    <span class="n">ray_dir</span> <span class="o">=</span> <span class="n">ray_dir_fn</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+    <span class="n">det_origin</span> <span class="o">=</span> <span class="n">det_origin_fn</span><span class="p">(</span><span class="n">angles</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">ray_dir</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"ray_dir_fn must return tensor of shape (</span><span class="si">{</span><span class="n">n_views</span><span class="si">}</span><span class="s2">, 2), "</span>
+                        <span class="sa">f</span><span class="s2">"got </span><span class="si">{</span><span class="n">ray_dir</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">det_origin</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"det_origin_fn must return tensor of shape (</span><span class="si">{</span><span class="n">n_views</span><span class="si">}</span><span class="s2">, 2), "</span>
+                        <span class="sa">f</span><span class="s2">"got </span><span class="si">{</span><span class="n">det_origin</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="c1"># Reject degenerate directions before normalization turns them into NaN</span>
+    <span class="n">_check_ray_directions</span><span class="p">(</span><span class="n">ray_dir</span><span class="p">)</span>
+
+    <span class="c1"># Normalize ray directions</span>
+    <span class="n">ray_dir</span> <span class="o">=</span> <span class="n">ray_dir</span> <span class="o">/</span> <span class="n">torch</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">ray_dir</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># Detector u-direction: perpendicular to ray direction (rotate 90 degrees)</span>
+    <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">ray_dir</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span>  <span class="c1"># perpendicular: (-y, x)</span>
+    <span class="n">det_u_vec</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">ray_dir</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Linda-Sophie Schneider; upstream diffct (c) Yipeng Sun.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

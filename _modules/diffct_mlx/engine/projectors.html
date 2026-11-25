@@ -1,0 +1,1175 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>diffct_mlx.engine.projectors &mdash; DiffCT-MLX 3.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=acc74ff5"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            DiffCT-MLX
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../migration.html">Migrating from 2.x to 3.0</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples.html">Examples</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">DiffCT-MLX</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">diffct_mlx.engine.projectors</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for diffct_mlx.engine.projectors</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""PyTorch autograd functions for CT projections.</span>
+
+<span class="sd">This module contains PyTorch autograd Function classes that wrap CUDA kernels</span>
+<span class="sd">for differentiable CT forward projection and backprojection operations.</span>
+<span class="sd">"""</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.chunking</span><span class="w"> </span><span class="kn">import</span> <span class="n">_BEAMS_3D</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">_DTYPE</span><span class="p">,</span> <span class="n">_native_spacing</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">kernels</span> <span class="k">as</span> <span class="n">_kernels</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DeviceManager</span><span class="p">,</span>
+    <span class="n">TorchCUDABridge</span><span class="p">,</span>
+    <span class="n">_get_numba_external_stream_for</span><span class="p">,</span>
+    <span class="n">_on_device_of</span><span class="p">,</span>
+    <span class="n">_trig_tables</span><span class="p">,</span>
+    <span class="n">_cuda_context</span><span class="p">,</span>
+    <span class="n">_validate_3d_memory_layout</span><span class="p">,</span>
+    <span class="n">_grid_2d</span><span class="p">,</span>
+    <span class="n">_grid_3d</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<span class="n">_KERNEL_NAMES</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s1">'_parallel_2d_forward_kernel'</span><span class="p">,</span>
+    <span class="s1">'_parallel_2d_backward_kernel'</span><span class="p">,</span>
+    <span class="s1">'_fan_2d_forward_kernel'</span><span class="p">,</span>
+    <span class="s1">'_fan_2d_backward_kernel'</span><span class="p">,</span>
+    <span class="s1">'_cone_3d_forward_kernel'</span><span class="p">,</span>
+    <span class="s1">'_cone_3d_backward_kernel'</span><span class="p">,</span>
+    <span class="s1">'_parallel_2d_geometry_vjp_kernel'</span><span class="p">,</span>
+    <span class="s1">'_fan_2d_geometry_vjp_kernel'</span><span class="p">,</span>
+    <span class="s1">'_cone_3d_geometry_vjp_kernel'</span><span class="p">,</span>
+    <span class="s1">'_parallel_3d_forward_kernel'</span><span class="p">,</span>
+    <span class="s1">'_parallel_3d_backward_kernel'</span><span class="p">,</span>
+    <span class="s1">'_parallel_3d_geometry_vjp_kernel'</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_kernel</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="c1"># Explicit private patches take precedence; namespace observers stay scoped.</span>
+    <span class="k">return</span> <span class="nb">globals</span><span class="p">()[</span><span class="n">name</span><span class="p">]</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">globals</span><span class="p">()</span> <span class="k">else</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">_kernels</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="fm">__getattr__</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="c1"># Preserve the private dispatcher aliases used by native launch observers.</span>
+    <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_KERNEL_NAMES</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"module </span><span class="si">{</span><span class="vm">__name__</span><span class="si">!r}</span><span class="s2"> has no attribute </span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">_kernels</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_empty_detector_positions</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">beam</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Use a rank-correct empty array because CUDA cannot marshal None."""</span>
+    <span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span> <span class="k">if</span> <span class="n">beam</span> <span class="ow">in</span> <span class="n">_BEAMS_3D</span> <span class="k">else</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="n">tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">tensor</span><span class="p">,</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">tensor</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_prepare_volume</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">volume</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Prepare one contiguous native HW/WHD tile for repeated ray launches.</span>
+
+<span class="sd">    A 3D volume that is a ``(D, H, W)`` view of a ``(W, H, D)``-contiguous buffer, as returned with</span>
+<span class="sd">    ``native_volume_layout=True``, already has the native layout and is used without a copy.</span>
+<span class="sd">    """</span>
+    <span class="n">volume</span> <span class="o">=</span> <span class="n">volume</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">beam</span> <span class="ow">in</span> <span class="n">_BEAMS_3D</span><span class="p">:</span>
+        <span class="n">native</span> <span class="o">=</span> <span class="n">volume</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">native</span><span class="o">.</span><span class="n">is_contiguous</span><span class="p">():</span>
+            <span class="k">return</span> <span class="n">native</span>
+        <span class="n">volume</span> <span class="o">=</span> <span class="n">volume</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">_validate_3d_memory_layout</span><span class="p">(</span><span class="n">volume</span><span class="p">,</span> <span class="n">expected_order</span><span class="o">=</span><span class="s2">"DHW"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">volume</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">volume</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_cone_volume</span><span class="p">(</span><span class="n">volume</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""float32 cone volume, contiguous unless it is already a view of a native (W, H, D) buffer."""</span>
+    <span class="n">volume</span> <span class="o">=</span> <span class="n">volume</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">volume</span> <span class="k">if</span> <span class="n">volume</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">is_contiguous</span><span class="p">()</span> <span class="k">else</span> <span class="n">volume</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_launch_ray_kernel</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">native_volume</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span>
+                       <span class="n">voxel_spacing</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">backproject</span><span class="p">,</span> <span class="n">after_launch</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Dispatch the existing matched kernels into caller-owned native buffers."""</span>
+    <span class="n">device</span> <span class="o">=</span> <span class="n">native_volume</span><span class="o">.</span><span class="n">device</span>
+    <span class="k">with</span> <span class="n">_cuda_context</span><span class="p">(</span><span class="n">device</span><span class="p">):</span>
+        <span class="n">geom</span> <span class="o">=</span> <span class="p">[</span><span class="n">component</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+                <span class="k">for</span> <span class="n">component</span> <span class="ow">in</span> <span class="n">geometry</span><span class="p">]</span>
+        <span class="n">d_geom</span> <span class="o">=</span> <span class="p">[</span><span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">component</span><span class="p">)</span> <span class="k">for</span> <span class="n">component</span> <span class="ow">in</span> <span class="n">geom</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">geom</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">d_positions</span> <span class="o">=</span> <span class="n">d_geom</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">d_geom</span> <span class="o">=</span> <span class="p">[</span><span class="n">d_geom</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">*</span> <span class="p">(</span><span class="mi">4</span> <span class="k">if</span> <span class="n">beam</span> <span class="ow">in</span> <span class="n">_BEAMS_3D</span> <span class="k">else</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">empty_positions</span><span class="p">,</span> <span class="n">d_positions</span> <span class="o">=</span> <span class="n">_empty_detector_positions</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">beam</span><span class="p">)</span>
+        <span class="n">d_volume</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">native_volume</span><span class="p">)</span>
+        <span class="n">d_sino</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">sinogram</span><span class="p">)</span>
+        <span class="n">stream</span> <span class="o">=</span> <span class="n">_get_numba_external_stream_for</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">current_stream</span><span class="p">(</span><span class="n">device</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">beam</span> <span class="ow">in</span> <span class="n">_BEAMS_3D</span><span class="p">:</span>
+            <span class="n">W</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">D</span> <span class="o">=</span> <span class="n">native_volume</span><span class="o">.</span><span class="n">shape</span>
+            <span class="n">n_views</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_v</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">shape</span>
+            <span class="n">du</span><span class="p">,</span> <span class="n">dv</span> <span class="o">=</span> <span class="n">detector_spacing</span>
+            <span class="n">native_spacing</span> <span class="o">=</span> <span class="n">_native_spacing</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">beam</span> <span class="o">==</span> <span class="s2">"cone"</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">geom</span><span class="p">)</span> <span class="o">==</span> <span class="mi">4</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">native_spacing</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+                <span class="c1"># Flat per-axis rays retain FP64 traversal parameters.</span>
+                <span class="n">native_spacing</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">native_spacing</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">backproject</span><span class="p">:</span>
+                <span class="c1"># A warp covers up to 32 adjacent detector rows of one column and view, so its</span>
+                <span class="c1"># rays share an xy path and the backprojection atomics coalesce.</span>
+                <span class="n">rows</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">32</span><span class="p">,</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_v</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">bit_length</span><span class="p">())</span>
+                <span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span> <span class="o">=</span> <span class="n">_grid_3d</span><span class="p">(</span><span class="n">n_v</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">tpb</span><span class="o">=</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="mi">64</span> <span class="o">//</span> <span class="n">rows</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># FP64 ray setup uses more registers; smaller blocks preserve occupancy.</span>
+                <span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span> <span class="o">=</span> <span class="n">_grid_3d</span><span class="p">(</span><span class="n">n_v</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">tpb</span><span class="o">=</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>
+            <span class="k">if</span> <span class="nb">max</span><span class="p">(</span><span class="n">grid</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">grid</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">65535</span><span class="p">:</span>  <span class="c1"># Preserve the default launch's supported range.</span>
+                <span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span> <span class="o">=</span> <span class="n">_grid_3d</span><span class="p">(</span><span class="n">n_v</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_views</span><span class="p">)</span>
+            <span class="n">arguments</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="p">(</span><span class="n">d_sino</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_v</span><span class="p">,</span> <span class="n">d_volume</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">backproject</span> <span class="k">else</span>
+                <span class="p">(</span><span class="n">d_volume</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">d_sino</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_v</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="s1">'_cone_3d'</span> <span class="k">if</span> <span class="n">beam</span> <span class="o">==</span> <span class="s2">"cone"</span> <span class="k">else</span> <span class="s1">'_parallel_3d'</span>
+            <span class="n">kernel</span> <span class="o">=</span> <span class="n">_resolve_kernel</span><span class="p">(</span><span class="n">prefix</span> <span class="o">+</span> <span class="p">(</span><span class="s1">'_backward_kernel'</span> <span class="k">if</span> <span class="n">backproject</span> <span class="k">else</span> <span class="s1">'_forward_kernel'</span><span class="p">))</span>
+            <span class="n">kernel</span><span class="p">[</span><span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span><span class="p">,</span> <span class="n">stream</span><span class="p">](</span>
+                <span class="o">*</span><span class="n">arguments</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">du</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">dv</span><span class="p">),</span> <span class="o">*</span><span class="n">d_geom</span><span class="p">,</span>
+                <span class="n">_DTYPE</span><span class="p">(</span><span class="n">W</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">H</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">D</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">),</span>
+                <span class="n">native_spacing</span><span class="p">,</span> <span class="n">d_positions</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">H</span><span class="p">,</span> <span class="n">W</span> <span class="o">=</span> <span class="n">native_volume</span><span class="o">.</span><span class="n">shape</span>
+            <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">shape</span>
+            <span class="n">spacing</span> <span class="o">=</span> <span class="n">detector_spacing</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">detector_spacing</span><span class="p">,</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">))</span> <span class="k">else</span> <span class="n">detector_spacing</span>
+            <span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span> <span class="o">=</span> <span class="n">_grid_2d</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span><span class="p">)</span>
+            <span class="n">arguments</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="p">(</span><span class="n">d_sino</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span><span class="p">,</span> <span class="n">d_volume</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">H</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">backproject</span> <span class="k">else</span>
+                <span class="p">(</span><span class="n">d_volume</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">d_sino</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">beam</span> <span class="o">==</span> <span class="s2">"parallel"</span><span class="p">:</span>
+                <span class="n">kernel</span> <span class="o">=</span> <span class="n">_resolve_kernel</span><span class="p">(</span><span class="s1">'_parallel_2d_backward_kernel'</span> <span class="k">if</span> <span class="n">backproject</span>
+                                         <span class="k">else</span> <span class="s1">'_parallel_2d_forward_kernel'</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">kernel</span> <span class="o">=</span> <span class="n">_resolve_kernel</span><span class="p">(</span><span class="s1">'_fan_2d_backward_kernel'</span> <span class="k">if</span> <span class="n">backproject</span> <span class="k">else</span> <span class="s1">'_fan_2d_forward_kernel'</span><span class="p">)</span>
+            <span class="n">kernel</span><span class="p">[</span><span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span><span class="p">,</span> <span class="n">stream</span><span class="p">](</span>
+                <span class="o">*</span><span class="n">arguments</span><span class="p">,</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">spacing</span><span class="p">),</span> <span class="o">*</span><span class="n">d_geom</span><span class="p">,</span>
+                <span class="n">_DTYPE</span><span class="p">(</span><span class="n">W</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">H</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">),</span> <span class="n">_native_spacing</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">),</span> <span class="n">d_positions</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">after_launch</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">after_launch</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_project_into</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">prepared_volume</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">after_launch</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Overwrite every active ray, including misses, in a reusable output view."""</span>
+    <span class="n">_launch_ray_kernel</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">prepared_volume</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span>
+                       <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">backproject</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">after_launch</span><span class="o">=</span><span class="n">after_launch</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_backproject_into</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">accumulator</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">after_launch</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Add one ray batch into an initialized contiguous native accumulator."""</span>
+    <span class="n">sinogram</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">accumulator</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+    <span class="n">_launch_ray_kernel</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">accumulator</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span>
+                       <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">backproject</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">after_launch</span><span class="o">=</span><span class="n">after_launch</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">accumulator</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_surface_project</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">detector_shape</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Run a native ray projector with one detector endpoint per pixel."""</span>
+    <span class="k">with</span> <span class="n">_cuda_context</span><span class="p">(</span><span class="n">volume</span><span class="o">.</span><span class="n">device</span><span class="p">):</span>
+        <span class="n">prepared</span> <span class="o">=</span> <span class="n">_prepare_volume</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">volume</span><span class="p">)</span>
+        <span class="n">sino</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">geometry</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="o">*</span><span class="n">detector_shape</span><span class="p">),</span>
+                           <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">volume</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">_project_into</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">prepared</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">sino</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_surface_backproject</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">volume_shape</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span>
+                         <span class="n">native_layout</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Run the matched native adjoint with one detector endpoint per pixel or flat frames.</span>
+
+<span class="sd">    With ``native_layout`` a 3D result is a ``(D, H, W)`` tensor with the kernel's</span>
+<span class="sd">    ``(W, H, D)``-contiguous strides instead of a contiguous copy.</span>
+<span class="sd">    """</span>
+    <span class="k">with</span> <span class="n">_cuda_context</span><span class="p">(</span><span class="n">sinogram</span><span class="o">.</span><span class="n">device</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">native_layout</span> <span class="ow">and</span> <span class="n">beam</span> <span class="ow">in</span> <span class="n">_BEAMS_3D</span><span class="p">:</span>
+            <span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span> <span class="o">=</span> <span class="n">volume_shape</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty_strided</span><span class="p">((</span><span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">D</span> <span class="o">*</span> <span class="n">H</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span>
+                                         <span class="n">device</span><span class="o">=</span><span class="n">sinogram</span><span class="o">.</span><span class="n">device</span><span class="p">)</span><span class="o">.</span><span class="n">zero_</span><span class="p">()</span>
+            <span class="n">_backproject_into</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+            <span class="k">return</span> <span class="n">result</span>
+        <span class="n">native_shape</span> <span class="o">=</span> <span class="n">volume_shape</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">beam</span> <span class="ow">in</span> <span class="n">_BEAMS_3D</span> <span class="k">else</span> <span class="n">volume_shape</span>
+        <span class="n">volume</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">native_shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">sinogram</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">_backproject_into</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">volume</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">volume</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span> <span class="k">if</span> <span class="n">beam</span> <span class="ow">in</span> <span class="n">_BEAMS_3D</span> <span class="k">else</span> <span class="n">volume</span>
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># Geometry gradients</span>
+<span class="c1"># ============================================================================</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_geometry_vjp</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">grad_sino</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span>
+                  <span class="o">*</span><span class="p">,</span> <span class="n">prepared_volume</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Return d&lt;grad_sino, A(geometry) volume&gt;/d(geometry), one tensor per component.</span>
+
+<span class="sd">    ``detector_spacing`` is a scalar for 2D beams and ``(du, dv)`` for cone</span>
+<span class="sd">    and parallel3d beams. Results take the dtype and device of each geometry component.</span>
+<span class="sd">    """</span>
+    <span class="n">vol</span> <span class="o">=</span> <span class="n">_prepare_volume</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">volume</span><span class="p">)</span> <span class="k">if</span> <span class="n">prepared_volume</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">prepared_volume</span>
+    <span class="n">device</span> <span class="o">=</span> <span class="n">vol</span><span class="o">.</span><span class="n">device</span>
+    <span class="n">cot</span> <span class="o">=</span> <span class="n">grad_sino</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+    <span class="n">geom</span> <span class="o">=</span> <span class="p">[</span><span class="n">g</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span> <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">geometry</span><span class="p">]</span>
+    <span class="n">grads</span> <span class="o">=</span> <span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">g</span><span class="p">)</span> <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">geom</span><span class="p">]</span>
+    <span class="n">d_geom</span> <span class="o">=</span> <span class="p">[</span><span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">g</span><span class="p">)</span> <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">geom</span><span class="p">]</span>
+    <span class="n">d_grads</span> <span class="o">=</span> <span class="p">[</span><span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">g</span><span class="p">)</span> <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">grads</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">geom</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="n">d_positions</span><span class="p">,</span> <span class="n">d_grad_positions</span> <span class="o">=</span> <span class="n">d_geom</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">d_grads</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="c1"># Native endpoints bypass the flat center/axes and their gradients.</span>
+        <span class="n">n_components</span> <span class="o">=</span> <span class="mi">4</span> <span class="k">if</span> <span class="n">beam</span> <span class="ow">in</span> <span class="n">_BEAMS_3D</span> <span class="k">else</span> <span class="mi">3</span>
+        <span class="n">d_geom</span> <span class="o">=</span> <span class="p">[</span><span class="n">d_geom</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">*</span> <span class="n">n_components</span>
+        <span class="c1"># Unused output arguments must not alias the source cotangent.</span>
+        <span class="n">unused</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="n">geom</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">d_unused</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">unused</span><span class="p">)</span>
+        <span class="n">d_grads</span> <span class="o">=</span> <span class="p">[</span><span class="n">d_grads</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">+</span> <span class="p">[</span><span class="n">d_unused</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_components</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">_empty_positions</span><span class="p">,</span> <span class="n">d_positions</span> <span class="o">=</span> <span class="n">_empty_detector_positions</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">beam</span><span class="p">)</span>
+        <span class="n">d_grad_positions</span> <span class="o">=</span> <span class="n">d_positions</span>
+    <span class="n">numba_stream</span> <span class="o">=</span> <span class="n">_get_numba_external_stream_for</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">current_stream</span><span class="p">(</span><span class="n">device</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">beam</span> <span class="ow">in</span> <span class="n">_BEAMS_3D</span><span class="p">:</span>
+        <span class="n">W</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">D</span> <span class="o">=</span> <span class="n">vol</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">n_views</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_v</span> <span class="o">=</span> <span class="n">cot</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">du</span><span class="p">,</span> <span class="n">dv</span> <span class="o">=</span> <span class="n">detector_spacing</span>
+        <span class="n">d_vol</span> <span class="o">=</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">vol</span><span class="p">)</span>
+        <span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span> <span class="o">=</span> <span class="n">_grid_3d</span><span class="p">(</span><span class="n">n_v</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_views</span><span class="p">)</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="s1">'_cone_3d_geometry_vjp_kernel'</span> <span class="k">if</span> <span class="n">beam</span> <span class="o">==</span> <span class="s2">"cone"</span> <span class="k">else</span> <span class="s1">'_parallel_3d_geometry_vjp_kernel'</span>
+        <span class="n">_resolve_kernel</span><span class="p">(</span><span class="n">name</span><span class="p">)[</span><span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span><span class="p">,</span> <span class="n">numba_stream</span><span class="p">](</span>
+            <span class="n">d_vol</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">cot</span><span class="p">),</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_v</span><span class="p">,</span>
+            <span class="n">_DTYPE</span><span class="p">(</span><span class="n">du</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">dv</span><span class="p">),</span> <span class="o">*</span><span class="n">d_geom</span><span class="p">,</span>
+            <span class="n">_DTYPE</span><span class="p">(</span><span class="n">W</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">H</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">D</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">),</span> <span class="n">_native_spacing</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">),</span>
+            <span class="o">*</span><span class="n">d_grads</span><span class="p">,</span> <span class="n">d_positions</span><span class="p">,</span> <span class="n">d_grad_positions</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span> <span class="o">=</span> <span class="n">vol</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span> <span class="o">=</span> <span class="n">cot</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">kernel</span> <span class="o">=</span> <span class="n">_resolve_kernel</span><span class="p">(</span><span class="s1">'_parallel_2d_geometry_vjp_kernel'</span> <span class="k">if</span> <span class="n">beam</span> <span class="o">==</span> <span class="s2">"parallel"</span>
+                                 <span class="k">else</span> <span class="s1">'_fan_2d_geometry_vjp_kernel'</span><span class="p">)</span>
+        <span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span> <span class="o">=</span> <span class="n">_grid_2d</span><span class="p">(</span><span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span><span class="p">)</span>
+        <span class="n">kernel</span><span class="p">[</span><span class="n">grid</span><span class="p">,</span> <span class="n">tpb</span><span class="p">,</span> <span class="n">numba_stream</span><span class="p">](</span>
+            <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">vol</span><span class="p">),</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span>
+            <span class="n">TorchCUDABridge</span><span class="o">.</span><span class="n">tensor_to_cuda_array</span><span class="p">(</span><span class="n">cot</span><span class="p">),</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span><span class="p">,</span>
+            <span class="n">_DTYPE</span><span class="p">(</span><span class="n">detector_spacing</span><span class="p">),</span> <span class="o">*</span><span class="n">d_geom</span><span class="p">,</span>
+            <span class="n">_DTYPE</span><span class="p">(</span><span class="n">Nx</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">),</span> <span class="n">_DTYPE</span><span class="p">(</span><span class="n">Ny</span> <span class="o">*</span> <span class="mf">0.5</span><span class="p">),</span> <span class="n">_native_spacing</span><span class="p">(</span><span class="n">voxel_spacing</span><span class="p">),</span>
+            <span class="o">*</span><span class="n">d_grads</span><span class="p">,</span> <span class="n">d_positions</span><span class="p">,</span> <span class="n">d_grad_positions</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">grad</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">g</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">g</span><span class="o">.</span><span class="n">device</span><span class="p">)</span> <span class="k">for</span> <span class="n">grad</span><span class="p">,</span> <span class="n">g</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">grads</span><span class="p">,</span> <span class="n">geometry</span><span class="p">))</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_GeometryVJPFunction</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">autograd</span><span class="o">.</span><span class="n">Function</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""First-order geometry gradient; differentiating it again raises."""</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="nd">@_on_device_of</span><span class="p">(</span><span class="s2">"volume"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">beam</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">grad_sino</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="o">*</span><span class="n">geometry</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">_geometry_vjp</span><span class="p">(</span><span class="n">beam</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">grad_sino</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">backward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="o">*</span><span class="n">grad_outputs</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+            <span class="s2">"diffct does not support second derivatives with respect to the geometry"</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_geometry_grads</span><span class="p">(</span><span class="n">needs_grad</span><span class="p">,</span> <span class="n">beam</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">grad_sino</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Geometry gradients for the components in ``needs_grad``; None for the rest."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">needs_grad</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="kc">None</span><span class="p">,)</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">geometry</span><span class="p">)</span>
+    <span class="n">grads</span> <span class="o">=</span> <span class="n">_GeometryVJPFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
+        <span class="n">beam</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">grad_sino</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="o">*</span><span class="n">geometry</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">grad</span> <span class="k">if</span> <span class="n">needed</span> <span class="k">else</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">grad</span><span class="p">,</span> <span class="n">needed</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">grads</span><span class="p">,</span> <span class="n">needs_grad</span><span class="p">))</span>
+
+
+<span class="c1"># ============================================================================</span>
+<span class="c1"># PyTorch Autograd Functions</span>
+<span class="c1"># ============================================================================</span>
+
+<div class="viewcode-block" id="ParallelProjectorFunction">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.ParallelProjectorFunction">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ParallelProjectorFunction</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">autograd</span><span class="o">.</span><span class="n">Function</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Summary</span>
+<span class="sd">    -------</span>
+<span class="sd">    PyTorch autograd function for differentiable 2D parallel beam forward projection.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Provides a differentiable interface to the CUDA-accelerated Siddon ray-tracing</span>
+<span class="sd">    method with a cell-constant image basis for parallel beam CT geometry. The forward pass computes</span>
+<span class="sd">    the sinogram from a 2D image using parallel beam geometry. The backward pass</span>
+<span class="sd">    computes gradients using the adjoint backprojection operation. Requires</span>
+<span class="sd">    NVIDIA CUDA hardware. Geometry tensors are moved to the image's device;</span>
+<span class="sd">    execution uses float32.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import torch</span>
+<span class="sd">    &gt;&gt;&gt; from diffct import ParallelProjectorFunction, circular_trajectory_2d_parallel</span>
+<span class="sd">    &gt;&gt;&gt;</span>
+<span class="sd">    &gt;&gt;&gt; image = torch.randn(128, 128, device='cuda', requires_grad=True)</span>
+<span class="sd">    &gt;&gt;&gt; ray_dir, det_origin, det_u_vec = circular_trajectory_2d_parallel(180, device='cuda')</span>
+<span class="sd">    &gt;&gt;&gt; sinogram = ParallelProjectorFunction.apply(image, ray_dir, det_origin, det_u_vec, 192, 1.0)</span>
+<span class="sd">    &gt;&gt;&gt; sinogram.sum().backward()</span>
+<span class="sd">    &gt;&gt;&gt; image.grad.shape</span>
+<span class="sd">    torch.Size([128, 128])</span>
+<span class="sd">    """</span>
+<div class="viewcode-block" id="ParallelProjectorFunction.forward">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.ParallelProjectorFunction.forward">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="nd">@_on_device_of</span><span class="p">(</span><span class="s2">"image"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">image</span><span class="p">,</span> <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Compute the 2D parallel beam forward projection with arbitrary trajectories using CUDA acceleration.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        image : torch.Tensor</span>
+<span class="sd">            Floating-point CUDA image of shape (H, W), converted to float32 for execution.</span>
+<span class="sd">        ray_dir : torch.Tensor</span>
+<span class="sd">            Ray direction unit vectors for each view, shape (n_views, 2).</span>
+<span class="sd">        det_origin : torch.Tensor</span>
+<span class="sd">            Detector origin positions for each view, shape (n_views, 2), in physical units.</span>
+<span class="sd">        det_u_vec : torch.Tensor</span>
+<span class="sd">            Detector u-direction unit vectors for each view, shape (n_views, 2).</span>
+<span class="sd">        num_detectors : int</span>
+<span class="sd">            Number of detector elements in the sinogram (columns).</span>
+<span class="sd">        detector_spacing : float, optional</span>
+<span class="sd">            Physical spacing between detector elements (default: 1.0).</span>
+<span class="sd">        voxel_spacing : float, optional</span>
+<span class="sd">            Physical size of one voxel (in same units as detector_spacing, default: 1.0).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        sinogram : torch.Tensor</span>
+<span class="sd">            2D tensor of shape (n_views, num_detectors) containing the forward projection (sinogram) on the same device as `image`.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        - Geometry tensors are moved to the image's CUDA device and converted to float32.</span>
+<span class="sd">        - Data derivatives support higher orders; geometry derivatives are first-order only.</span>
+<span class="sd">        - Supports arbitrary parallel beam geometries.</span>
+<span class="sd">        - Uses cell-constant Siddon ray tracing.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; image = torch.randn(128, 128, device='cuda', requires_grad=True)</span>
+<span class="sd">        &gt;&gt;&gt; ray_dir, det_origin, det_u_vec = circular_trajectory_2d_parallel(180, device='cuda')</span>
+<span class="sd">        &gt;&gt;&gt; sinogram = ParallelProjectorFunction.apply(</span>
+<span class="sd">        ...     image, ray_dir, det_origin, det_u_vec, 128, 1.0</span>
+<span class="sd">        ... )</span>
+<span class="sd">        """</span>
+        <span class="c1"># Original inputs: backward builds a differentiable graph through them.</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span>
+            <span class="n">image</span> <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">])</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">get_device</span><span class="p">(</span><span class="n">image</span><span class="p">)</span>
+        <span class="n">image</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">ray_dir</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">ray_dir</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_origin</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_origin</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+        <span class="c1"># Ensure input is float32 for kernel compatibility</span>
+        <span class="n">image</span> <span class="o">=</span> <span class="n">image</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">ray_dir</span> <span class="o">=</span> <span class="n">ray_dir</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_origin</span> <span class="o">=</span> <span class="n">det_origin</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">det_u_vec</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+
+        <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span> <span class="o">=</span> <span class="n">image</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">n_views</span> <span class="o">=</span> <span class="n">ray_dir</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">sinogram</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="n">num_detectors</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">image</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">_project_into</span><span class="p">(</span>
+            <span class="s2">"parallel"</span><span class="p">,</span> <span class="n">_prepare_volume</span><span class="p">(</span><span class="s2">"parallel"</span><span class="p">,</span> <span class="n">image</span><span class="p">),</span>
+            <span class="p">(</span><span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">),</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span> <span class="o">=</span> <span class="p">(</span><span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">sinogram</span></div>
+
+    
+<div class="viewcode-block" id="ParallelProjectorFunction.backward">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.ParallelProjectorFunction.backward">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">backward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">grad_sinogram</span><span class="p">):</span>
+        <span class="n">image</span><span class="p">,</span> <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">saved_tensors</span>
+        <span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">voxel_spacing</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span>
+        <span class="n">grad_image</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="c1"># The adjoint is an autograd Function too, so second derivatives work.</span>
+            <span class="n">grad_image</span> <span class="o">=</span> <span class="n">ParallelBackprojectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
+                <span class="n">grad_sinogram</span><span class="p">,</span> <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">voxel_spacing</span>
+            <span class="p">)</span>
+        <span class="n">geometry_grads</span> <span class="o">=</span> <span class="n">_geometry_grads</span><span class="p">(</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">],</span> <span class="s2">"parallel"</span><span class="p">,</span> <span class="n">image</span><span class="p">,</span> <span class="n">grad_sinogram</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">),</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">grad_image</span><span class="p">,</span> <span class="o">*</span><span class="n">geometry_grads</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ParallelBackprojectorFunction">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.ParallelBackprojectorFunction">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ParallelBackprojectorFunction</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">autograd</span><span class="o">.</span><span class="n">Function</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Summary</span>
+<span class="sd">    -------</span>
+<span class="sd">    PyTorch autograd function for differentiable 2D parallel beam backprojection.</span>
+<span class="sd">    </span>
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Provides a differentiable interface to the CUDA-accelerated Siddon ray-tracing</span>
+<span class="sd">    method with a cell-constant image basis for parallel beam backprojection. The forward pass computes a 2D</span>
+<span class="sd">    reconstruction from sinogram data using parallel beam backprojection, and the</span>
+<span class="sd">    backward pass computes gradients via forward projection as the adjoint operation.</span>
+<span class="sd">    Requires CUDA-capable hardware and consistent device placements.</span>
+<span class="sd">    </span>
+<span class="sd">    </span>
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import torch</span>
+<span class="sd">    &gt;&gt;&gt; from diffct import ParallelBackprojectorFunction, circular_trajectory_2d_parallel</span>
+<span class="sd">    &gt;&gt;&gt;</span>
+<span class="sd">    &gt;&gt;&gt; sinogram = torch.randn(180, 192, device='cuda', requires_grad=True)</span>
+<span class="sd">    &gt;&gt;&gt; ray_dir, det_origin, det_u_vec = circular_trajectory_2d_parallel(180, device='cuda')</span>
+<span class="sd">    &gt;&gt;&gt; image = ParallelBackprojectorFunction.apply(sinogram, ray_dir, det_origin, det_u_vec, 1.0, 128, 128)</span>
+<span class="sd">    &gt;&gt;&gt; image.sum().backward()</span>
+<span class="sd">    &gt;&gt;&gt; sinogram.grad.shape</span>
+<span class="sd">    torch.Size([180, 192])</span>
+<span class="sd">    """</span>
+<div class="viewcode-block" id="ParallelBackprojectorFunction.forward">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.ParallelBackprojectorFunction.forward">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="nd">@_on_device_of</span><span class="p">(</span><span class="s2">"sinogram"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">H</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">W</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Compute the 2D parallel beam backprojection with arbitrary trajectories using CUDA acceleration.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        sinogram : torch.Tensor</span>
+<span class="sd">            Floating-point CUDA sinogram of shape (n_views, num_detectors), converted to float32 for execution.</span>
+<span class="sd">        ray_dir : torch.Tensor</span>
+<span class="sd">            Ray direction unit vectors for each view, shape (n_views, 2).</span>
+<span class="sd">        det_origin : torch.Tensor</span>
+<span class="sd">            Detector origin positions for each view, shape (n_views, 2), in physical units.</span>
+<span class="sd">        det_u_vec : torch.Tensor</span>
+<span class="sd">            Detector u-direction unit vectors for each view, shape (n_views, 2).</span>
+<span class="sd">        detector_spacing : float, optional</span>
+<span class="sd">            Physical spacing between detector elements (default: 1.0).</span>
+<span class="sd">        H : int, optional</span>
+<span class="sd">            Height of the output reconstruction image (default: 128).</span>
+<span class="sd">        W : int, optional</span>
+<span class="sd">            Width of the output reconstruction image (default: 128).</span>
+<span class="sd">        voxel_spacing : float, optional</span>
+<span class="sd">            Physical size of one voxel (in same units as detector_spacing, default: 1.0).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        reco : torch.Tensor</span>
+<span class="sd">            2D tensor of shape (H, W) containing the reconstructed image on the same device as `sinogram`.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        - Geometry tensors are moved to the sinogram's CUDA device and converted to float32.</span>
+<span class="sd">        - Data derivatives support higher orders; geometry derivatives are first-order only.</span>
+<span class="sd">        - Supports arbitrary parallel beam geometries.</span>
+<span class="sd">        - Uses the adjoint of cell-constant Siddon ray tracing.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; sinogram = torch.randn(180, 128, device='cuda', requires_grad=True)</span>
+<span class="sd">        &gt;&gt;&gt; ray_dir, det_origin, det_u_vec = circular_trajectory_2d_parallel(180, device='cuda')</span>
+<span class="sd">        &gt;&gt;&gt; reco = ParallelBackprojectorFunction.apply(</span>
+<span class="sd">        ...     sinogram, ray_dir, det_origin, det_u_vec, 1.0, 128, 128</span>
+<span class="sd">        ... )</span>
+<span class="sd">        """</span>
+        <span class="c1"># Original inputs: backward builds a differentiable graph through them.</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span>
+            <span class="n">sinogram</span> <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">])</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">get_device</span><span class="p">(</span><span class="n">sinogram</span><span class="p">)</span>
+        <span class="n">sinogram</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">ray_dir</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">ray_dir</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_origin</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_origin</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+        <span class="c1"># Ensure input is float32 for kernel compatibility</span>
+        <span class="n">sinogram</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">ray_dir</span> <span class="o">=</span> <span class="n">ray_dir</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_origin</span> <span class="o">=</span> <span class="n">det_origin</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">det_u_vec</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+
+        <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span> <span class="o">=</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span>
+
+        <span class="n">reco</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">sinogram</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">_backproject_into</span><span class="p">(</span>
+            <span class="s2">"parallel"</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="p">(</span><span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">),</span>
+            <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">reco</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span> <span class="o">=</span> <span class="p">(</span><span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">voxel_spacing</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">reco</span></div>
+
+
+<div class="viewcode-block" id="ParallelBackprojectorFunction.backward">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.ParallelBackprojectorFunction.backward">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">backward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">grad_output</span><span class="p">):</span>
+        <span class="n">sinogram</span><span class="p">,</span> <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">saved_tensors</span>
+        <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span><span class="p">,</span> <span class="n">voxel_spacing</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span>
+        <span class="n">grad_sino</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="n">grad_sino</span> <span class="o">=</span> <span class="n">ParallelProjectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
+                <span class="n">grad_output</span><span class="p">,</span> <span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">n_det</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span>
+            <span class="p">)</span>
+        <span class="c1"># &lt;grad_output, A^T y&gt; = &lt;A grad_output, y&gt;, so the projector's VJP applies.</span>
+        <span class="n">geometry_grads</span> <span class="o">=</span> <span class="n">_geometry_grads</span><span class="p">(</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">],</span> <span class="s2">"parallel"</span><span class="p">,</span> <span class="n">grad_output</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">ray_dir</span><span class="p">,</span> <span class="n">det_origin</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">),</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">grad_sino</span><span class="p">,</span> <span class="o">*</span><span class="n">geometry_grads</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FanProjectorFunction">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.FanProjectorFunction">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FanProjectorFunction</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">autograd</span><span class="o">.</span><span class="n">Function</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Summary</span>
+<span class="sd">    -------</span>
+<span class="sd">    PyTorch autograd function for differentiable 2D fan beam forward projection.</span>
+<span class="sd">    </span>
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Provides a differentiable interface to the CUDA-accelerated Siddon ray-tracing</span>
+<span class="sd">    method with a cell-constant image basis for fan beam geometry, where rays diverge from a point</span>
+<span class="sd">    X-ray source to a linear detector array. The forward pass computes sinograms</span>
+<span class="sd">    using divergent beam geometry, and the backward pass computes gradients via</span>
+<span class="sd">    adjoint backprojection.</span>
+<span class="sd">    </span>
+<span class="sd">    </span>
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import torch</span>
+<span class="sd">    &gt;&gt;&gt; from diffct import FanProjectorFunction, circular_trajectory_2d_fan</span>
+<span class="sd">    &gt;&gt;&gt;</span>
+<span class="sd">    &gt;&gt;&gt; image = torch.randn(256, 256, device='cuda', requires_grad=True)</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec = circular_trajectory_2d_fan(360, sid=1000.0, sdd=1500.0, device='cuda')</span>
+<span class="sd">    &gt;&gt;&gt; sinogram = FanProjectorFunction.apply(image, src_pos, det_center, det_u_vec, 512, 1.0)</span>
+<span class="sd">    &gt;&gt;&gt; sinogram.sum().backward()</span>
+<span class="sd">    &gt;&gt;&gt; image.grad.shape</span>
+<span class="sd">    torch.Size([256, 256])</span>
+<span class="sd">    """</span>
+<div class="viewcode-block" id="FanProjectorFunction.forward">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.FanProjectorFunction.forward">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="nd">@_on_device_of</span><span class="p">(</span><span class="s2">"image"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">image</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Compute the 2D fan beam forward projection with arbitrary trajectories using CUDA acceleration.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        image : torch.Tensor</span>
+<span class="sd">            Floating-point CUDA image of shape (H, W), converted to float32 for execution.</span>
+<span class="sd">        src_pos : torch.Tensor</span>
+<span class="sd">            Source positions for each view, shape (n_views, 2), in physical units.</span>
+<span class="sd">        det_center : torch.Tensor</span>
+<span class="sd">            Detector center positions for each view, shape (n_views, 2), in physical units.</span>
+<span class="sd">        det_u_vec : torch.Tensor</span>
+<span class="sd">            Detector u-direction unit vectors for each view, shape (n_views, 2).</span>
+<span class="sd">        num_detectors : int</span>
+<span class="sd">            Number of detector elements in the sinogram (columns).</span>
+<span class="sd">        detector_spacing : float</span>
+<span class="sd">            Physical spacing between detector elements.</span>
+<span class="sd">        voxel_spacing : float, optional</span>
+<span class="sd">            Physical size of one voxel (in same units as detector_spacing, default: 1.0).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        sinogram : torch.Tensor</span>
+<span class="sd">            2D tensor of shape (n_views, num_detectors) containing the fan beam sinogram on the same device as `image`.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        - Geometry tensors are moved to the image's CUDA device and converted to float32.</span>
+<span class="sd">        - Data derivatives support higher orders; geometry derivatives are first-order only.</span>
+<span class="sd">        - Supports arbitrary fan beam geometries.</span>
+<span class="sd">        - Uses cell-constant Siddon ray tracing.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; image = torch.randn(256, 256, device='cuda', requires_grad=True)</span>
+<span class="sd">        &gt;&gt;&gt; src_pos, det_center, det_u_vec = circular_trajectory_2d_fan(360, 1000.0, 1500.0, device='cuda')</span>
+<span class="sd">        &gt;&gt;&gt; sinogram = FanProjectorFunction.apply(</span>
+<span class="sd">        ...     image, src_pos, det_center, det_u_vec, 512, 1.0</span>
+<span class="sd">        ... )</span>
+<span class="sd">        """</span>
+        <span class="c1"># Original inputs: backward builds a differentiable graph through them.</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span>
+            <span class="n">image</span> <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">])</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">get_device</span><span class="p">(</span><span class="n">image</span><span class="p">)</span>
+        <span class="n">image</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">src_pos</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_center</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_center</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+        <span class="n">image</span> <span class="o">=</span> <span class="n">image</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">src_pos</span> <span class="o">=</span> <span class="n">src_pos</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_center</span> <span class="o">=</span> <span class="n">det_center</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">det_u_vec</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+
+        <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span> <span class="o">=</span> <span class="n">image</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">n_views</span> <span class="o">=</span> <span class="n">src_pos</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">sinogram</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="n">num_detectors</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">image</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">_project_into</span><span class="p">(</span>
+            <span class="s2">"fan"</span><span class="p">,</span> <span class="n">_prepare_volume</span><span class="p">(</span><span class="s2">"fan"</span><span class="p">,</span> <span class="n">image</span><span class="p">),</span> <span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">),</span>
+            <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span> <span class="o">=</span> <span class="p">(</span><span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">sinogram</span></div>
+
+
+<div class="viewcode-block" id="FanProjectorFunction.backward">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.FanProjectorFunction.backward">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">backward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">grad_sinogram</span><span class="p">):</span>
+        <span class="n">image</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">saved_tensors</span>
+        <span class="n">num_detectors</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">voxel_spacing</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span>
+        <span class="n">grad_image</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="c1"># The adjoint is an autograd Function too, so second derivatives work.</span>
+            <span class="n">grad_image</span> <span class="o">=</span> <span class="n">FanBackprojectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
+                <span class="n">grad_sinogram</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">,</span> <span class="n">voxel_spacing</span>
+            <span class="p">)</span>
+        <span class="n">geometry_grads</span> <span class="o">=</span> <span class="n">_geometry_grads</span><span class="p">(</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">],</span> <span class="s2">"fan"</span><span class="p">,</span> <span class="n">image</span><span class="p">,</span> <span class="n">grad_sinogram</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">),</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">grad_image</span><span class="p">,</span> <span class="o">*</span><span class="n">geometry_grads</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FanBackprojectorFunction">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.FanBackprojectorFunction">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FanBackprojectorFunction</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">autograd</span><span class="o">.</span><span class="n">Function</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Summary</span>
+<span class="sd">    -------</span>
+<span class="sd">    PyTorch autograd function for differentiable 2D fan beam backprojection.</span>
+<span class="sd">    </span>
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Provides a differentiable interface to the CUDA-accelerated Siddon ray-tracing</span>
+<span class="sd">    method with a cell-constant image basis for fan beam backprojection. Implements the adjoint</span>
+<span class="sd">    of the fan beam projection operator, distributing sinogram values back into</span>
+<span class="sd">    the reconstruction volume along divergent ray paths. The forward pass</span>
+<span class="sd">    computes reconstruction from sinogram data, and the backward pass computes</span>
+<span class="sd">    gradients via forward projection.</span>
+<span class="sd">    </span>
+<span class="sd">    </span>
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import torch</span>
+<span class="sd">    &gt;&gt;&gt; from diffct import FanBackprojectorFunction, circular_trajectory_2d_fan</span>
+<span class="sd">    &gt;&gt;&gt;</span>
+<span class="sd">    &gt;&gt;&gt; sinogram = torch.randn(360, 512, device='cuda', requires_grad=True)</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec = circular_trajectory_2d_fan(360, sid=1000.0, sdd=1500.0, device='cuda')</span>
+<span class="sd">    &gt;&gt;&gt; image = FanBackprojectorFunction.apply(sinogram, src_pos, det_center, det_u_vec, 1.0, 256, 256)</span>
+<span class="sd">    &gt;&gt;&gt; image.sum().backward()</span>
+<span class="sd">    &gt;&gt;&gt; sinogram.grad.shape</span>
+<span class="sd">    torch.Size([360, 512])</span>
+<span class="sd">    """</span>
+<div class="viewcode-block" id="FanBackprojectorFunction.forward">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.FanBackprojectorFunction.forward">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="nd">@_on_device_of</span><span class="p">(</span><span class="s2">"sinogram"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Compute the 2D fan beam backprojection with arbitrary trajectories using CUDA acceleration.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        sinogram : torch.Tensor</span>
+<span class="sd">            Floating-point CUDA fan sinogram of shape (n_views, num_detectors), converted to float32 for execution.</span>
+<span class="sd">        src_pos : torch.Tensor</span>
+<span class="sd">            Source positions for each view, shape (n_views, 2), in physical units.</span>
+<span class="sd">        det_center : torch.Tensor</span>
+<span class="sd">            Detector center positions for each view, shape (n_views, 2), in physical units.</span>
+<span class="sd">        det_u_vec : torch.Tensor</span>
+<span class="sd">            Detector u-direction unit vectors for each view, shape (n_views, 2).</span>
+<span class="sd">        detector_spacing : float</span>
+<span class="sd">            Physical spacing between detector elements.</span>
+<span class="sd">        H : int</span>
+<span class="sd">            Height of the output reconstruction image.</span>
+<span class="sd">        W : int</span>
+<span class="sd">            Width of the output reconstruction image.</span>
+<span class="sd">        voxel_spacing : float, optional</span>
+<span class="sd">            Physical size of one voxel (in same units as detector_spacing, default: 1.0).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        reco : torch.Tensor</span>
+<span class="sd">            2D tensor of shape (H, W) containing the reconstructed image on the same device as `sinogram`.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        - Geometry tensors are moved to the sinogram's CUDA device and converted to float32.</span>
+<span class="sd">        - Data derivatives support higher orders; geometry derivatives are first-order only.</span>
+<span class="sd">        - Supports arbitrary fan beam geometries.</span>
+<span class="sd">        - Uses the adjoint of cell-constant Siddon ray tracing.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; sinogram = torch.randn(360, 512, device='cuda', requires_grad=True)</span>
+<span class="sd">        &gt;&gt;&gt; src_pos, det_center, det_u_vec = circular_trajectory_2d_fan(360, 1000.0, 1500.0, device='cuda')</span>
+<span class="sd">        &gt;&gt;&gt; reco = FanBackprojectorFunction.apply(</span>
+<span class="sd">        ...     sinogram, src_pos, det_center, det_u_vec, 1.0, 256, 256</span>
+<span class="sd">        ... )</span>
+<span class="sd">        """</span>
+        <span class="c1"># Original inputs: backward builds a differentiable graph through them.</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span>
+            <span class="n">sinogram</span> <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">])</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">get_device</span><span class="p">(</span><span class="n">sinogram</span><span class="p">)</span>
+        <span class="n">sinogram</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">src_pos</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_center</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_center</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+        <span class="n">sinogram</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">src_pos</span> <span class="o">=</span> <span class="n">src_pos</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_center</span> <span class="o">=</span> <span class="n">det_center</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">det_u_vec</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+
+        <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span> <span class="o">=</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span>
+
+        <span class="n">reco</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">Ny</span><span class="p">,</span> <span class="n">Nx</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">sinogram</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">_backproject_into</span><span class="p">(</span>
+            <span class="s2">"fan"</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">),</span>
+            <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">reco</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span> <span class="o">=</span> <span class="p">(</span><span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">reco</span></div>
+
+
+<div class="viewcode-block" id="FanBackprojectorFunction.backward">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.FanBackprojectorFunction.backward">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">backward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">grad_output</span><span class="p">):</span>
+        <span class="n">sinogram</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">saved_tensors</span>
+        <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">n_views</span><span class="p">,</span> <span class="n">n_det</span><span class="p">,</span> <span class="n">voxel_spacing</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span>
+        <span class="n">grad_sino</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="n">grad_sino</span> <span class="o">=</span> <span class="n">FanProjectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
+                <span class="n">grad_output</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">n_det</span><span class="p">,</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span>
+            <span class="p">)</span>
+        <span class="c1"># &lt;grad_output, A^T y&gt; = &lt;A grad_output, y&gt;, so the projector's VJP applies.</span>
+        <span class="n">geometry_grads</span> <span class="o">=</span> <span class="n">_geometry_grads</span><span class="p">(</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">],</span> <span class="s2">"fan"</span><span class="p">,</span> <span class="n">grad_output</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">),</span> <span class="n">detector_spacing</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">grad_sino</span><span class="p">,</span> <span class="o">*</span><span class="n">geometry_grads</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ConeProjectorFunction">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.ConeProjectorFunction">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ConeProjectorFunction</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">autograd</span><span class="o">.</span><span class="n">Function</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Summary</span>
+<span class="sd">    -------</span>
+<span class="sd">    PyTorch autograd function for differentiable 3D cone beam forward projection.</span>
+<span class="sd">    </span>
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Provides a differentiable interface to the CUDA-accelerated Siddon ray-tracing</span>
+<span class="sd">    method with a cell-constant voxel basis for 3D cone beam geometry. Rays emanate from a point</span>
+<span class="sd">    X-ray source to a 2D detector array capturing volumetric projection data.</span>
+<span class="sd">    The forward pass computes 3D projections, and the backward pass computes</span>
+<span class="sd">    gradients via adjoint 3D backprojection. Requires significant GPU memory.</span>
+<span class="sd">    </span>
+<span class="sd">    </span>
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import torch</span>
+<span class="sd">    &gt;&gt;&gt; from diffct import ConeProjectorFunction, circular_trajectory_3d</span>
+<span class="sd">    &gt;&gt;&gt;</span>
+<span class="sd">    &gt;&gt;&gt; volume = torch.randn(128, 128, 128, device='cuda', requires_grad=True)</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec, det_v_vec = circular_trajectory_3d(360, sid=1000.0, sdd=1500.0, device='cuda')</span>
+<span class="sd">    &gt;&gt;&gt; projections = ConeProjectorFunction.apply(</span>
+<span class="sd">    ...     volume, src_pos, det_center, det_u_vec, det_v_vec, 256, 256, 1.0, 1.0</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; projections.sum().backward()</span>
+<span class="sd">    &gt;&gt;&gt; volume.grad.shape</span>
+<span class="sd">    torch.Size([128, 128, 128])</span>
+<span class="sd">    """</span>
+<div class="viewcode-block" id="ConeProjectorFunction.forward">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.ConeProjectorFunction.forward">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="nd">@_on_device_of</span><span class="p">(</span><span class="s2">"volume"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Compute the 3D cone beam forward projection with arbitrary trajectories using CUDA acceleration.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        volume : torch.Tensor</span>
+<span class="sd">            Floating-point CUDA volume of shape (D, H, W), converted to float32 for execution.</span>
+<span class="sd">        src_pos : torch.Tensor</span>
+<span class="sd">            Source positions for each view, shape (n_views, 3), in physical units.</span>
+<span class="sd">        det_center : torch.Tensor</span>
+<span class="sd">            Detector center positions for each view, shape (n_views, 3), in physical units.</span>
+<span class="sd">        det_u_vec : torch.Tensor</span>
+<span class="sd">            Detector u-direction unit vectors for each view, shape (n_views, 3).</span>
+<span class="sd">        det_v_vec : torch.Tensor</span>
+<span class="sd">            Detector v-direction unit vectors for each view, shape (n_views, 3).</span>
+<span class="sd">        det_u : int</span>
+<span class="sd">            Number of detector elements along the u-axis (width).</span>
+<span class="sd">        det_v : int</span>
+<span class="sd">            Number of detector elements along the v-axis (height).</span>
+<span class="sd">        du : float</span>
+<span class="sd">            Physical spacing between detector elements along the u-axis.</span>
+<span class="sd">        dv : float</span>
+<span class="sd">            Physical spacing between detector elements along the v-axis.</span>
+<span class="sd">        voxel_spacing : float, optional</span>
+<span class="sd">            Physical size of one voxel (in same units as positions, default: 1.0).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        sino : torch.Tensor</span>
+<span class="sd">            3D tensor of shape (n_views, det_u, det_v) containing the cone beam projections on the same device as `volume`.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        - Geometry tensors are moved to the volume's CUDA device and converted to float32.</span>
+<span class="sd">        - Data derivatives support higher orders; geometry derivatives are first-order only.</span>
+<span class="sd">        - Supports arbitrary source and detector trajectories, not limited to circular orbits.</span>
+<span class="sd">        - Uses cell-constant Siddon ray tracing.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; volume = torch.randn(128, 128, 128, device='cuda', requires_grad=True)</span>
+<span class="sd">        &gt;&gt;&gt; # Create circular trajectory</span>
+<span class="sd">        &gt;&gt;&gt; src_pos, det_center, det_u_vec, det_v_vec = circular_trajectory_3d(360, 1000.0, 1500.0, device='cuda')</span>
+<span class="sd">        &gt;&gt;&gt; sino = ConeProjectorFunction.apply(</span>
+<span class="sd">        ...     volume, src_pos, det_center, det_u_vec, det_v_vec, 256, 256, 1.0, 1.0</span>
+<span class="sd">        ... )</span>
+<span class="sd">        """</span>
+        <span class="c1"># Original inputs: backward builds a differentiable graph through them.</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span>
+            <span class="n">volume</span> <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">5</span><span class="p">])</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">get_device</span><span class="p">(</span><span class="n">volume</span><span class="p">)</span>
+        <span class="n">volume</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">volume</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">src_pos</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_center</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_center</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_v_vec</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+        <span class="n">volume</span> <span class="o">=</span> <span class="n">_cone_volume</span><span class="p">(</span><span class="n">volume</span><span class="p">)</span>
+        <span class="n">src_pos</span> <span class="o">=</span> <span class="n">src_pos</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_center</span> <span class="o">=</span> <span class="n">det_center</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">det_u_vec</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">det_v_vec</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+
+        <span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span> <span class="o">=</span> <span class="n">volume</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">n_views</span> <span class="o">=</span> <span class="n">src_pos</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">sino</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">n_views</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">volume</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">_project_into</span><span class="p">(</span>
+            <span class="s2">"cone"</span><span class="p">,</span> <span class="n">_prepare_volume</span><span class="p">(</span><span class="s2">"cone"</span><span class="p">,</span> <span class="n">volume</span><span class="p">),</span>
+            <span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">),</span> <span class="p">(</span><span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">),</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">sino</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span> <span class="o">=</span> <span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">sino</span></div>
+
+
+<div class="viewcode-block" id="ConeProjectorFunction.backward">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.ConeProjectorFunction.backward">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">backward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">grad_sinogram</span><span class="p">):</span>
+        <span class="n">volume</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">saved_tensors</span>
+        <span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span>
+        <span class="n">grad_vol</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="c1"># The adjoint is an autograd Function too, so second derivatives work.</span>
+            <span class="n">grad_vol</span> <span class="o">=</span> <span class="n">ConeBackprojectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
+                <span class="n">grad_sinogram</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">voxel_spacing</span>
+            <span class="p">)</span>
+        <span class="n">geometry_grads</span> <span class="o">=</span> <span class="n">_geometry_grads</span><span class="p">(</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">5</span><span class="p">],</span> <span class="s2">"cone"</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">grad_sinogram</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">),</span> <span class="p">(</span><span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">),</span> <span class="n">voxel_spacing</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">grad_vol</span><span class="p">,</span> <span class="o">*</span><span class="n">geometry_grads</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ConeBackprojectorFunction">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.ConeBackprojectorFunction">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ConeBackprojectorFunction</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">autograd</span><span class="o">.</span><span class="n">Function</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Summary</span>
+<span class="sd">    -------</span>
+<span class="sd">    PyTorch autograd function for differentiable 3D cone beam backprojection.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Provides a differentiable interface to the CUDA-accelerated Siddon ray-tracing</span>
+<span class="sd">    method with a cell-constant voxel basis for 3D cone beam backprojection. The forward pass</span>
+<span class="sd">    computes a 3D reconstruction from cone beam projection data using</span>
+<span class="sd">    backprojection as the adjoint operation. The backward pass computes gradients</span>
+<span class="sd">    via 3D cone beam forward projection. Requires CUDA-capable hardware and</span>
+<span class="sd">    consistent device placements.</span>
+<span class="sd">    </span>
+<span class="sd">    This operation may be memory- and computationally-intensive due to 3D geometry.</span>
+<span class="sd">    Consider using gradient checkpointing, smaller volumes, or distributed computing</span>
+<span class="sd">    for large-scale applications, and ensure sufficient GPU memory is available.</span>
+
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import torch</span>
+<span class="sd">    &gt;&gt;&gt; from diffct import ConeBackprojectorFunction, circular_trajectory_3d</span>
+<span class="sd">    &gt;&gt;&gt;</span>
+<span class="sd">    &gt;&gt;&gt; projections = torch.randn(360, 256, 256, device='cuda', requires_grad=True)</span>
+<span class="sd">    &gt;&gt;&gt; src_pos, det_center, det_u_vec, det_v_vec = circular_trajectory_3d(360, sid=1000.0, sdd=1500.0, device='cuda')</span>
+<span class="sd">    &gt;&gt;&gt; volume = ConeBackprojectorFunction.apply(</span>
+<span class="sd">    ...     projections, src_pos, det_center, det_u_vec, det_v_vec, 128, 128, 128, 1.0, 1.0</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; volume.sum().backward()</span>
+<span class="sd">    &gt;&gt;&gt; projections.grad.shape</span>
+<span class="sd">    torch.Size([360, 256, 256])</span>
+<span class="sd">    """</span>
+<div class="viewcode-block" id="ConeBackprojectorFunction.forward">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.ConeBackprojectorFunction.forward">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="nd">@_on_device_of</span><span class="p">(</span><span class="s2">"sinogram"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+                <span class="n">native_layout</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Compute the 3D cone beam backprojection with arbitrary trajectories using CUDA acceleration.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        sinogram : torch.Tensor</span>
+<span class="sd">            Floating-point CUDA cone sinogram of shape (n_views, det_u, det_v), converted to float32 for execution.</span>
+<span class="sd">        src_pos : torch.Tensor</span>
+<span class="sd">            Source positions for each view, shape (n_views, 3), in physical units.</span>
+<span class="sd">        det_center : torch.Tensor</span>
+<span class="sd">            Detector center positions for each view, shape (n_views, 3), in physical units.</span>
+<span class="sd">        det_u_vec : torch.Tensor</span>
+<span class="sd">            Detector u-direction unit vectors for each view, shape (n_views, 3).</span>
+<span class="sd">        det_v_vec : torch.Tensor</span>
+<span class="sd">            Detector v-direction unit vectors for each view, shape (n_views, 3).</span>
+<span class="sd">        D : int</span>
+<span class="sd">            Depth (z-dimension) of the output reconstruction volume.</span>
+<span class="sd">        H : int</span>
+<span class="sd">            Height (y-dimension) of the output reconstruction volume.</span>
+<span class="sd">        W : int</span>
+<span class="sd">            Width (x-dimension) of the output reconstruction volume.</span>
+<span class="sd">        du : float</span>
+<span class="sd">            Physical spacing between detector elements along the u-axis.</span>
+<span class="sd">        dv : float</span>
+<span class="sd">            Physical spacing between detector elements along the v-axis.</span>
+<span class="sd">        voxel_spacing : float, optional</span>
+<span class="sd">            Physical size of one voxel (in same units as positions, default: 1.0).</span>
+<span class="sd">        native_layout : bool, optional</span>
+<span class="sd">            If True, return a (D, H, W) tensor with the kernel's native (W, H, D)-contiguous strides</span>
+<span class="sd">            instead of a contiguous copy (default: False). Projections accept such tensors without a copy.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        vol : torch.Tensor</span>
+<span class="sd">            3D tensor of shape (D, H, W) containing the reconstructed volume on the same device as `sinogram`.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        - Geometry tensors are moved to the sinogram's CUDA device and converted to float32.</span>
+<span class="sd">        - Data derivatives support higher orders; geometry derivatives are first-order only.</span>
+<span class="sd">        - Supports arbitrary source and detector trajectories.</span>
+<span class="sd">        - Uses the adjoint of cell-constant Siddon ray tracing.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; projections = torch.randn(360, 256, 256, device='cuda', requires_grad=True)</span>
+<span class="sd">        &gt;&gt;&gt; src_pos, det_center, det_u_vec, det_v_vec = circular_trajectory_3d(360, 1000.0, 1500.0, device='cuda')</span>
+<span class="sd">        &gt;&gt;&gt; vol = ConeBackprojectorFunction.apply(</span>
+<span class="sd">        ...     projections, src_pos, det_center, det_u_vec, det_v_vec, 128, 128, 128, 1.0, 1.0</span>
+<span class="sd">        ... )</span>
+<span class="sd">        """</span>
+        <span class="c1"># Original inputs: backward builds a differentiable graph through them.</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span>
+            <span class="n">sinogram</span> <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">5</span><span class="p">])</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">get_device</span><span class="p">(</span><span class="n">sinogram</span><span class="p">)</span>
+        <span class="n">sinogram</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">src_pos</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_center</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_center</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_u_vec</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">DeviceManager</span><span class="o">.</span><span class="n">ensure_device</span><span class="p">(</span><span class="n">det_v_vec</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+        <span class="n">sinogram</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">src_pos</span> <span class="o">=</span> <span class="n">src_pos</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_center</span> <span class="o">=</span> <span class="n">det_center</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_u_vec</span> <span class="o">=</span> <span class="n">det_u_vec</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">det_v_vec</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+
+        <span class="n">n_views</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_v</span> <span class="o">=</span> <span class="n">sinogram</span><span class="o">.</span><span class="n">shape</span>
+
+        <span class="c1"># Validate memory layout to prevent coordinate system inconsistencies</span>
+        <span class="n">_validate_3d_memory_layout</span><span class="p">(</span><span class="n">sinogram</span><span class="p">,</span> <span class="n">expected_order</span><span class="o">=</span><span class="s1">'VHW'</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">native_layout</span><span class="p">:</span>
+            <span class="c1"># A (D, H, W) tensor with the native (W, H, D) strides, not a view: the kernel writes its</span>
+            <span class="c1"># contiguous permutation, and in-place operations on the result stay valid under autograd.</span>
+            <span class="n">vol</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty_strided</span><span class="p">((</span><span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">D</span> <span class="o">*</span> <span class="n">H</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">sinogram</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span><span class="o">.</span><span class="n">zero_</span><span class="p">()</span>
+            <span class="n">vol_perm</span> <span class="o">=</span> <span class="n">vol</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">vol_perm</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">W</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">D</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">sinogram</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">_backproject_into</span><span class="p">(</span>
+            <span class="s2">"cone"</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span> <span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">),</span>
+            <span class="p">(</span><span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">),</span> <span class="n">voxel_spacing</span><span class="p">,</span> <span class="n">vol_perm</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span> <span class="o">=</span> <span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_v</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">vol</span> <span class="k">if</span> <span class="n">native_layout</span> <span class="k">else</span> <span class="n">vol_perm</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ConeBackprojectorFunction.backward">
+<a class="viewcode-back" href="../../../api.html#diffct_mlx.engine.ConeBackprojectorFunction.backward">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">backward</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">grad_output</span><span class="p">):</span>
+        <span class="n">sinogram</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">saved_tensors</span>
+        <span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_v</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="p">)</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">intermediate</span>
+        <span class="n">grad_sino</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="n">grad_sino</span> <span class="o">=</span> <span class="n">ConeProjectorFunction</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
+                <span class="n">grad_output</span><span class="p">,</span> <span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">,</span> <span class="n">n_u</span><span class="p">,</span> <span class="n">n_v</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">voxel_spacing</span>
+            <span class="p">)</span>
+        <span class="c1"># &lt;grad_output, A^T y&gt; = &lt;A grad_output, y&gt;, so the projector's VJP applies.</span>
+        <span class="n">geometry_grads</span> <span class="o">=</span> <span class="n">_geometry_grads</span><span class="p">(</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">needs_input_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">5</span><span class="p">],</span> <span class="s2">"cone"</span><span class="p">,</span> <span class="n">grad_output</span><span class="p">,</span> <span class="n">sinogram</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">src_pos</span><span class="p">,</span> <span class="n">det_center</span><span class="p">,</span> <span class="n">det_u_vec</span><span class="p">,</span> <span class="n">det_v_vec</span><span class="p">),</span> <span class="p">(</span><span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">),</span> <span class="n">voxel_spacing</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">grad_sino</span><span class="p">,</span> <span class="o">*</span><span class="n">geometry_grads</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Linda-Sophie Schneider; upstream diffct (c) Yipeng Sun.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

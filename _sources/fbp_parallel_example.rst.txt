@@ -1,7 +1,7 @@
 Parallel Beam Filtered Backprojection (FBP)
 ===========================================
 
-This example demonstrates 2D parallel beam filtered backprojection (FBP) reconstruction using the `ParallelProjectorFunction` and `ParallelBackprojectorFunction` from `diffct`.
+This example demonstrates 2D parallel beam filtered backprojection (FBP) reconstruction using the `ParallelProjectorFunction` and `ParallelBackprojectorFunction` from ``diffct_mlx.engine``.
 
 Overview
 --------
@@ -47,7 +47,7 @@ where :math:`p_f(t, \theta)` is the filtered projection:
 **Implementation Steps**
 
 1. **Phantom Generation**: Create Shepp-Logan phantom with 5 ellipses
-2. **Forward Projection**: Generate sinogram using `ParallelProjectorFunction` with geometry from ``diffct.geometry.circular_trajectory_2d_parallel``
+2. **Forward Projection**: Generate sinogram using `ParallelProjectorFunction` with geometry from ``diffct_mlx.engine.circular_trajectory_2d_parallel``
 3. **Ramp Filtering**: Apply :math:`H(\omega) = |\omega|` filter in frequency domain
 4. **Backprojection**: Reconstruct using `ParallelBackprojectorFunction`
 5. **Normalization**: Scale by :math:`\frac{\pi}{N_{\text{angles}}}` factor

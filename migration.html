@@ -1,0 +1,237 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Migrating from 2.x to 3.0 &mdash; DiffCT-MLX 3.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=acc74ff5"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API Reference" href="api.html" />
+    <link rel="prev" title="Getting Started" href="getting_started.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DiffCT-MLX
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Migrating from 2.x to 3.0</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-changed">What changed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#reproducing-2-x-results">Reproducing 2.x results</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#projection-stacks">Projection stacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#imports-of-the-engine">Imports of the engine</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#behaviour-fixes-you-will-notice">Behaviour fixes you will notice</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#staying-on-2-x">Staying on 2.x</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DiffCT-MLX</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Migrating from 2.x to 3.0</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/migration.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="migrating-from-2-x-to-3-0">
+<h1>Migrating from 2.x to 3.0<a class="headerlink" href="#migrating-from-2-x-to-3-0" title="Link to this heading"></a></h1>
+<p>DiffCT-MLX 3.0 changes two defaults and replaces the Torch engine. Code that
+runs on 2.x still runs on 3.0, but its numbers change. They move by half a
+detector pixel in position and by the factor <code class="docutils literal notranslate"><span class="pre">voxel_spacing</span></code> in amplitude.</p>
+<section id="what-changed">
+<h2>What changed<a class="headerlink" href="#what-changed" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 35.0%" />
+<col style="width: 35.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"></th>
+<th class="head"><p>2.x</p></th>
+<th class="head"><p>3.0</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Detector pixel <code class="docutils literal notranslate"><span class="pre">i</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">det_center</span> <span class="pre">+</span> <span class="pre">(i</span> <span class="pre">-</span> <span class="pre">N/2)·du</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">det_center</span> <span class="pre">+</span> <span class="pre">(i</span> <span class="pre">-</span> <span class="pre">(N-1)/2)·du</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Line integrals</p></td>
+<td><p>voxel units</p></td>
+<td><p>physical (µ · length of the geometry)</p></td>
+</tr>
+<tr class="row-even"><td><p>Iterative result of physical data</p></td>
+<td><p>µ per voxel</p></td>
+<td><p>µ in 1/mm</p></td>
+</tr>
+<tr class="row-odd"><td><p>Torch engine</p></td>
+<td><p>top-level <code class="docutils literal notranslate"><span class="pre">diffct</span></code> (dev line 1.3)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx.engine</span></code> (upstream diffct 2.5.2)</p></td>
+</tr>
+<tr class="row-even"><td><p>Python</p></td>
+<td><p>≥ 3.9</p></td>
+<td><p>≥ 3.10</p></td>
+</tr>
+</tbody>
+</table>
+<p>In 3.0 <code class="docutils literal notranslate"><span class="pre">det_center</span></code> is the geometric centre of the panel on both backends,
+the convention of upstream diffct ≥ 2.0. The quantitative FDK path already
+returned 1/mm in 2.x and does not change.</p>
+</section>
+<section id="reproducing-2-x-results">
+<h2>Reproducing 2.x results<a class="headerlink" href="#reproducing-2-x-results" title="Link to this heading"></a></h2>
+<p>The operator factories and case builders take the old conventions as
+keywords:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">diffct_mlx</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dct</span>
+
+<span class="n">A</span> <span class="o">=</span> <span class="n">dct</span><span class="o">.</span><span class="n">make_cone_3d_operator</span><span class="p">(</span>
+    <span class="n">src</span><span class="p">,</span> <span class="n">det_c</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">,</span>
+    <span class="n">volume_shape</span><span class="o">=</span><span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">W</span><span class="p">),</span> <span class="n">detector_shape</span><span class="o">=</span><span class="p">(</span><span class="n">nu</span><span class="p">,</span> <span class="n">nv</span><span class="p">),</span>
+    <span class="n">du</span><span class="o">=</span><span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="o">=</span><span class="n">dv</span><span class="p">,</span> <span class="n">voxel_spacing</span><span class="o">=</span><span class="n">vs</span><span class="p">,</span>
+    <span class="n">detector_convention</span><span class="o">=</span><span class="s2">"legacy"</span><span class="p">,</span> <span class="n">line_integrals</span><span class="o">=</span><span class="s2">"voxel"</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">make_parallel_2d_operator</span></code>, <code class="docutils literal notranslate"><span class="pre">make_fan_2d_operator</span></code> and the
+<code class="docutils literal notranslate"><span class="pre">make_*_operators</span></code> builders accept the same two keywords. The 2.3 name
+<code class="docutils literal notranslate"><span class="pre">detector_convention=&quot;kernel&quot;</span></code> is an alias of <code class="docutils literal notranslate"><span class="pre">&quot;legacy&quot;</span></code>.</p>
+<p>For direct projector calls and for FBP/FDK, convert the detector centre:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">det_c_legacy</span> <span class="o">=</span> <span class="n">dct</span><span class="o">.</span><span class="n">kernel_detector_center</span><span class="p">(</span>
+    <span class="n">det_c</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">det_v</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">convention</span><span class="o">=</span><span class="s2">"legacy"</span><span class="p">)</span>
+<span class="n">sino_2x_grid</span> <span class="o">=</span> <span class="n">dct</span><span class="o">.</span><span class="n">cone_forward</span><span class="p">(</span><span class="n">vol</span><span class="p">,</span> <span class="n">src</span><span class="p">,</span> <span class="n">det_c_legacy</span><span class="p">,</span> <span class="n">det_u</span><span class="p">,</span> <span class="n">det_v</span><span class="p">,</span>
+                                <span class="n">nu</span><span class="p">,</span> <span class="n">nv</span><span class="p">,</span> <span class="n">du</span><span class="p">,</span> <span class="n">dv</span><span class="p">,</span> <span class="n">vs</span><span class="p">)</span>
+<span class="n">sino_2x</span> <span class="o">=</span> <span class="n">sino_2x_grid</span> <span class="o">/</span> <span class="n">vs</span>          <span class="c1"># voxel units, as 2.x returned</span>
+</pre></div>
+</div>
+<p>For a parallel beam pass <code class="docutils literal notranslate"><span class="pre">det_origin</span></code> in place of <code class="docutils literal notranslate"><span class="pre">det_center</span></code>.</p>
+</section>
+<section id="projection-stacks">
+<h2>Projection stacks<a class="headerlink" href="#projection-stacks" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">.npy</span></code> stacks written by 2.x projectors are in voxel units. Load them with
+<code class="docutils literal notranslate"><span class="pre">NpyProjectionsConfig(projection_units=&quot;voxel&quot;)</span></code> and they are converted to
+physical units. Measured <code class="docutils literal notranslate"><span class="pre">-log</span></code> data is physical already and needs no
+change.</p>
+</section>
+<section id="imports-of-the-engine">
+<h2>Imports of the engine<a class="headerlink" href="#imports-of-the-engine" title="Link to this heading"></a></h2>
+<p>The wheel no longer installs a top-level <code class="docutils literal notranslate"><span class="pre">diffct</span></code> package, so it no longer
+shadows the PyPI package <code class="docutils literal notranslate"><span class="pre">diffct</span></code>. Replace</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">diffct</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConeProjectorFunction</span><span class="p">,</span> <span class="n">circular_trajectory_3d</span>
+</pre></div>
+</div>
+<p>with</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">diffct_mlx.engine</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConeProjectorFunction</span><span class="p">,</span> <span class="n">circular_trajectory_3d</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">diffct.differentiable</span></code> is gone. Geometry generators in the engine default
+to <code class="docutils literal notranslate"><span class="pre">device=&quot;cuda&quot;</span></code> as upstream does. The unified <code class="docutils literal notranslate"><span class="pre">diffct_mlx</span></code> generators
+choose the device for you.</p>
+</section>
+<section id="behaviour-fixes-you-will-notice">
+<h2>Behaviour fixes you will notice<a class="headerlink" href="#behaviour-fixes-you-will-notice" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Footprint amplitude.</strong> The footprint projectors are mass-conserving
+since 2.2.0, and 3.0 keeps this on the new engine. Coming from 2.1 or the
+dev0 line, expect a change. Those weighted voxels with <code class="docutils literal notranslate"><span class="pre">1/M(x)²</span></code>, which
+biased off-centre voxels by depth, by about 7 % for a typical micro-CT
+geometry.</p></li>
+<li><p><strong>Metal cone geometry gradient.</strong> It now matches the engine’s exact
+gradient. The 2.x kernel differentiated a trilinear volume and was off by
+about 100 %. Pose and trajectory optimization on Apple Silicon behaves
+differently, and correctly.</p></li>
+<li><p><strong>Rays clipped to the source-detector segment.</strong> A source or detector
+inside the volume no longer gives the full-line integral.</p></li>
+</ul>
+</section>
+<section id="staying-on-2-x">
+<h2>Staying on 2.x<a class="headerlink" href="#staying-on-2-x" title="Link to this heading"></a></h2>
+<p>Pin <code class="docutils literal notranslate"><span class="pre">diffct-mlx&lt;3</span></code> to keep the old behaviour unchanged. 2.3.0 is the last
+2.x release.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="getting_started.html" class="btn btn-neutral float-left" title="Getting Started" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api.html" class="btn btn-neutral float-right" title="API Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Linda-Sophie Schneider; upstream diffct (c) Yipeng Sun.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

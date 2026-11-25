@@ -1,9 +1,9 @@
 API Reference
 =============
 
-DiffCT-MLX ships two importable packages. ``diffct_mlx`` is the unified,
-auto-backend API most users should import; ``diffct`` is the low-level
-Torch/numba-CUDA engine it wraps on NVIDIA systems.
+``diffct_mlx`` is the unified, auto-backend API most users should import.
+``diffct_mlx.engine`` is the Torch/numba-CUDA engine it wraps on the Torch
+backend, a maintained copy of upstream diffct 2.5.2.
 
 The unified package: ``diffct_mlx``
 -----------------------------------
@@ -16,6 +16,17 @@ name. The backend-neutral array namespace ``diffct_mlx.backend.xp`` mirrors
 ``mlx.core`` on both engines and is what all shared reconstruction code is
 written against.
 
+.. rubric:: Conventions (``diffct_mlx.conventions``, re-exported at top level)
+
+Since 3.0 every projector places detector pixel ``i`` at
+``det_center + (i - (N-1)/2)·du`` and returns physical line integrals
+(µ · length). ``DETECTOR_CONVENTIONS`` is ``("centered", "legacy")`` and
+``LINE_INTEGRAL_UNITS`` is ``("physical", "voxel")``. The operator factories
+take ``detector_convention=`` and ``line_integrals=``;
+``kernel_detector_center(det_center, det_u_vec, du, det_v_vec, dv,
+convention="legacy")`` converts a 2.x detector centre for direct calls and
+``line_integral_scale`` gives the unit factor. See :doc:`migration`.
+
 .. rubric:: Projectors (``diffct_mlx.projectors``, re-exported at top level)
 
 Functional operators with identical signatures on both backends:
@@ -23,7 +34,10 @@ Functional operators with identical signatures on both backends:
 ``fan_backward``, ``cone_forward`` / ``cone_backward``, and the
 separable-footprint variants ``*_forward_footprint`` / ``*_backward_footprint``
 (``cone_backward_footprint`` additionally accepts ``indices=`` for sparse
-region-of-interest evaluation). All flow gradients.
+region-of-interest evaluation). All flow gradients to their data. Siddon
+forward projectors also flow exact gradients to the geometry arrays on the
+Torch backend; on MLX this holds for cone Siddon, while fan and parallel
+geometry gradients are not implemented yet.
 
 .. rubric:: Geometry (``diffct_mlx.geometry``, re-exported at top level)
 
@@ -72,11 +86,12 @@ path. ``reconstruct_case_fdk(case)`` combines cosine weighting, trapezoidal
 per-view angular weights, a zero-padded physical ramp and the voxel-driven
 ``(SID/U)^2`` backprojector; its result is attenuation in ``1/mm``.
 
-Projectors themselves integrate in voxel units, so physical line integrals are
-``(A @ x) * A.voxel_spacing``. ``simulate_scan`` performs this conversion
-before transmission and beam-hardening physics. Iterative reconstruction of a
-physical measured sinogram returns attenuation per voxel; divide by
-``case.voxel_spacing`` to obtain ``1/mm``.
+Projectors return physical line integrals, so ``A @ x`` is already in
+µ · mm when ``x`` is in 1/mm. ``simulate_scan`` feeds them straight into the
+transmission and beam-hardening physics. Iterative reconstruction of a
+physical sinogram returns attenuation in ``1/mm``. Operators built with
+``line_integrals="voxel"`` reproduce the 2.x voxel units; their
+``to_physical`` attribute is the factor back to physical units.
 
 .. rubric:: Physics & simulation (``diffct_mlx.physics``)
 
@@ -109,24 +124,50 @@ cone projections for ground truth. Self-calibration:
 ``open_zarr`` / ``set_out_of_core_dir`` / ``set_out_of_core_backend``, and the
 shadow-geometry primitives ``row_range_for_zslab`` / ``slice_range_for_vband``.
 
-The low-level engine: ``diffct``
---------------------------------
+The Torch engine: ``diffct_mlx.engine``
+---------------------------------------
 
-The vendored Torch/numba-CUDA engine is organised into focused modules that can be combined to build differentiable CT pipelines:
+The engine is upstream diffct 2.5.2, vendored and maintained in DiffCT-MLX.
+Its modules can be used directly on the Torch backend:
 
-- ``diffct.projectors`` – PyTorch ``autograd.Function`` implementations for forward and backward projectors
-- ``diffct.geometry`` – helpers to generate detector/source trajectories for 2D and 3D scans
-- ``diffct.analytical`` – analytical FBP / FDK building blocks (ramp filter, cosine weights, Parker weights, voxel-driven backprojection wrappers)
-- ``diffct.kernels`` – CUDA kernel primitives (Siddon + separable-footprint forward / adjoint, FBP/FDK gather) for advanced users
-- ``diffct.footprint`` – separable-footprint autograd Functions, incl. the sparse cone backprojection
-- ``diffct.utils`` – CUDA device management and tensor bridge utilities
-- ``diffct.constants`` – low-level configuration values for advanced tuning
-- ``diffct.differentiable`` – deprecated compatibility shim that re-exports the public API
+- ``diffct_mlx.engine.operators`` – ``Projector``: chunked, streamed
+  projection for parallel, fan, cone and ``parallel3d`` beams, per-axis voxel
+  spacing, detector surfaces, batch dimensions and multiple GPUs
+- ``diffct_mlx.engine.backends`` – backend selection (``"numba"`` native CUDA,
+  ``"torch"`` portable on CPU, CUDA, ROCm and MPS) and
+  ``precision="fast" | "float32" | "float64"``
+- ``diffct_mlx.engine.projectors`` – PyTorch ``autograd.Function`` projectors
+  and backprojectors with exact geometry gradients
+- ``diffct_mlx.engine.footprint`` – separable-footprint autograd Functions,
+  including the sparse cone backprojection (DiffCT-MLX extension)
+- ``diffct_mlx.engine.geometry`` – trajectory generators for 2D and 3D scans
+- ``diffct_mlx.engine.analytical`` – ramp filter, cosine and Parker weights,
+  voxel-driven FBP/FDK backprojection
+- ``diffct_mlx.engine.reconstruction`` and ``solvers`` – differentiable
+  ``fbp``, ``fdk``, ``helical_fdk`` and ``cgls``, ``sirt``,
+  ``tv_reconstruction``
+- ``diffct_mlx.engine.surfaces`` – ``ParameterizedSurface`` for curved
+  detectors
+- ``diffct_mlx.engine.kernels`` – numba-CUDA kernels for advanced users
+- ``diffct_mlx.engine.utils`` and ``constants`` – device helpers and launch
+  constants
+
+The upstream user documentation of the engine ships in ``docs/engine/`` of
+the repository.
+
+Projector
+---------
+
+.. currentmodule:: diffct_mlx.engine
+
+.. autoclass:: Projector
+   :members:
+   :show-inheritance:
 
 Core Projector Functions
 ------------------------
 
-.. currentmodule:: diffct
+.. currentmodule:: diffct_mlx.engine
 
 .. autoclass:: ParallelProjectorFunction
    :members:
@@ -161,7 +202,7 @@ Core Projector Functions
 Geometry Helpers
 ----------------
 
-.. currentmodule:: diffct.geometry
+.. currentmodule:: diffct_mlx.engine.geometry
 
 **3D trajectories**
 
@@ -184,7 +225,7 @@ Geometry Helpers
 Analytical Reconstruction Helpers
 ---------------------------------
 
-.. currentmodule:: diffct.analytical
+.. currentmodule:: diffct_mlx.engine.analytical
 
 These helpers build the per-view pre-weights, angle-integration weights,
 filter, and backprojection pieces of an analytical FBP / FDK pipeline.
@@ -289,7 +330,7 @@ is the standard heuristic generalisation of FDK beyond the circle.
 Utilities
 ---------
 
-.. currentmodule:: diffct.utils
+.. currentmodule:: diffct_mlx.engine.utils
 
 .. autoclass:: DeviceManager
    :members:
@@ -302,7 +343,7 @@ Additional helper functions (prefixed with an underscore) remain available for a
 Constants
 ---------
 
-.. currentmodule:: diffct.constants
+.. currentmodule:: diffct_mlx.engine.constants
 
 .. autodata:: _DTYPE
 .. autodata:: _TPB_2D
@@ -313,17 +354,22 @@ Constants
 
 These values mirror the defaults used by the CUDA kernels. They are exposed for power users who need to fine-tune launch parameters or numeric tolerances; most applications should rely on the defaults.
 
-Backward Compatibility
-----------------------
+Reconstruction and Solvers
+--------------------------
 
-.. currentmodule:: diffct.differentiable
+.. currentmodule:: diffct_mlx.engine
 
-``diffct.differentiable`` continues to expose the legacy API surface for existing code bases. New projects should import from ``diffct`` (top level) or the specific submodules shown above.
+.. autofunction:: fbp
+.. autofunction:: fdk
+.. autofunction:: helical_fdk
+.. autofunction:: cgls
+.. autofunction:: sirt
+.. autofunction:: tv_reconstruction
 
 Usage Notes
 -----------
 
-- All projector operators accept tensors on CUDA devices and return results on the same device. Use ``diffct.utils.DeviceManager`` helpers when integrating into larger code bases.
+- The autograd Functions run the native kernels on CUDA tensors. ``Projector`` with ``backend="torch"`` also runs on CPU, MPS and ROCm tensors, and the unified ``diffct_mlx`` Siddon projectors pick that path automatically for non-CUDA tensors.
 - Geometry helper functions build the ``ray_dir``, ``det_origin``, and detector orientation vectors expected by the projector operators.
 - Gradients flow through both forward and backward passes; set ``requires_grad=True`` on inputs that participate in optimisation loops.
 - Ensure tensors are contiguous and use consistent dtype (``torch.float32``) for maximum kernel performance.

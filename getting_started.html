@@ -6,20 +6,20 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Getting Started &mdash; DiffCT-MLX 2.3.0 documentation</title>
+  <title>Getting Started &mdash; DiffCT-MLX 3.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=c3c8ae58"></script>
+      <script src="_static/documentation_options.js?v=acc74ff5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="API Reference" href="api.html" />
+    <link rel="next" title="Migrating from 2.x to 3.0" href="migration.html" />
     <link rel="prev" title="DiffCT-MLX: Differentiable CT — One API, Two Backends" href="index.html" /> 
 </head>
 
@@ -51,6 +51,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#where-to-go-next">Where to go next</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="migration.html">Migrating from 2.x to 3.0</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
@@ -98,9 +99,9 @@ reconstruction with the unified <code class="docutils literal notranslate"><span
 <section id="installation">
 <h2>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h2>
 <p>Install the release from PyPI with the extra matching your platform:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"diffct-mlx[cuda]"</span><span class="w">   </span><span class="c1"># NVIDIA GPUs: Torch + numba-CUDA</span>
-<span class="c1"># or</span>
-pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"diffct-mlx[mlx]"</span><span class="w">    </span><span class="c1"># Apple Silicon: MLX</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"diffct-mlx[mlx]"</span><span class="w">                       </span><span class="c1"># Apple Silicon: MLX</span>
+pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"diffct-mlx[cuda]"</span><span class="w"> </span><span class="s2">"numba-cuda[cu12]"</span><span class="w">   </span><span class="c1"># NVIDIA GPUs, CUDA 12</span>
+pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"diffct-mlx[torch]"</span><span class="w">                     </span><span class="c1"># portable PyTorch engine (CPU, MPS, ROCm)</span>
 </pre></div>
 </div>
 <p>For an editable development install, clone the repository:</p>
@@ -165,6 +166,7 @@ path when available and returns attenuation in <code class="docutils literal not
 <li><p><code class="docutils literal notranslate"><span class="pre">dct.simulate_scan</span></code> produces realistic polychromatic, noisy data from a
 phantom in physical line-integral units; <code class="docutils literal notranslate"><span class="pre">diffct_mlx.physics</span></code> corrects
 real measurements.</p></li>
+<li><p>Upgrading from DiffCT-MLX 2.x: read <a class="reference internal" href="migration.html"><span class="doc">Migrating from 2.x to 3.0</span></a>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">diffct_mlx.orchestration</span></code> reconstructs volumes larger than GPU memory
 (and larger than host RAM) across multiple GPUs.</p></li>
 <li><p>Explore the <a class="reference internal" href="examples.html"><span class="doc">Examples</span></a> and the <a class="reference internal" href="api.html"><span class="doc">API Reference</span></a> reference.</p></li>
@@ -177,7 +179,7 @@ real measurements.</p></li>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="index.html" class="btn btn-neutral float-left" title="DiffCT-MLX: Differentiable CT — One API, Two Backends" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="api.html" class="btn btn-neutral float-right" title="API Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="migration.html" class="btn btn-neutral float-right" title="Migrating from 2.x to 3.0" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

@@ -1,7 +1,7 @@
 Fan Beam Filtered Backprojection (FBP)
 ======================================
 
-This example demonstrates 2D fan beam filtered backprojection (FBP) reconstruction using the `FanProjectorFunction` and `FanBackprojectorFunction` from `diffct`.
+This example demonstrates 2D fan beam filtered backprojection (FBP) reconstruction using the `FanProjectorFunction` and `FanBackprojectorFunction` from ``diffct_mlx.engine``.
 
 Overview
 --------
@@ -65,7 +65,7 @@ Fan beam FBP reconstruction involves three sequential steps:
 **Implementation Steps**
 
 1. **Phantom Generation**: Create Shepp-Logan phantom for testing
-2. **Fan Beam Projection**: Generate sinogram using `FanProjectorFunction` with geometry from helpers such as ``diffct.geometry.circular_trajectory_2d_fan``
+2. **Fan Beam Projection**: Generate sinogram using `FanProjectorFunction` with geometry from helpers such as ``diffct_mlx.engine.circular_trajectory_2d_fan``
 3. **Cosine Weighting**: Apply divergence correction weights
 4. **Ramp Filtering**: Filter each projection in frequency domain
 5. **Fan Beam Backprojection**: Reconstruct using `FanBackprojectorFunction`

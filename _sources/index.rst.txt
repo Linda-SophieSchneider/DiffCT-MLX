@@ -5,13 +5,22 @@ DiffCT-MLX: Differentiable CT — One API, Two Backends
 user-facing package, ``diffct_mlx``, that selects its compute engine at import
 time:
 
-* **Torch / numba-CUDA** on NVIDIA GPUs (wrapping the vendored ``diffct``
-  engine, adapted from `sypsyp97/diffct <https://github.com/sypsyp97/diffct>`_),
-* **MLX / Metal** on Apple Silicon.
+* **MLX / Metal** on Apple Silicon,
+* **Torch / numba-CUDA** on NVIDIA GPUs, through ``diffct_mlx.engine``, a
+  vendored and maintained copy of upstream
+  `diffct <https://github.com/sypsyp97/diffct>`_ 2.5.2 by Yipeng Sun.
 
 The same script — projectors, geometry, reconstruction, physics — runs
-unchanged on both platforms. Override the automatic choice with the
-``DIFFCT_BACKEND`` environment variable (``torch`` / ``mlx``).
+unchanged on both platforms and gives the same numbers. Override the
+automatic choice with the ``DIFFCT_BACKEND`` environment variable (``torch`` /
+``mlx``).
+
+.. note::
+
+   **DiffCT-MLX 3.0** uses one convention on both backends: detector pixel
+   ``i`` at ``det_center + (i - (N-1)/2)·du`` and physical line integrals
+   (µ · length). Iterative reconstruction of physical data returns µ in 1/mm.
+   Coming from 2.x? Read :doc:`migration`.
 
 **Key Features**
 ----------------
@@ -29,7 +38,10 @@ unchanged on both platforms. Override the automatic choice with the
   (``cgls``, ``wls``/``rwls``, ``pcg``, ``mlem``/``osem``, ``mltr``, ...)
   over a composable ``LinearOperator`` algebra with functionals,
   regularizers and Plug-and-Play denoisers.
-- **Physics & simulation:** explicit voxel/physical line-integral conventions,
+- **Exact geometry gradients:** the Siddon projectors differentiate with
+  respect to source and detector positions, for trajectory optimization and
+  self-calibration.
+- **Physics & simulation:** physical line integrals throughout,
   GPU-native preprocessing (flat field, rings, bad
   pixels, beam hardening, deblur, scatter, MAR) and forward simulation with an
   embedded, physically-validated X-ray spectrum / material-attenuation
@@ -38,12 +50,13 @@ unchanged on both platforms. Override the automatic choice with the
   TB-scale volumes through chunked, conveyor-pipelined FDK/SIRT/OS-SART with
   automatic RAM/disk (memmap or zarr) spill.
 
-**Two importable packages**
----------------------------
+**Package layout**
+------------------
 - ``diffct_mlx`` — the unified, auto-backend API. **Import this.**
-- ``diffct`` — the low-level Torch/numba-CUDA engine (autograd Functions,
-  CUDA kernels, analytical FBP/FDK helpers). Useful for advanced integrations
-  on NVIDIA hardware; documented in the API reference.
+- ``diffct_mlx.engine`` — the Torch/numba-CUDA engine (upstream diffct
+  2.5.2): autograd Functions, the chunked ``Projector``, the portable PyTorch
+  backend for CPU, MPS and ROCm, analytical FBP/FDK helpers and solvers.
+  Documented in the API reference.
 
 Getting Started
 ---------------
@@ -53,6 +66,7 @@ Getting Started
    :caption: Getting Started
 
    getting_started
+   migration
 
 User Guide
 ----------

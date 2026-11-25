@@ -1,7 +1,7 @@
 Fan Beam Iterative Reconstruction
 =================================
 
-This example demonstrates 2D fan beam iterative reconstruction using the differentiable `FanProjectorFunction` and `FanBackprojectorFunction` from `diffct`.
+This example demonstrates 2D fan beam iterative reconstruction using the differentiable `FanProjectorFunction` and `FanBackprojectorFunction` from ``diffct_mlx.engine``.
 
 Overview
 --------
@@ -54,7 +54,7 @@ Fan beam geometry introduces complexities compared to parallel beam:
 
 **Implementation Steps**
 
-1. **Geometry Setup**: Configure fan beam parameters (SID, SDD) using helpers such as ``diffct.geometry.circular_trajectory_2d_fan``
+1. **Geometry Setup**: Configure fan beam parameters (SID, SDD) using helpers such as ``diffct_mlx.engine.circular_trajectory_2d_fan``
 2. **Problem Formulation**: Define parameterized image and fan beam forward model
 3. **Loss Computation**: Calculate L2 distance using `FanProjectorFunction`
 4. **Gradient Computation**: Use automatic differentiation through fan beam operators
