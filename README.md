@@ -217,13 +217,16 @@ path pays nothing.
 | Projector | Torch / CUDA | MLX / Metal |
 |---|---|---|
 | Cone Siddon | exact | exact |
-| Fan and parallel Siddon | exact | not yet (zero) |
+| Fan and parallel Siddon | exact | exact |
 | Footprint, all beams | finite differences | cone `src_pos` by finite differences, others not yet |
 
 The exact gradients differentiate the discrete cell-constant model. They are
 exact wherever a ray does not run along a voxel face or edge. There both
-backends return a one-sided derivative. On MLX, `DIFFCT_GEOMETRY_VJP=fd`
-selects the older finite-difference `src_pos` gradient instead.
+backends return a one-sided derivative. On MLX the Siddon geometry kernels
+match the engine's float64 gradients to better than 10⁻³
+(`tests/test_backend_parity.py`). `DIFFCT_GEOMETRY_VJP=fd` switches MLX back
+to the older behaviour: a finite-difference cone `src_pos` gradient and no
+fan or parallel geometry gradients.
 
 **Step sizes for unrolled networks.** A free trainable step can drift into
 the divergent regime, where a positivity clamp collapses the iterate to zero

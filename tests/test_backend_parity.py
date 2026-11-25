@@ -111,6 +111,66 @@ def test_cone_geometry_gradient_matches_engine():
         assert _rel(np.asarray(g), ref) < 1e-3, name
 
 
+def _engine_geometry_grads(beam, traj, img, w, nd, ds, vs):
+    leaves = [_torch(a).requires_grad_(True) for a in traj]
+    P = engine.Projector(tuple(leaves), img.shape, (nd,), beam=beam, detector_spacing=ds,
+                         voxel_spacing=vs, backend="torch", precision="float64")
+    (P(_torch(img)) * _torch(w)).sum().backward()
+    return [leaf.grad.numpy() for leaf in leaves]
+
+
+@pytest.mark.parametrize("case", ["standard", "scaled_ray", "far_detector"])
+def test_parallel_geometry_gradient_matches_engine(case):
+    """Metal parallel Siddon geometry VJP against the engine's exact VJP.
+
+    Before 3.1 the MLX backend returned zero gradients for ray_dir,
+    det_origin and det_u_vec.
+    """
+    n, vs, nd, ds = 40, 0.7, 64, 0.8
+    ray, origin, u = [np.asarray(a) for a in dct.circular_trajectory_2d_parallel(7, start_angle=0.21)]
+    if case == "far_detector":
+        origin = origin + 300.0 * ray   # detector origin far outside the volume
+    # The kernel normalises ray_dir, so for R = k r the gradient is grad_r / k.
+    # The engine only accepts unit directions; its result is scaled instead.
+    k = 2.5 if case == "scaled_ray" else 1.0
+    img = _phantom((n, n), vs)
+    w = _RNG.random((7, nd)).astype(np.float32)
+    refs = _engine_geometry_grads("parallel", [ray, origin, u], img, w, nd, ds, vs)
+    refs[0] = refs[0] / k
+    traj = [ray * k, origin, u]
+
+    def loss(a, b, c):
+        return (dct.parallel_forward(mx.array(img), a, b, c, nd, ds, vs) * mx.array(w)).sum()
+
+    grads = mx.grad(loss, argnums=(0, 1, 2))(*map(mx.array, traj))
+    for name, g, ref in zip(("ray_dir", "det_origin", "det_u_vec"), grads, refs):
+        assert _rel(np.asarray(g), ref) < 1e-3, name
+
+
+@pytest.mark.parametrize("case", ["standard", "detector_inside", "distant_source"])
+def test_fan_geometry_gradient_matches_engine(case):
+    """Metal fan Siddon geometry VJP against the engine's exact VJP.
+
+    Before 3.1 the MLX backend returned zero gradients for src_pos,
+    det_center and det_u_vec.
+    """
+    n, vs, nd, ds = 40, 0.7, 64, 0.8
+    # (sid, sdd); the volume half-width is 14 mm.
+    sid, sdd = {"standard": (120.0, 210.0), "detector_inside": (60.0, 70.0),
+                "distant_source": (5000.0, 5060.0)}[case]
+    traj = [np.asarray(a) for a in dct.circular_trajectory_2d_fan(7, sid, sdd, start_angle=0.21)]
+    img = _phantom((n, n), vs)
+    w = _RNG.random((7, nd)).astype(np.float32)
+
+    def loss(a, b, c):
+        return (dct.fan_forward(mx.array(img), a, b, c, nd, ds, vs) * mx.array(w)).sum()
+
+    grads = mx.grad(loss, argnums=(0, 1, 2))(*map(mx.array, traj))
+    for name, g, ref in zip(("src_pos", "det_center", "det_u_vec"), grads,
+                            _engine_geometry_grads("fan", traj, img, w, nd, ds, vs)):
+        assert _rel(np.asarray(g), ref) < 1e-3, name
+
+
 @pytest.mark.parametrize("beam", ["parallel", "fan", "cone"])
 def test_footprint_agrees_with_engine_siddon(beam):
     """Footprint is a different discretisation: same mass and centroid, close values."""

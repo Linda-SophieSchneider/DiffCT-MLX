@@ -9,7 +9,7 @@
 project = 'DiffCT-MLX'
 copyright = '2025-2026, Linda-Sophie Schneider; upstream diffct (c) Yipeng Sun'
 author = 'Linda-Sophie Schneider'
-release = '3.0.0'
+release = '3.1.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

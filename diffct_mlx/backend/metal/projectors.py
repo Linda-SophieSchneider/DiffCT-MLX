@@ -18,10 +18,12 @@ from .kernels import (
     parallel_2d_backward_kernel,
     parallel_2d_footprint_forward_kernel,
     parallel_2d_footprint_backward_kernel,
+    parallel_2d_geometry_grad_kernel,
     fan_2d_forward_kernel,
     fan_2d_backward_kernel,
     fan_2d_footprint_forward_kernel,
     fan_2d_footprint_backward_kernel,
+    fan_2d_geometry_grad_kernel,
     cone_3d_forward_kernel,
     cone_3d_backward_kernel,
     cone_3d_footprint_forward_kernel,
@@ -30,9 +32,10 @@ from .kernels import (
     cone_3d_geometry_grad_kernel,
 )
 
-# The analytic cone geometry kernel is the default, matching the CUDA backend.
-# Keep the legacy boolean values working and accept the shared ``fd`` spelling
-# to force the finite-difference src_pos fallback.
+# The exact Siddon geometry kernels (parallel, fan, cone) are the default,
+# matching the CUDA backend. Keep the legacy boolean values working and accept
+# the shared ``fd`` spelling: cone then uses the finite-difference src_pos
+# fallback, and fan/parallel return zero geometry gradients as before 3.1.
 _GEOMETRY_VJP_MODE = os.getenv("DIFFCT_GEOMETRY_VJP", "analytic").strip().lower()
 _GEOMETRY_VJP_ENABLED: bool = _GEOMETRY_VJP_MODE not in {"0", "false", "off", "fd"}
 
@@ -266,6 +269,36 @@ def _parallel_backward_footprint_impl(sinogram, ray_dir, det_origin, det_u_vec,
     return outputs[0] * float(voxel_spacing)
 
 
+def _geometry_grad_2d(kernel, image, cotangent, a, b, u_vec,
+                      detector_spacing, voxel_spacing):
+    """Run a 2D Siddon geometry-gradient kernel; returns three ``(n_views, 2)`` arrays.
+
+    The kernels are exact VJPs of the cell-constant Siddon model (ports of the
+    engine's ``_parallel_2d_geometry_vjp_kernel`` / ``_fan_2d_geometry_vjp_kernel``)
+    and return derivatives of the physical projection directly.
+    """
+    image = _as_mx_float_array(image)
+    cotangent = _as_mx_float_array(cotangent)
+    a = _as_mx_float_array(a)
+    b = _as_mx_float_array(b)
+    u_vec = _as_mx_float_array(u_vec)
+    Ny, Nx = image.shape
+    n_ang, n_det = cotangent.shape
+    params = mx.array([n_ang, n_det, Nx, Ny], dtype=mx.int32)
+    fparams = mx.array([float(detector_spacing), Nx * 0.5, Ny * 0.5, float(voxel_spacing)],
+                       dtype=mx.float32)
+    grid, tg = _grid_2d(n_ang, n_det)
+    outputs = kernel(
+        inputs=[image, cotangent, a, b, u_vec, params, fparams],
+        output_shapes=[(n_ang, 2), (n_ang, 2), (n_ang, 2)],
+        output_dtypes=[_MX_DTYPE, _MX_DTYPE, _MX_DTYPE],
+        grid=grid,
+        threadgroup=tg,
+        init_value=0,
+    )
+    return outputs[0], outputs[1], outputs[2]
+
+
 @mx.custom_function
 def parallel_forward(image, ray_dir, det_origin, det_u_vec,
                      num_detectors=128, detector_spacing=1.0, voxel_spacing=1.0):
@@ -309,9 +342,14 @@ def parallel_forward_vjp(primals, cotangent, _):
         cotangent, ray_dir, det_origin, det_u_vec,
         detector_spacing, Ny, Nx, voxel_spacing
     )
-    return (grad_image,
-            mx.zeros_like(ray_dir), mx.zeros_like(det_origin), mx.zeros_like(det_u_vec),
-            None, None, None)
+    if _GEOMETRY_VJP_ENABLED:
+        geometry = _geometry_grad_2d(
+            parallel_2d_geometry_grad_kernel, image, cotangent,
+            ray_dir, det_origin, det_u_vec, detector_spacing, voxel_spacing,
+        )
+    else:
+        geometry = (mx.zeros_like(ray_dir), mx.zeros_like(det_origin), mx.zeros_like(det_u_vec))
+    return (grad_image, *geometry, None, None, None)
 
 
 @mx.custom_function
@@ -612,9 +650,14 @@ def fan_forward_vjp(primals, cotangent, _):
         cotangent, src_pos, det_center, det_u_vec,
         detector_spacing, Ny, Nx, voxel_spacing
     )
-    return (grad_image,
-            mx.zeros_like(src_pos), mx.zeros_like(det_center), mx.zeros_like(det_u_vec),
-            None, None, None)
+    if _GEOMETRY_VJP_ENABLED:
+        geometry = _geometry_grad_2d(
+            fan_2d_geometry_grad_kernel, image, cotangent,
+            src_pos, det_center, det_u_vec, detector_spacing, voxel_spacing,
+        )
+    else:
+        geometry = (mx.zeros_like(src_pos), mx.zeros_like(det_center), mx.zeros_like(det_u_vec))
+    return (grad_image, *geometry, None, None, None)
 
 
 @mx.custom_function

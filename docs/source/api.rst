@@ -34,10 +34,11 @@ Functional operators with identical signatures on both backends:
 ``fan_backward``, ``cone_forward`` / ``cone_backward``, and the
 separable-footprint variants ``*_forward_footprint`` / ``*_backward_footprint``
 (``cone_backward_footprint`` additionally accepts ``indices=`` for sparse
-region-of-interest evaluation). All flow gradients to their data. Siddon
-forward projectors also flow exact gradients to the geometry arrays on the
-Torch backend; on MLX this holds for cone Siddon, while fan and parallel
-geometry gradients are not implemented yet.
+region-of-interest evaluation). All flow gradients to their data. The
+Siddon forward projectors also flow exact gradients to the geometry arrays
+(``ray_dir``, ``src_pos``, ``det_origin``/``det_center``, ``det_u_vec``,
+``det_v_vec``) on both backends. Footprint geometry gradients use finite
+differences on Torch; on MLX only the cone ``src_pos`` has one.
 
 .. rubric:: Geometry (``diffct_mlx.geometry``, re-exported at top level)
 

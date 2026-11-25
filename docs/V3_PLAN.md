@@ -74,7 +74,7 @@ issues below carry over to 3.x. Status markers: [x] done, [~] in progress, [ ] o
 
 ## Open issues
 
-- Fan/parallel geometry gradients on MLX (the engine has exact VJPs for them).
+- [x] Fan/parallel geometry gradients on MLX: exact Metal VJPs, released in 3.1.0.
 
 ## Open questions
 

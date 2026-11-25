@@ -42,3 +42,24 @@ def test_analytic_geometry_kernel_matches_cuda_conventions():
     # continue to select the compatibility fallback.
     assert 'os.getenv("DIFFCT_GEOMETRY_VJP", "analytic")' in projector_text
     assert '{"0", "false", "off", "fd"}' in projector_text
+
+
+def test_2d_geometry_kernels_are_exact_face_crossing_vjps():
+    """Pin the fan and parallel geometry VJPs (new in 3.1; zero before)."""
+    fan = (METAL / "kernels" / "fan_beam.py").read_text()
+    par = (METAL / "kernels" / "parallel_beam.py").read_text()
+    projector_text = (METAL / "projectors.py").read_text()
+
+    assert "float c = first ? -f : (f_prev - f);" in fan
+    assert "float da = c * (entry_tau_m1 + dtau);" in fan
+    assert "float S = accum * inv_len;" in fan
+    assert 'name="fan_2d_geometry_grad"' in fan
+
+    assert "float c = first ? -f : (f_prev - f);" in par
+    assert "gp_x = -c_x / dir_x;" in par
+    assert "gr_x = -voxel_spacing * (t_min * c_x + ct_x) / dir_x;" in par
+    assert "gr_x = (gr_x - radial * dir_x) / dir_norm;" in par
+    assert 'name="parallel_2d_geometry_grad"' in par
+
+    assert "parallel_2d_geometry_grad_kernel, image, cotangent" in projector_text
+    assert "fan_2d_geometry_grad_kernel, image, cotangent" in projector_text

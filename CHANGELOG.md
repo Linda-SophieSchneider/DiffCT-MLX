@@ -9,6 +9,20 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-25
+
+### Added
+
+- **Fan and parallel geometry gradients on MLX.** `fan_forward` now returns
+  gradients for `src_pos`, `det_center` and `det_u_vec`, and
+  `parallel_forward` for `ray_dir`, `det_origin` and `det_u_vec`. Before,
+  the MLX backend returned zeros for them. The new Metal kernels port the
+  engine's exact face-crossing VJPs and use the forward kernels' traversal.
+  They match the engine's float64 gradients to < 1e-3 relative, also for a
+  detector inside the volume, a distant source, a far detector origin and
+  non-unit ray directions (`tests/test_backend_parity.py`).
+  `DIFFCT_GEOMETRY_VJP=fd` turns them off again.
+
 ## [3.0.0] - 2026-11-25
 
 First stable 3.0 release. The code is that of 3.0.0rc1, which was tested

@@ -488,3 +488,170 @@ fan_2d_footprint_backward_kernel = mx.fast.metal_kernel(
     output_names=["grad_image"],
     source=_FAN_2D_FOOTPRINT_BACKWARD_SOURCE,
 )
+
+# ============================================================================
+# 2D Fan Beam Geometry Gradient Metal Kernel
+# ============================================================================
+# Exact VJP of the cell-constant Siddon fan projection with respect to
+# src_pos, det_center and det_u_vec. Port of the engine's
+# ``_fan_2d_geometry_vjp_kernel`` (scalar voxel spacing). With D = B - A in
+# voxel units, the projection is s * |D| * sum_j c_j tau_j, where c_j is the
+# value step at face j (-f_first at the entry face, +f_last at the exit face).
+# A face x_a = b gives tau = (b - A_a) / D_a, so d tau/dA_a = (tau - 1)/D_a and
+# d tau/dB_a = -tau/D_a; d|D|/dA = -d, d|D|/dB = +d. Segment ends at the
+# source or the detector pixel contribute nothing.
+
+_FAN_2D_GEOMETRY_GRAD_SOURCE = """
+    uint iang = thread_position_in_grid.x;
+    uint idet = thread_position_in_grid.y;
+
+    int n_ang = params[0];
+    int n_det = params[1];
+    int Nx    = params[2];
+    int Ny    = params[3];
+
+    float det_spacing   = fparams[0];
+    float cx            = fparams[1];
+    float cy            = fparams[2];
+    float voxel_spacing = fparams[3];
+
+    if ((int)iang >= n_ang || (int)idet >= n_det) return;
+
+    float g = cotangent[iang * n_det + idet];
+    if (g == 0.0f) return;
+
+    float eps = """ + _EPSILON_STR + """;
+    float tiny = """ + _TINY_STR + """;
+    float big = """ + _INF_STR + """;
+
+    // === GEOMETRY SETUP (identical to the forward kernel) ===
+    float src_x = src_pos[iang * 2 + 0] / voxel_spacing;
+    float src_y = src_pos[iang * 2 + 1] / voxel_spacing;
+    float det_cx = det_center[iang * 2 + 0] / voxel_spacing;
+    float det_cy = det_center[iang * 2 + 1] / voxel_spacing;
+    float u_vec_x = det_u_vec[iang * 2 + 0];
+    float u_vec_y = det_u_vec[iang * 2 + 1];
+
+    float u_phys = ((float)idet - ((float)n_det - 1.0f) * 0.5f) * det_spacing;
+    float u_offset = u_phys / voxel_spacing;
+    float det_x = det_cx + u_offset * u_vec_x;
+    float det_y = det_cy + u_offset * u_vec_y;
+
+    float dir_x = det_x - src_x;
+    float dir_y = det_y - src_y;
+    float length = metal::sqrt(dir_x * dir_x + dir_y * dir_y);
+    if (length < eps) return;
+    float inv_len = 1.0f / length;
+    dir_x *= inv_len;
+    dir_y *= inv_len;
+
+    // === SEGMENT CLIPPING, remembering which faces bound it ===
+    bool from_src = (src_x * src_x + src_y * src_y) <= (det_x * det_x + det_y * det_y);
+    float org_x = from_src ? src_x : det_x;
+    float org_y = from_src ? src_y : det_y;
+    float t_min = from_src ? 0.0f : -length;
+    float t_max = from_src ? length : 0.0f;
+    float t_a0 = t_min;   // parameter of the source
+    float t_b0 = t_max;   // parameter of the detector pixel
+    int ent_axis = -1;
+    int ex_axis = -1;
+
+    if (metal::abs(dir_x) > tiny) {
+        float t1 = (-cx - org_x) / dir_x;
+        float t2 = ( cx - org_x) / dir_x;
+        float lo = metal::min(t1, t2), hi = metal::max(t1, t2);
+        if (lo > t_min) { t_min = lo; ent_axis = 0; }
+        if (hi < t_max) { t_max = hi; ex_axis = 0; }
+    } else if (org_x < -cx || org_x > cx) {
+        return;
+    }
+    if (metal::abs(dir_y) > tiny) {
+        float t1 = (-cy - org_y) / dir_y;
+        float t2 = ( cy - org_y) / dir_y;
+        float lo = metal::min(t1, t2), hi = metal::max(t1, t2);
+        if (lo > t_min) { t_min = lo; ent_axis = 1; }
+        if (hi < t_max) { t_max = hi; ex_axis = 1; }
+    } else if (org_y < -cy || org_y > cy) {
+        return;
+    }
+    if (t_min >= t_max) return;
+
+    float ent_x = org_x + t_min * dir_x;
+    float ent_y = org_y + t_min * dir_y;
+    float t_end = t_max - t_min;
+    float entry_tau = (t_min - t_a0) * inv_len;
+    float entry_tau_m1 = (t_min - t_b0) * inv_len;
+
+    int ix = (int)metal::floor(ent_x + cx);
+    int iy = (int)metal::floor(ent_y + cy);
+    int step_x = (dir_x >= 0.0f) ? 1 : -1;
+    int step_y = (dir_y >= 0.0f) ? 1 : -1;
+    float inv_dir_x = (metal::abs(dir_x) > tiny) ? (1.0f / dir_x) : 0.0f;
+    float inv_dir_y = (metal::abs(dir_y) > tiny) ? (1.0f / dir_y) : 0.0f;
+    float dt_x = (metal::abs(dir_x) > tiny) ? metal::abs(inv_dir_x) : big;
+    float dt_y = (metal::abs(dir_y) > tiny) ? metal::abs(inv_dir_y) : big;
+    float txn = (metal::abs(dir_x) > tiny) ? ((float)(ix + (step_x > 0 ? 1 : 0)) - cx - ent_x) * inv_dir_x : big;
+    float tyn = (metal::abs(dir_y) > tiny) ? ((float)(iy + (step_y > 0 ? 1 : 0)) - cy - ent_y) * inv_dir_y : big;
+
+    // === TRAVERSAL WITH FACE TERMS ===
+    float accum = 0.0f;
+    float ga_x = 0.0f, ga_y = 0.0f;
+    float gb_x = 0.0f, gb_y = 0.0f;
+    float f_prev = 0.0f;
+    int pend_axis = ent_axis;
+    float pend_t = 0.0f;
+    bool first = true;
+    float t = 0.0f;
+    while (t < t_end) {
+        float f = 0.0f;
+        if (ix >= 0 && ix < Nx && iy >= 0 && iy < Ny) {
+            f = image[iy * Nx + ix];
+        }
+        if (pend_axis >= 0) {
+            float c = first ? -f : (f_prev - f);
+            float dtau = pend_t * inv_len;
+            float da = c * (entry_tau_m1 + dtau);
+            float db = -c * (entry_tau + dtau);
+            if (pend_axis == 0) { ga_x += da / dir_x; gb_x += db / dir_x; }
+            else                { ga_y += da / dir_y; gb_y += db / dir_y; }
+        }
+        first = false;
+        float t_next = metal::min(metal::min(txn, tyn), t_end);
+        float seg_len = t_next - t;
+        if (seg_len > 0.0f) accum += f * seg_len;
+        f_prev = f;
+        if (txn <= tyn) {
+            t = metal::max(t, txn); pend_t = t; pend_axis = 0; ix += step_x; txn += dt_x;
+        } else {
+            t = metal::max(t, tyn); pend_t = t; pend_axis = 1; iy += step_y; tyn += dt_y;
+        }
+    }
+    if (ex_axis >= 0) {
+        float dtau = t_end * inv_len;
+        float da = f_prev * (entry_tau_m1 + dtau);
+        float db = -f_prev * (entry_tau + dtau);
+        if (ex_axis == 0) { ga_x += da / dir_x; gb_x += db / dir_x; }
+        else              { ga_y += da / dir_y; gb_y += db / dir_y; }
+    }
+
+    // Length term: d|D|/dA = -d, d|D|/dB = +d, times S = sum c_j tau_j.
+    float S = accum * inv_len;
+    ga_x -= S * dir_x; ga_y -= S * dir_y;
+    gb_x += S * dir_x; gb_y += S * dir_y;
+
+    // p = s * accum and A = A_phys / s, so the physical derivative is ga.
+    atomic_fetch_add_explicit(&grad_src_pos[iang*2+0], g * ga_x, memory_order_relaxed);
+    atomic_fetch_add_explicit(&grad_src_pos[iang*2+1], g * ga_y, memory_order_relaxed);
+    atomic_fetch_add_explicit(&grad_det_center[iang*2+0], g * gb_x, memory_order_relaxed);
+    atomic_fetch_add_explicit(&grad_det_center[iang*2+1], g * gb_y, memory_order_relaxed);
+    atomic_fetch_add_explicit(&grad_det_u_vec[iang*2+0], g * u_phys * gb_x, memory_order_relaxed);
+    atomic_fetch_add_explicit(&grad_det_u_vec[iang*2+1], g * u_phys * gb_y, memory_order_relaxed);
+"""
+
+fan_2d_geometry_grad_kernel = mx.fast.metal_kernel(
+    name="fan_2d_geometry_grad",
+    input_names=["image", "cotangent", "src_pos", "det_center", "det_u_vec", "params", "fparams"],
+    output_names=["grad_src_pos", "grad_det_center", "grad_det_u_vec"],
+    source=_FAN_2D_GEOMETRY_GRAD_SOURCE,
+    atomic_outputs=True,
+)
