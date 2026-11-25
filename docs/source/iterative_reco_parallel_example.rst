@@ -1,7 +1,7 @@
 Parallel Beam Iterative Reconstruction
 ======================================
 
-This example demonstrates 2D parallel beam iterative reconstruction using the differentiable `ParallelProjectorFunction` and `ParallelBackprojectorFunction` from `diffct`.
+This example demonstrates 2D parallel beam iterative reconstruction using the differentiable `ParallelProjectorFunction` and `ParallelBackprojectorFunction` from ``diffct_mlx.engine``.
 
 Overview
 --------
@@ -60,7 +60,7 @@ where :math:`m^{(k)}` and :math:`v^{(k)}` are biased first and second moment est
 **Implementation Steps**
 
 1. **Problem Setup**: Define parameterized 2D image as learnable tensor
-2. **Forward Model**: Generate ray geometry (e.g., with ``diffct.geometry.circular_trajectory_2d_parallel``) and compute the predicted sinogram using `ParallelProjectorFunction`
+2. **Forward Model**: Generate ray geometry (e.g., with ``diffct_mlx.engine.circular_trajectory_2d_parallel``) and compute the predicted sinogram using `ParallelProjectorFunction`
 3. **Loss Computation**: Calculate L2 distance between predicted and measured data
 4. **Gradient Computation**: Use automatic differentiation for gradient calculation
 5. **Parameter Update**: Apply Adam optimizer for iterative improvement

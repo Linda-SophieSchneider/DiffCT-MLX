@@ -1,171 +1,187 @@
-# diffct: Differentiable Computed Tomography Operators
+# DiffCT-MLX: Differentiable CT on Apple Silicon and NVIDIA GPUs
 
-> [!NOTE]
-> **[DiffCT-MLX](https://github.com/Linda-SophieSchneider/DiffCT-MLX) — the unified auto-backend package `diffct_mlx`** (MLX/Metal on Apple Silicon, Torch/numba-CUDA elsewhere), so the same code runs on both. The Torch/CUDA engine is adapted from the original [diffct](https://github.com/sypsyp97) by Yipeng Sun (Apache-2.0), based on its arbitrary-trajectory (`dev`) line. Maintained by [Linda-Sophie Schneider](https://github.com/Linda-SophieSchneider).
-> See [ATTRIBUTION.md](ATTRIBUTION.md) for full provenance and license details.
-
+[![PyPI version](https://img.shields.io/pypi/v/diffct-mlx.svg?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/diffct-mlx/)
+[![Python](https://img.shields.io/pypi/pyversions/diffct-mlx.svg?style=flat-square)](https://pypi.org/project/diffct-mlx/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
-[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.14999333-blue.svg?style=flat-square)](https://doi.org/10.5281/zenodo.14999333)
-[![PyPI version](https://img.shields.io/pypi/v/diffct.svg?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/diffct/)
-[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg?style=flat-square)](https://sypsyp97.github.io/diffct/)
-[![CI/CD](https://img.shields.io/github/actions/workflow/status/sypsyp97/diffct/docs.yml?branch=main&label=CI&style=flat-square)](https://github.com/sypsyp97/diffct/actions)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sypsyp97/diffct)
+[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg?style=flat-square)](https://linda-sophie-schneider.de/DiffCT-MLX/)
+[![Docs build](https://img.shields.io/github/actions/workflow/status/Linda-SophieSchneider/DiffCT-MLX/docs.yml?branch=main&label=docs&style=flat-square)](https://github.com/Linda-SophieSchneider/DiffCT-MLX/actions)
+[![DOI](https://img.shields.io/badge/DOI-10.20944%2Fpreprints202605.1446.v1-blue.svg?style=flat-square)](https://doi.org/10.20944/preprints202605.1446.v1)
 
-A high-performance, CUDA-accelerated library for CT reconstruction with
-end-to-end differentiable operators, supporting both **canonical circular
-orbits** and **arbitrary per-view trajectories** (spiral, saddle, random,
-custom). Built for optimization and deep-learning integration.
+**DiffCT-MLX** is a differentiable computed-tomography library with one
+package, `diffct_mlx`, and two compute backends. It selects the backend at
+import: **Apple MLX / Metal** on Apple Silicon and **Torch / numba-CUDA** on
+NVIDIA GPUs. The same script runs on both. Projectors, geometry,
+reconstruction and physics have the same names and signatures on either
+backend, and the two backends produce the same numbers.
 
-⭐ **Please star this project if you find it useful!**
+Every projector is differentiable with respect to the data, and the Siddon
+projectors also with respect to the geometry. That makes the operators usable
+as known operators in learned reconstruction, for trajectory optimization and
+for self-calibration. Kernels take per-view source and detector arrays, so
+circular, helical, saddle, sinusoidal, laminography and any user-supplied
+trajectory run through the same code.
 
-**Apple/MLX maintenance:** The former `apple` branch is maintained by
-[Linda-Sophie Schneider](https://github.com/Linda-SophieSchneider) at
-[Linda-SophieSchneider/DiffCT-MLX](https://github.com/Linda-SophieSchneider/DiffCT-MLX).
+The Torch / CUDA engine is upstream [diffct](https://github.com/sypsyp97/diffct)
+2.5.2 by Yipeng Sun (Apache-2.0), vendored and maintained here as
+`diffct_mlx.engine`. See [ATTRIBUTION.md](ATTRIBUTION.md) for provenance.
+Maintained by [Linda-Sophie Schneider](https://github.com/Linda-SophieSchneider).
 
-## 🧭 The unified `diffct_mlx` API
+📖 **Documentation:** <https://linda-sophie-schneider.de/DiffCT-MLX/>
 
-**`diffct_mlx`** is a single API that auto-selects its
-compute backend at import — **Torch / numba-CUDA** on NVIDIA GPUs, **Apple MLX**
-on Apple Silicon — so the *same* script runs unchanged on both. It mirrors the
-same public API on both backends name-for-name.
+## 🆕 What is new in 3.0
+
+- **One convention on both backends.** Detector pixel `i` sits at
+  `det_center + (i − (N−1)/2)·du`, so `det_center` is the geometric centre of
+  the panel. Projections are physical line integrals (µ · length in the unit
+  of the geometry). Iterative reconstruction of physical data returns µ in
+  1/mm, like the quantitative FDK. These are the conventions of upstream
+  diffct ≥ 2.0.
+- **Upstream diffct 2.5.2 as the Torch engine.** It brings exact geometry
+  gradients, a portable PyTorch backend for CPU, Apple MPS and ROCm with
+  `precision="float64"`, the chunked `Projector` with streaming stores,
+  per-axis voxel spacing, `parallel3d`, curved detector surfaces, solvers and
+  all upstream kernel fixes since 2.0.
+- **Exact cone geometry gradient on Metal.** The Metal kernel now uses the
+  same face-crossing derivative as the engine. The 2.x kernel differentiated
+  a trilinear volume and was off by about 100 %.
+- **Footprint projectors on the new engine.** The mass-conserving
+  separable-footprint kernels of 2.2 are ported onto the engine in the new
+  conventions, including the sparse cone backprojection.
+- **Cross-backend parity.** MLX and the float64 engine agree to better than
+  2·10⁻⁴ relative L2 in forward and backprojection and to better than 10⁻³ in
+  the cone geometry gradient (`tests/test_backend_parity.py`).
+- **No more top-level `diffct`.** Installing `diffct-mlx` no longer shadows
+  the PyPI package `diffct`. Python ≥ 3.10 is required.
+
+Upgrading from 2.x? See [Migrating from 2.x](#-migrating-from-2x) below.
+
+## 🚀 Installation
 
 ```bash
-pip install "diffct-mlx[cuda]"   # NVIDIA GPUs (Torch + numba-CUDA)
-pip install "diffct-mlx[mlx]"    # Apple Silicon (MLX)
+pip install "diffct-mlx[mlx]"                         # Apple Silicon (MLX / Metal)
+pip install "diffct-mlx[cuda]" "numba-cuda[cu12]"     # NVIDIA GPUs, CUDA 12
+pip install "diffct-mlx[cuda]" "numba-cuda[cu13]"     # NVIDIA GPUs, CUDA 13
+pip install "diffct-mlx[torch]"                       # portable PyTorch engine only (CPU, MPS, ROCm)
+pip install "diffct-mlx[zarr]"                        # optional compressed out-of-core storage
 ```
+
+On NVIDIA systems install a CUDA build of PyTorch first, following
+[pytorch.org](https://pytorch.org/get-started/locally/).
+
+For development, clone the repository and install it in editable mode:
+
+```bash
+git clone https://github.com/Linda-SophieSchneider/DiffCT-MLX.git
+cd DiffCT-MLX
+pip install -e ".[mlx]"      # or ".[cuda]"
+```
+
+Check the installation:
 
 ```python
 import diffct_mlx as dct
-print(dct.backend)               # 'torch' on CUDA, 'mlx' on Apple
-# force a backend with the DIFFCT_BACKEND env var ('torch' / 'mlx')
+print(dct.__version__, dct.backend)   # e.g. '3.0.0 mlx' or '3.0.0 torch'
+```
 
-# projectors, geometry and reconstruction — identical calls on either backend
+Set `DIFFCT_BACKEND=torch` or `DIFFCT_BACKEND=mlx` to force a backend.
+
+## 🧭 Quick start
+
+```python
+import diffct_mlx as dct
+
+# Cone-beam projection on either backend
 src, det_c, det_u, det_v = dct.circular_trajectory_3d(360, sid=600, sdd=900)
-sino = dct.cone_forward(volume, src, det_c, det_u, det_v, 256, 256, 1., 1., 1.)
+sino = dct.cone_forward(volume, src, det_c, det_u, det_v, 256, 256, 1.0, 1.0, 1.0)
 
+# A ready-made case with data and matched operators, reconstructed by FBP
 case = dct.build_parallel_2d_case(image_shape=(256, 256), num_views=180)
 reco = dct.reconstruct_fbp(
     case.sinogram, case.back_project_all,
     dct.FBPParameters(normalization_scale=case.fbp_normalization_scale),
     weight_projections=case.fbp_weight,
 )
+
+# Operator algebra plus a solver from the registry
+A = dct.make_cone_3d_operator(src, det_c, det_u, det_v,
+                              volume_shape=(128, 128, 128), detector_shape=(256, 256))
+x = dct.reconstruct("cgls", A, sino, iterations=30)
 ```
 
-**Parity & status.** FBP/FDK, SART/SIRT, TV-/ASD-/AwTV-POCS, DART, phantoms,
-trajectory generators and the measured-data helpers are all available and were
-verified on NVIDIA GPUs. The **MLX backend** is runtime-validated on Apple
-Silicon; its vendored Metal kernels use `mx.custom_function` projectors and
-the same centered Siddon/geometry-gradient conventions as CUDA. The
-backend-neutral `xp` namespace is attribute-identical to the torch one, pinned
-by a static parity test.
+## 📐 Projectors
 
-### Projectors: Siddon vs. separable footprint
-
-Two forward/adjoint projector families are available on every geometry
-(parallel, fan, cone), both with native CUDA kernels and full autograd:
+Two projector families exist for parallel, fan and cone beams, with native
+kernels and full autograd on both backends.
 
 | Projector | Model | Best for |
 |---|---|---|
-| **Siddon** (`parallel_forward`, `fan_forward`, `cone_forward`, …) | line integral (thin ray) | **analytic** reconstruction (FBP/FDK) |
-| **Footprint** (`*_forward_footprint`, `*_backward_footprint`) | separable footprint — the finite pixel/voxel area projected onto the detector, with a matched adjoint | **iterative / optimization** (SART, SIRT, POCS, DART) and real measured data |
+| **Siddon** (`parallel_forward`, `fan_forward`, `cone_forward`, …) | line integral through a cell-constant volume | analytic reconstruction (FBP, FDK) and geometry gradients |
+| **Footprint** (`*_forward_footprint`, `*_backward_footprint`) | separable footprint of the voxel on the detector, with a matched adjoint | iterative reconstruction and measured data |
 
-**Why the split:** analytic FBP/FDK *invert the X-ray transform* (line
-integrals), so a thin-ray Siddon model is the consistent, most accurate choice
-there. Iterative methods instead minimise `‖A x − y‖`, where a more faithful,
-area-integrated forward model with an exact adjoint (footprint) improves
-convergence and image quality — and better matches real finite-width detector
-pixels. Using footprint for analytic FBP is *slightly worse* (a forward-model
-mismatch), and Siddon for iterative on real data is *slightly worse*; hence the
-defaults below.
-
-**Defaults.** The `build_*_case` helpers follow this policy automatically: the
-synthetic sinogram is a Siddon line-integral "measurement", `back_project_all`
-(used by `reconstruct_fbp` / `reconstruct_fdk`) is **Siddon**, and
-`forward_single` / `back_single` (used by the iterative algorithms) are
-**footprint**. To override, build operators yourself with
+FBP and FDK invert the X-ray transform, so the thin-ray Siddon model fits them
+best. Iterative methods minimise `‖Ax − y‖`. There an area-integrated forward
+model with an exact adjoint converges better and matches finite detector
+pixels. The `build_*_case` helpers follow this split: `back_project_all`,
+used by FBP and FDK, is Siddon, and `forward_single` and `back_single`, used
+by the iterative solvers, are footprint. Choose explicitly with
 `make_*_operators(..., projector_mode="siddon" | "footprint")`.
 
-On the Torch/CUDA backend the footprint cone backprojector also supports **sparse
-evaluation**: `cone_backward_footprint(..., indices=idx)` computes only the given
-flattened `(D, H, W)` voxels and returns a 1-D vector (useful for masked / DART
-subproblems).
+On the Torch backend `cone_backward_footprint(..., indices=idx)` evaluates
+only the given flattened `(D, H, W)` voxels and returns a 1-D vector, for
+masked or region-of-interest problems.
 
-### Quantitative FDK (amplitude-true reconstruction)
+### Quantitative FDK
 
-The legacy case FDK path was a *synthetic-geometry calibration*, not physics:
-an unpadded DFT-bin ramp (circular-convolution wrap-around depresses large
-objects with an object-size-dependent bias — down to 0.40× at 75 % FOV
-coverage), the constant `π·SID/(2·SDD·N)` (only valid for `du = dv = voxel
-= 1`), and the Siddon adjoint (not an FDK backprojector). On measured data
-these stack to ~0.1–0.5× of the true attenuation.
-
-The quantitative path fixes all three: cosine pre-weights → per-view
-trapezoidal angular weights (actual source angles, non-uniform trajectories
-included) → zero-padded **physical** ramp (`|f|/du`, `pad_factor=2`) → the
-voxel-driven `(SID/U)²`-weighted FDK gather backprojector with its analytic
-`SDD/(2π·SID)` constant. Verified: a cylinder of known µ at real camera
-geometry (du 0.556 mm, voxel 0.278 mm, magnification 2, object filling 75 %
-of the FOV) reconstructs to **0.99×** the true µ (legacy path: 0.47×).
+`dct.reconstruct_case_fdk(case)` returns attenuation in 1/mm. It applies
+cosine pre-weights, per-view trapezoidal angular weights from the actual
+source angles, a zero-padded physical ramp (`|f|/du`, `pad_factor=2`) and the
+voxel-driven `(SID/U)²` FDK backprojector with its `SDD/(2π·SID)` constant.
+A cylinder of known µ at a real camera geometry (du 0.556 mm, voxel
+0.278 mm, magnification 2, object filling 75 % of the field of view)
+reconstructs to 0.99 of the true value.
 
 ```python
-case = dct.build_measured_cone_3d_case(cfg)   # supports_fdk=True on CUDA now
-vol_mu = dct.reconstruct_case_fdk(case)       # true attenuation units (1/mm)
+case = dct.build_measured_cone_3d_case(cfg)
+vol_mu = dct.reconstruct_case_fdk(case)        # attenuation in 1/mm
 ```
 
 All cone cases (synthetic, measured TIFF, npy) carry the quantitative
-operators (`case.fdk_weight` / `fdk_filter` / `fdk_back_project`); sinogram
-units are physical for every source (measured −log data and projector
-output alike). The ramp
-filter itself now accepts `pad_factor` and `sample_spacing`, and
-`FBPParameters`/`FDKParameters` default to `pad_factor=2`.
+operators (`case.fdk_weight`, `fdk_filter`, `fdk_back_project`).
 
-> **Conventions (3.0).** Both backends follow upstream diffct ≥ 2.0. Detector
-> pixel `i` sits at `det_center + (i − (N−1)/2)·du`, so `det_center` is the
-> geometric panel centre, and projections are physical line integrals
-> (µ·length in the unit of the geometry). Iterative reconstruction of
-> physical data therefore returns µ in 1/mm, like the quantitative FDK path.
-> DiffCT-MLX 2.x placed pixel `i` at `(i − N/2)·du` and integrated in voxel
-> units. To reproduce 2.x results, build operators with
-> `detector_convention="legacy", line_integrals="voxel"`; for direct projector
-> or FBP/FDK calls, `dct.kernel_detector_center(..., convention="legacy")`
-> converts `det_center`.
+## 🧰 Operators, solvers, regularizers and physics
 
-### Operators, solvers, regularizers, physics & simulation
-
-The unified package provides a composable, differentiable toolkit on top of
-the projectors (all GPU-resident, verified on NVIDIA GPUs):
-
-- **Operators** (`diffct_mlx.operators`) — a `LinearOperator` algebra: build a
-  projector as `A = dct.make_cone_3d_operator(...)`, then `A @ x`, `A.T @ y`,
-  `A @ B`, `A + B`, `2*A`, `A.subset(views)`. `A @ x` and `A.T @ y` flow autograd,
-  so analytic/iterative reconstruction and learned pipelines share one object.
-- **Solver registry** — `dct.reconstruct("wls", A, b, ...)`, `dct.list_algorithms()`;
-  register your own with `@dct.register_algorithm("name")`. Built in: `cgls`,
-  `landweber`, `ls` / `wls` / `rls` / `rwls` (CG / FISTA least squares), `pcg`
-  (preconditioned CG), `mlem`, `osem`, `mltr` (transmission Poisson ML), `dls` / `rdls`.
-- **Functionals & regularizers** (`diffct_mlx.functionals`, `diffct_mlx.filters`) —
-  `SquaredL2`, `L1Norm`, `LpNorm`, `Huber`, `TotalVariation`, `AdaptiveWeightedTV`,
-  `NonNegativity`, `Box`, plus edge-preserving denoisers `Bilateral`, `Guided`,
-  `Median`, `HistogramSparsity`, `Azimuthal`, `DictionarySparsity`. Chain them into a
-  `RegularizerSequence` and pass `rwls(A, b, constraint=seq)` for Plug-and-Play.
-- **Physics & preprocessing** (`diffct_mlx.physics`) — a `PreprocessingPipeline` of
-  GPU-native corrections: `FlatField`, `RingRemoval`, `BadPixel`, `BeamHardening`,
-  `Deblur`, `Scatter`, `MetalArtifactReduction`.
-- **Forward simulation** (`dct.simulate_scan`) — phantom → realistic data with a
-  measured or synthetic **spectrum** (beam hardening), Poisson noise, detector blur,
-  scatter and ring effects. A physically-based (TASMICS-validated) spectrum +
-  material-attenuation library is embedded: `physics.spectra.tube_spectrum(kvp, …)`,
-  `physics.spectra.preset(…)`, `physics.spectra.material_attenuation(…)` (40–225 kVp).
-- **Geometry** — `laminography_trajectory_3d`, helical (`spiral_trajectory_3d`), and
-  `diffct_mlx.rebinning`: Parker short-scan / offset / truncation weighting,
-  `fan_to_parallel` and `curved_to_flat` / `flat_to_curved` detector rebinning.
-- **Analytic phantom engine** (`dct.Ellipsoid`, `dct.Phantom`, `dct.shepp_logan_phantom`)
-  — voxelize *and* project analytically (exact line integrals) for ground-truth tests.
-- **Self-calibration** (`dct.calibration`) — `estimate_center_of_rotation`,
+- **Operators** (`diffct_mlx.operators`). A `LinearOperator` algebra:
+  `A = dct.make_cone_3d_operator(...)`, then `A @ x`, `A.T @ y`, `A @ B`,
+  `A + B`, `2*A`, `A.subset(views)`. Both directions flow autograd.
+- **Solver registry.** `dct.reconstruct("wls", A, b, ...)`,
+  `dct.list_algorithms()`, and `@dct.register_algorithm("name")` for your
+  own. Built in: `cgls`, `landweber`, `ls`, `wls`, `rls`, `rwls`, `pcg`,
+  `mlem`, `osem`, `mltr`, `dls`, `rdls`. Also FBP, FDK, SART, SIRT,
+  TV-/ASD-/AwTV-POCS and DART.
+- **Functionals and regularizers** (`diffct_mlx.functionals`,
+  `diffct_mlx.filters`). `SquaredL2`, `L1Norm`, `LpNorm`, `Huber`,
+  `TotalVariation`, `AdaptiveWeightedTV`, `NonNegativity`, `Box` and the
+  denoisers `Bilateral`, `Guided`, `Median`, `HistogramSparsity`, `Azimuthal`,
+  `DictionarySparsity`. Chain them into a `RegularizerSequence` for
+  Plug-and-Play.
+- **Physics and preprocessing** (`diffct_mlx.physics`). A
+  `PreprocessingPipeline` of `FlatField`, `RingRemoval`, `BadPixel`,
+  `BeamHardening`, `Deblur`, `Scatter` and `MetalArtifactReduction`.
+- **Forward simulation** (`dct.simulate_scan`). Phantom to realistic data with
+  a polychromatic spectrum, Poisson noise, detector blur, scatter and rings.
+  An embedded, TASMICS-validated spectrum and material-attenuation library
+  covers 40–225 kVp (`physics.spectra`).
+- **Geometry.** Circular, helical, saddle, sinusoidal, random, laminography
+  and custom trajectories; `diffct_mlx.rebinning` for Parker short-scan,
+  offset and truncation weighting, fan-to-parallel and curved/flat detector
+  rebinning.
+- **Analytic phantoms** (`dct.Ellipsoid`, `dct.Phantom`,
+  `dct.shepp_logan_phantom`) with exact line integrals for ground truth.
+- **Self-calibration** (`dct.calibration`). `estimate_center_of_rotation`,
   `refine_center_by_sharpness`, `apply_center_offset`.
 
-End-to-end — simulate a realistic cone scan (measured-quality spectrum + noise) and
-reconstruct it with a TV-regularized least-squares solver:
+Simulate a polychromatic, noisy cone scan and reconstruct it with
+TV-regularized least squares:
 
 ```python
 import diffct_mlx as dct
@@ -175,64 +191,43 @@ vol = dct.shepp_logan_3d((128, 128, 128))
 A = dct.make_cone_3d_operator(*dct.circular_trajectory_3d(360, 600, 900),
         volume_shape=(128, 128, 128), detector_shape=(256, 256), projector_mode="siddon")
 
-spec = spectra.preset("industrial_160kVp_Cu1mm")             # TASMICS-validated spectrum
+spec = spectra.preset("industrial_160kVp_Cu1mm")
 mu   = spectra.material_attenuation("bone", spec.energies)
 sino = dct.simulate_scan(vol, A, spectrum=spec, material_attenuation=mu,
-                         I0=3e4, poisson=True)               # beam hardening + Poisson noise
+                         I0=3e4, poisson=True)
 
 recon = dct.rwls(A, sino, regularizer=dct.TotalVariation(1e-3), iterations=60)
 ```
 
-### Trainable known-operator pipelines
+## 🎓 Gradients and known-operator learning
 
-Every building block is differentiable end-to-end, so the operators can be
-embedded directly as known operators in learned reconstruction networks
-(learnable FBP filters, unrolled Landweber/SIRT/FISTA with trainable step
-sizes, Plug-and-Play priors). Verified by `tests/test_known_operator_gradflow.py`:
+Every building block is differentiable end to end, so the operators work as
+known operators in learned reconstruction: learnable FBP filters, unrolled
+Landweber, SIRT or FISTA with trainable step sizes, Plug-and-Play priors.
+`tests/test_known_operator_gradflow.py` checks that all projector operators
+pass gradients to their data, that the `LinearOperator` algebra, ramp filter
+and `reconstruct_fbp` are differentiable, and that unrolled schemes
+backpropagate to step sizes and data.
 
-- all 12 projector operators propagate gradients w.r.t. their data argument
-  (exact `grad(0.5*||Ax||^2) == A^T(Ax)` identities, incl. the sparse cone
-  backprojection);
-- the `LinearOperator` algebra, ramp filter (`torch.fft` on-device) and the
-  `reconstruct_fbp` driver are differentiable — e.g. learnable per-detector
-  weights through `A.T @ ramp(w * sino)`;
-- unrolled iterative schemes backprop to trainable step sizes **and** to the
-  measured data (use a convergent step, e.g. `0.9 / power_iteration(...)`);
-  `cgls` and `run_sirt` also work as differentiable blocks;
-- `TotalVariation.gradient` / `tv_gradient` are built with `create_graph`
-  when the input carries gradients, so unrolled TV gradient steps are
-  second-order differentiable (mirrors `mx.grad` composability on MLX).
+**Geometry gradients.** Forward projectors return gradients with respect to
+the per-view geometry arrays (`src_pos`, `det_center` or `det_origin`,
+`det_u_vec`, `det_v_vec`, `ray_dir`) when those require grad. The data-only
+path pays nothing.
 
-**Trainable geometry (pose/trajectory optimization).** All Torch forward
-projectors provide gradients w.r.t. their per-view geometry arrays
-(`src_pos`, `det_center`/`det_origin`, `det_u_vec`, `det_v_vec`, `ray_dir`),
-computed only for inputs with `requires_grad` (the data-only path pays
-nothing):
+| Projector | Torch / CUDA | MLX / Metal |
+|---|---|---|
+| Cone Siddon | exact | exact |
+| Fan and parallel Siddon | exact | not yet (zero) |
+| Footprint, all beams | finite differences | cone `src_pos` by finite differences, others not yet |
 
-- **Cone Siddon** uses an **analytic geometry kernel** (default): one kernel
-  pass yields closed-form gradients for all four geometry arrays — the
-  per-ray endpoint derivatives of the trilinearly smoothed line integral,
-  validated against an exact torch-autograd reference (cos > 0.998) and ~4×
-  faster than finite differences. Set `DIFFCT_GEOMETRY_VJP=fd` to force the
-  FD path instead.
-- **Fan/parallel Siddon and all footprint forwards** use finite-difference
-  VJPs (two forward passes per geometry component, magnitude-relative step —
-  mm- and m-scale setups both work). The operator layer's default
-  `projector_mode="footprint"` is therefore geometry-trainable too.
+The exact gradients differentiate the discrete cell-constant model. They are
+exact wherever a ray does not run along a voxel face or edge. There both
+backends return a one-sided derivative. On MLX, `DIFFCT_GEOMETRY_VJP=fd`
+selects the older finite-difference `src_pos` gradient instead.
 
-Semantics to know: the discrete forwards are piecewise-linear in the
-geometry, so all of these are *smoothed* gradients — descent-quality in
-practice (see the pose-recovery tests), but not second-order differentiable.
-Backprojectors remain data-only, and stochastic simulation ops
-(`add_poisson_noise`) are not differentiable. On MLX, cone Siddon uses the
-same analytic endpoint-gradient formulation by default, including gradients
-for all four geometry arrays. Set `DIFFCT_GEOMETRY_VJP=fd` for the legacy
-finite-difference `src_pos` fallback.
-
-**Recommended step-size parametrization for unrolled networks.** A free
-trainable step can wander into the divergent regime, where positivity clamps
-collapse the iterate to zero and all gradients vanish exactly (a dead
-network). Bound each unrolled step inside the stable region instead:
+**Step sizes for unrolled networks.** A free trainable step can drift into
+the divergent regime, where a positivity clamp collapses the iterate to zero
+and all gradients vanish. Keep each step inside the stable range:
 
 ```python
 from diffct_mlx import power_iteration
@@ -240,221 +235,133 @@ from diffct_mlx import power_iteration
 L = power_iteration(lambda v: A.T @ (A @ v), A.domain_shape)   # ||A^T A||
 theta = torch.zeros(K, requires_grad=True)                     # one per iteration
 for k in range(K):
-    lam_k = (1.8 / L) * torch.sigmoid(theta[k])                # lam in (0, 1.8/L), init 0.9/L
+    lam_k = (1.8 / L) * torch.sigmoid(theta[k])                # in (0, 1.8/L), starts at 0.9/L
     x = torch.clamp(x + lam_k * (A.T @ (y - A @ x)), min=0.0)
 ```
 
-Equivalently, spectrally normalize once (`A_hat = (1.0 / L**0.5) * A`) and
-train steps of order 1.
+## 🗄️ Out-of-core and multi-GPU (CUDA)
 
-### Out-of-core & multi-GPU (TB-scale volumes)
-
-`diffct_mlx.orchestration` reconstructs volumes far larger than GPU memory —
-and larger than host RAM — by partitioning work into memory-budgeted chunks
-(z-slabs for backprojection, detector-row bands for forward projection),
-dispatching chunks across all GPUs, and streaming data disk↔RAM↔GPU through an
-async conveyor (reader / GPU workers / writer threads with bounded queues):
+`diffct_mlx.orchestration` reconstructs volumes larger than GPU memory and
+larger than host RAM. It splits work into memory-budgeted chunks (z-slabs
+for backprojection, detector-row bands for forward projection), spreads them
+over all GPUs and streams data between disk, RAM and GPU:
 
 ```python
 from diffct_mlx.orchestration import (
-    ConeGeom, chunked_cone_fdk, chunked_sirt, chunked_os_sart,
-    mgpu_sirt, open_memmap, set_out_of_core_dir, set_out_of_core_backend)
+    ConeGeom, chunked_cone_fdk, chunked_sirt, mgpu_sirt,
+    open_memmap, set_out_of_core_dir, set_out_of_core_backend)
 
-set_out_of_core_dir("/mnt/bigdisk/scratch")     # where >RAM arrays spill
+set_out_of_core_dir("/mnt/bigdisk/scratch")
 geom = ConeGeom.from_arrays(src, det_center, det_u_vec, det_v_vec)
 
-# FDK for a volume that fits neither VRAM nor RAM: sinogram + volume live on
-# disk; the ramp filter, backprojection and positivity all stream in chunks.
 sino = open_memmap("/mnt/bigdisk/sino.npy", (n_views, det_u, det_v))
 vol  = chunked_cone_fdk(sino, geom, D, H, W, out=open_memmap("/mnt/bigdisk/vol.npy", (D, H, W)))
 
-x = chunked_sirt(sino, geom, D, H, W, det_u, det_v, n_iter=30)   # fully out-of-core SIRT
-x = mgpu_sirt(sino, geom, D, H, W, det_u, det_v, n_iter=30)      # in-VRAM, view-parallel multi-GPU
+x = chunked_sirt(sino, geom, D, H, W, det_u, det_v, n_iter=30)   # out-of-core SIRT
+x = mgpu_sirt(sino, geom, D, H, W, det_u, det_v, n_iter=30)      # in-VRAM, multi-GPU
 ```
 
-The RAM-vs-disk choice is automatic (arrays that fit a host-RAM budget stay in
-RAM); `set_out_of_core_backend("zarr")` swaps the raw memmap spill for chunked
-+ compressed zarr storage. Verified on 2× RTX PRO 6000: chunked == monolithic
-to ~1e-6, 2-GPU == 1-GPU exact, 2048³ cone-FDK end-to-end with a bounded
-working set. This path is CUDA-only (it drives the numba-CUDA kernels
-directly).
+Arrays that fit a host-RAM budget stay in RAM.
+`set_out_of_core_backend("zarr")` swaps the memmap spill for compressed zarr
+storage. Chunked and monolithic runs agree to about 10⁻⁶.
 
-## 🔀 Branches & releases
+## ⚙️ The Torch engine (`diffct_mlx.engine`)
 
-All development happens on **`main`** (the former `cuda` development branch
-has been merged and retired). Versioned releases are tagged and published to
-PyPI via CI (trusted publishing); `gh-pages` hosts the built documentation.
+On the Torch backend the full upstream diffct 2.5.2 API is available under
+`diffct_mlx.engine`, for features the unified API does not expose yet:
 
-Kernels take per-view ``(src_pos, det_center, det_u_vec[, det_v_vec])``
-arrays instead of closed-form ``sdd / sid / beta`` scalars, so **spiral,
-saddle, sinusoidal, laminography, or any user-supplied trajectory** works
-without touching the kernels — on both backends.
+```python
+from diffct_mlx import engine
 
-If you find any bugs please
-[raise an issue](https://github.com/Linda-SophieSchneider/DiffCT-MLX/issues).
+P = engine.Projector((src, det_c, det_u, det_v), (D, H, W), (nu, nv), beam="cone",
+                     detector_spacing=(du, dv), voxel_spacing=(sx, sy, sz),
+                     backend="torch", precision="float64")   # also "numba" (CUDA) or "auto"
+y = P(volume)
+x = P.backproject(y)
+```
 
-## ✨ Features
+This gives the portable backend on CPU, MPS and ROCm, float64 precision,
+chunked and streamed projection, per-axis voxel spacing, `parallel3d`,
+`ParameterizedSurface` detectors, `fbp`/`fdk`/`helical_fdk` and the engine's
+`cgls`, `sirt` and `tv_reconstruction` solvers. On CUDA tensors the unified
+Siddon projectors use the native kernels, on CPU and MPS tensors the portable
+backend. The upstream documentation is in [`docs/engine/`](docs/engine/).
 
-- **Fast:** CUDA-accelerated forward and backward projectors (Numba
-  CUDA kernels), coalesced memory access for the FDK gather.
-- **Differentiable:** End-to-end gradient propagation via
-  ``torch.autograd``; every projector / backprojector pair is
-  byte-accurate adjoints verified by ``tests/test_adjoint_inner_product.py``
-  and ``tests/test_gradcheck.py``.
-- **Arbitrary trajectories:** Kernels consume per-view source /
-  detector position arrays, so circular, spiral, saddle, sinusoidal
-  or any user-supplied orbit works from the same code path. See
-  ``diffct.geometry`` for built-in trajectory generators.
-- **Analytical reconstruction:** Amplitude-calibrated FBP / FDK
-  pipelines via ``ramp_filter_1d``, ``fan_cosine_weights`` /
-  ``cone_cosine_weights``, ``parker_weights``,
-  ``angular_integration_weights``, and
-  ``parallel_weighted_backproject`` / ``fan_weighted_backproject`` /
-  ``cone_weighted_backproject``. Each wrapper dispatches to a
-  dedicated voxel-driven gather kernel with the correct
-  ``(sid_n / U_n)^2`` weighting and Fourier-convention constant.
-- **Modular:** Library split into ``diffct.projectors``,
-  ``diffct.geometry``, ``diffct.analytical``, ``diffct.kernels``,
-  ``diffct.utils``, ``diffct.constants``. ``diffct.differentiable``
-  is retained as a deprecated backward-compatibility shim.
-- **Two projector families:** thin-ray Siddon *and* separable-footprint
-  forward/adjoint pairs for every geometry (parallel/fan/cone), all with
-  native kernels on both backends, including a sparse cone backprojection
-  (``indices=``) for region-of-interest gradients.
-- **Out-of-core + multi-GPU:** ``diffct_mlx.orchestration`` streams
-  TB-scale volumes through chunked, conveyor-pipelined, multi-GPU
-  projection/backprojection/FDK/SIRT/OS-SART with automatic RAM/disk spill
-  (memmap or zarr).
-- **Tested:** 97 pytest tests covering adjoint identity, gradcheck, smoke,
-  accuracy, offset handling, ramp-filter windows, the operator/solver/
-  physics stack and regression pins from review sessions. Opt-in
-  ``pytest-benchmark`` perf suite under ``tests/benchmarks/``.
+## 🔁 Migrating from 2.x
 
-## 📐 Supported Geometries
+3.0 changes two defaults. Results of 2.x differ by half a detector pixel in
+position and by the factor `voxel_spacing` in amplitude.
 
-- **Parallel Beam:** 2D parallel-beam geometry
-- **Fan Beam:** 2D fan-beam geometry
-- **Cone Beam:** 3D cone-beam geometry
+| | 2.x | 3.0 |
+|---|---|---|
+| Detector pixel `i` | `(i − N/2)·du` | `(i − (N−1)/2)·du` |
+| Line integrals | voxel units | physical (µ · mm) |
+| Iterative result of physical data | µ per voxel | µ in 1/mm |
+| Torch engine | top-level `diffct` (dev line) | `diffct_mlx.engine` (upstream 2.5.2) |
 
-Every geometry supports both canonical circular orbits (via the
-``circular_trajectory_*`` helpers) and arbitrary trajectories (any
-user-supplied ``(n_views, 2 or 3)`` tensors).
+To reproduce 2.x numbers, build operators with the old conventions:
 
-## 🧩 Code Structure
+```python
+A = dct.make_cone_3d_operator(..., detector_convention="legacy", line_integrals="voxel")
+ops = dct.make_cone_3d_operators(..., detector_convention="legacy", line_integrals="voxel")
+```
 
-```bash
+For direct projector or FBP/FDK calls, shift the detector centre:
+
+```python
+det_c_legacy = dct.kernel_detector_center(det_c, det_u, du, det_v, dv, convention="legacy")
+```
+
+Projection stacks written by 2.x in voxel units load with
+`NpyProjectionsConfig(projection_units="voxel")`. Replace
+`import diffct` or `from diffct import ...` with `from diffct_mlx import engine`
+or `from diffct_mlx.engine import ...`. If you need the old behaviour
+unchanged, pin `diffct-mlx<3`.
+
+## 🧩 Code structure
+
+```text
 DiffCT-MLX/
-├── diffct_mlx/                # THE unified auto-backend package (import this)
-│   ├── backend/               # backend selection + xp array namespace
-│   │   ├── _torch.py          #   Torch/CUDA adapter over the vendored diffct
-│   │   ├── _mlx.py            #   MLX/Metal adapter
-│   │   └── metal/             #   vendored Metal kernels + mx projectors (from main)
-│   ├── projectors.py          # unified functional projector API (both families)
-│   ├── geometry.py            # trajectory generators + laminography + JSON loader
-│   ├── operators.py           # differentiable LinearOperator algebra
-│   ├── functionals.py         # objectives / regularizers / constraints
-│   ├── filters.py             # edge-preserving denoisers + Plug-and-Play
-│   ├── physics/               # corrections, pipeline, simulation, spectra
-│   ├── rebinning.py           # Parker/offset weighting, fan→par, curved↔flat
-│   ├── calibration.py         # center-of-rotation self-calibration
-│   ├── phantoms/              # voxel phantoms + analytic phantom engine
-│   ├── orchestration/         # out-of-core + multi-GPU chunking (CUDA)
+├── diffct_mlx/                 # the package (import this)
+│   ├── backend/                # backend selection and the xp array namespace
+│   │   ├── _torch.py           #   Torch adapter over diffct_mlx.engine
+│   │   ├── _mlx.py             #   MLX adapter
+│   │   └── metal/              #   Metal kernels and mx.custom_function projectors
+│   ├── engine/                 # Torch / numba-CUDA engine (upstream diffct 2.5.2, vendored)
+│   ├── conventions.py          # detector and unit conventions, legacy converters
+│   ├── projectors.py           # unified functional projector API
+│   ├── geometry.py             # trajectory generators, laminography, JSON loader
+│   ├── operators.py            # differentiable LinearOperator algebra
+│   ├── functionals.py          # objectives, regularizers, constraints
+│   ├── filters.py              # edge-preserving denoisers, Plug-and-Play
+│   ├── physics/                # corrections, pipeline, simulation, spectra
+│   ├── rebinning.py            # Parker and offset weighting, rebinning
+│   ├── calibration.py          # centre-of-rotation self-calibration
+│   ├── phantoms/               # voxel phantoms and analytic phantom engine
+│   ├── orchestration/          # out-of-core and multi-GPU (CUDA)
 │   └── reconstruction_algorithms/  # FBP/FDK, SART/SIRT, POCS, DART, solver registry
-├── diffct/                    # vendored Torch/numba-CUDA engine (upstream dev line)
-│   ├── projectors.py          # autograd Function classes
-│   ├── footprint.py           # separable-footprint autograd Functions (+ sparse)
-│   ├── analytical.py          # ramp filter, cosine weights, Parker, FBP/FDK wrappers
-│   ├── geometry.py            # trajectory generators (circular, spiral, ...)
-│   ├── kernels/               # Siddon + footprint + FBP/FDK gather CUDA kernels
-│   └── differentiable.py     # deprecated compat shim
-├── examples/
-│   ├── circular_trajectory/   # canonical circular-orbit examples (fbp/fdk + iterative)
-│   ├── non_circular_trajectory/  # spiral / custom trajectory examples
-│   └── plot_trajectory.py     # visualise a trajectory generator
-├── tests/
-│   ├── test_*.py              # adjoint / gradcheck / accuracy / weights / ramp-filter
-│   └── benchmarks/            # opt-in pytest-benchmark perf suite
-├── docs/                      # Sphinx documentation sources
-├── pyproject.toml
-├── pytest.ini
-├── CHANGELOG.md               # dev-branch change log
-├── README.md
-└── LICENSE
+├── examples/                   # circular and non-circular trajectory examples
+├── tests/                      # unit, parity and regression tests; tests/engine: upstream suite
+├── docs/                       # Sphinx sources; docs/engine: upstream engine docs
+├── CHANGELOG.md
+└── ATTRIBUTION.md
 ```
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-- CUDA-capable GPU
-- Python 3.10+
-- [PyTorch](https://pytorch.org/get-started/locally/), [NumPy](https://numpy.org/), [Numba](https://numba.readthedocs.io/en/stable/user/installing.html), [CUDA](https://developer.nvidia.com/cuda-toolkit)
-
-### Installation
-
-`dev` is not on PyPI — install it from source by cloning the
-repository and using an editable install.
-
-**CUDA 12 (recommended):**
-```bash
-# Clone the repository
-git clone https://github.com/Linda-SophieSchneider/DiffCT-MLX.git
-cd DiffCT-MLX
-
-# Create and activate conda environment
-conda create -n diffct python=3.12
-conda activate diffct
-
-# Install CUDA (here 12.8.1 as example) and PyTorch, and Numba
-conda install nvidia/label/cuda-12.8.1::cuda-toolkit
-
-# Install PyTorch, follow: https://pytorch.org/get-started/locally/
-
-# Install Numba with CUDA 12
-pip install numba-cuda[cu12]
-
-# Install diffct (editable)
-pip install -e .
-```
-
-<details>
-<summary>CUDA 13 installation</summary>
+## 🧪 Tests
 
 ```bash
-git clone https://github.com/Linda-SophieSchneider/DiffCT-MLX.git
-cd DiffCT-MLX
-conda create -n diffct python=3.12
-conda activate diffct
-conda install nvidia/label/cuda-13.0.2::cuda-toolkit
-# Install PyTorch from https://pytorch.org/get-started/locally/
-pip install numba-cuda[cu13]
-pip install -e .
+pytest tests/ -q                             # backend-specific tests skip where they do not apply
+pytest tests/engine -q                       # upstream engine suite (Torch)
+pytest tests/benchmarks/ --benchmark-only    # opt-in performance suite
 ```
 
-</details>
+## 🔀 Releases
 
-<details>
-<summary>CUDA 11 installation</summary>
-
-```bash
-git clone https://github.com/Linda-SophieSchneider/DiffCT-MLX.git
-cd DiffCT-MLX
-conda create -n diffct python=3.12
-conda activate diffct
-conda install nvidia/label/cuda-11.8.0::cuda-toolkit
-# Install PyTorch from https://pytorch.org/get-started/locally/
-pip install numba-cuda[cu11]
-pip install -e .
-```
-
-</details>
-
-### Running the tests
-
-```bash
-pytest tests/ -q                             # core suite (backend-specific tests may skip)
-pytest tests/benchmarks/ --benchmark-only    # opt-in perf suite
-```
+Development happens on `main`. Tagged versions are published to
+[PyPI](https://pypi.org/project/diffct-mlx/) through trusted publishing, and
+`gh-pages` hosts the documentation. Changes are listed in
+[CHANGELOG.md](CHANGELOG.md). Please report bugs as
+[issues](https://github.com/Linda-SophieSchneider/DiffCT-MLX/issues).
 
 ## 📝 Citation
 
@@ -467,7 +374,7 @@ If you use this library in your research, please cite:
   year      = 2026,
   month     = {May},
   publisher = {Preprints},
-  author    = {Yipeng Sun and Linda-Sophie Schneider and Chengze ye and Andreas Maier},
+  author    = {Yipeng Sun and Linda-Sophie Schneider and Chengze Ye and Andreas Maier},
   title     = {diffct: Differentiable CT Operators from Circular Orbits to Arbitrary Trajectories},
   journal   = {Preprints}
 }
@@ -475,13 +382,12 @@ If you use this library in your research, please cite:
 
 ## 📄 License
 
-This project is licensed under the Apache 2.0 - see the [LICENSE](LICENSE) file for details.
+Apache 2.0, see [LICENSE](LICENSE). The vendored engine keeps upstream's
+`LICENSE` and `NOTICE` in `diffct_mlx/engine/`.
 
 ## 🙏 Acknowledgements
 
-This project was highly inspired by:
-
-- [PYRO-NN](https://github.com/csyben/PYRO-NN)
-- [geometry_gradients_CT](https://github.com/mareikethies/geometry_gradients_CT)
-
-Issues and contributions are welcome!
+The Torch / CUDA engine is [diffct](https://github.com/sypsyp97/diffct) by
+Yipeng Sun. The project was inspired by
+[PYRO-NN](https://github.com/csyben/PYRO-NN) and
+[geometry_gradients_CT](https://github.com/mareikethies/geometry_gradients_CT).

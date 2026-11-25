@@ -21,9 +21,9 @@ Install the release from PyPI with the extra matching your platform:
 
 .. code-block:: bash
 
-   pip install "diffct-mlx[cuda]"   # NVIDIA GPUs: Torch + numba-CUDA
-   # or
-   pip install "diffct-mlx[mlx]"    # Apple Silicon: MLX
+   pip install "diffct-mlx[mlx]"                       # Apple Silicon: MLX
+   pip install "diffct-mlx[cuda]" "numba-cuda[cu12]"   # NVIDIA GPUs, CUDA 12
+   pip install "diffct-mlx[torch]"                     # portable PyTorch engine (CPU, MPS, ROCm)
 
 For an editable development install, clone the repository:
 
@@ -94,6 +94,7 @@ Where to go next
 - ``dct.simulate_scan`` produces realistic polychromatic, noisy data from a
   phantom in physical line-integral units; ``diffct_mlx.physics`` corrects
   real measurements.
+- Upgrading from DiffCT-MLX 2.x: read :doc:`migration`.
 - ``diffct_mlx.orchestration`` reconstructs volumes larger than GPU memory
   (and larger than host RAM) across multiple GPUs.
 - Explore the :doc:`examples` and the :doc:`api` reference.

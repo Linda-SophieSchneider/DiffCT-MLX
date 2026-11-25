@@ -1,6 +1,7 @@
 # DiffCT-MLX 3.0 — migration plan
 
-Branch `v3`. Status markers: [x] done, [~] in progress, [ ] open.
+Released as 3.0.0 on 2026-11-25 (merged into `main`). Steps 6 and the open
+issues below carry over to 3.x. Status markers: [x] done, [~] in progress, [ ] open.
 
 ## Decisions (2026-11-25)
 
@@ -51,10 +52,10 @@ Branch `v3`. Status markers: [x] done, [~] in progress, [ ] open.
    per-axis `voxel_spacing`, `parallel3d`, detector surfaces, geometry
    gradients, chunked `Projector`. MLX raises `NotImplementedError` where it
    has no counterpart yet.
-7. [ ] Cross-backend parity tests (MLX against portable Torch on the same Mac,
+7. [x] Cross-backend parity tests (MLX against portable Torch on the same Mac,
    against CUDA on Alex). Rerun the study equivalence check with 3.0 on both
    backends.
-8. [ ] README, migration guide (2.x → 3.0), CHANGELOG, release 3.0.0.
+8. [x] README, migration guide (2.x → 3.0), CHANGELOG, release 3.0.0.
 
 ## Status (2026-11-25)
 
@@ -63,8 +64,8 @@ Branch `v3`. Status markers: [x] done, [~] in progress, [ ] open.
   Mac (no CUDA bindings), so they come from the environment.
 - Footprint kernels in cudasim against the engine's float64 Siddon: mass
   within 1.5 % per view, centroid within 0.13 px, adjoint error below 1e-7.
-- Not run on CUDA yet: native footprint path, out-of-core FDK gather,
-  `tests/engine` CUDA tests. Next: a full run on Alex.
+- 3.0.0rc1 was tested on the NVIDIA A40 (Alex) without problems; 3.0.0
+  released from the same code.
 - MLX suite unchanged (36 pass; 2 old `test_xp_*` failures).
 - Step 5 done: MLX and the Torch engine agree to < 2e-4 (forward and
   backprojection, all beams) and to < 1e-3 in the cone geometry gradient,

@@ -1,6 +1,6 @@
 # Attribution
 
-This `cuda` branch of **DiffCT-MLX** is **adapted from the original
+The Torch / CUDA engine of **DiffCT-MLX** is **adapted from the original
 [diffct](https://github.com/sypsyp97/diffct)** by Yipeng Sun et al.
 
 ## Source

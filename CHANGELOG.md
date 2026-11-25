@@ -9,6 +9,20 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-25
+
+First stable 3.0 release. The code is that of 3.0.0rc1, which was tested
+on an NVIDIA A40 without problems. Breaking changes against 2.x are listed under 3.0.0rc1. A migration
+guide is in the documentation (`docs/source/migration.rst`) and the README.
+
+### Changed
+
+- README and documentation site rewritten for 3.0: package layout with
+  `diffct_mlx.engine`, the new conventions, installation from PyPI, a
+  geometry-gradient support table per backend and a 2.x migration guide.
+  The API reference documents `diffct_mlx.engine` (`Projector`, solvers,
+  `fbp`/`fdk`) in place of the retired top-level `diffct`.
+
 ## [3.0.0rc1] - 2026-11-25
 
 Release candidate for 3.0.0 (install with `pip install --pre`). Not yet run

@@ -1,7 +1,7 @@
 Cone Beam FDK Reconstruction
 ============================
 
-This example demonstrates 3D cone beam FDK (Feldkamp-Davis-Kress) reconstruction using the `ConeProjectorFunction` and `ConeBackprojectorFunction` from `diffct`.
+This example demonstrates 3D cone beam FDK (Feldkamp-Davis-Kress) reconstruction using the `ConeProjectorFunction` and `ConeBackprojectorFunction` from ``diffct_mlx.engine``.
 
 Overview
 --------
@@ -66,7 +66,7 @@ The Feldkamp-Davis-Kress algorithm performs approximate 3D reconstruction in thr
 **Implementation Steps**
 
 1. **3D Phantom Generation**: Create 3D Shepp-Logan phantom with 10 ellipsoids
-2. **Cone Beam Projection**: Generate 2D projections using `ConeProjectorFunction` with geometry from helpers such as ``diffct.geometry.circular_trajectory_3d``
+2. **Cone Beam Projection**: Generate 2D projections using `ConeProjectorFunction` with geometry from helpers such as ``diffct_mlx.engine.circular_trajectory_3d``
 3. **Cosine Weighting**: Apply distance-dependent weights
 4. **Row-wise Filtering**: Apply ramp filter to each detector row
 5. **3D Backprojection**: Reconstruct volume using `ConeBackprojectorFunction`
